@@ -3,7 +3,7 @@ using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using NUnit.Framework;
 
-namespace JobsPulse.Core.Tests.Integration.Core;
+namespace JobsPulse.Tests.Integration.Core;
 
 public sealed class VacancyMatcherTests : IntegrationTestBase
 {

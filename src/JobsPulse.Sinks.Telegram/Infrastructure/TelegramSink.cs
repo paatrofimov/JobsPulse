@@ -32,7 +32,7 @@ public sealed class TelegramSink(
 
         for (var i = 0; i < messages.Count; i++)
         {
-            var result = await client.SendMessageAsync(chatId, messages[i], ct);
+            var result = await client.SendRichMessageAsync(chatId, messages[i], ct);
 
             if (!result.Success)
             {

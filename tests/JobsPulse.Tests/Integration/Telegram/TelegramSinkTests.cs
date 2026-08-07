@@ -5,7 +5,7 @@ using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
 using NUnit.Framework;
 
-namespace JobsPulse.Core.Tests.Integration.Telegram;
+namespace JobsPulse.Tests.Integration.Telegram;
 
 public sealed class TelegramSinkTests : IntegrationTestBase
 {

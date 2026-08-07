@@ -18,7 +18,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JobsPulse.Sinks.Telegram", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JobsPulse.Host", "src\JobsPulse.Host\JobsPulse.Host.csproj", "{4E082C29-C661-4B4D-B945-41D11BB173BF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JobsPulse.Core.Tests", "tests\JobsPulse.Core.Tests\JobsPulse.Core.Tests.csproj", "{E08BAFBF-40B6-4A6F-99B6-1369E9A9843B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JobsPulse.Tests", "tests\JobsPulse.Tests\JobsPulse.Tests.csproj", "{E08BAFBF-40B6-4A6F-99B6-1369E9A9843B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

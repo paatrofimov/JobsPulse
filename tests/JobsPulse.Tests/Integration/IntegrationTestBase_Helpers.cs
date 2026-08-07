@@ -2,7 +2,7 @@
 using JobsPulse.Core.Model.Domain;
 using NUnit.Framework;
 
-namespace JobsPulse.Core.Tests.Integration;
+namespace JobsPulse.Tests.Integration;
 
 [TestFixture]
 public abstract partial class IntegrationTestBase

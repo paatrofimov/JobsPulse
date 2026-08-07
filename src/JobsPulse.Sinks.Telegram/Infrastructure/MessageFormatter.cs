@@ -3,127 +3,148 @@ using System.Text;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
+using Telegram.Bot.Types;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
 public static class MessageFormatter
 {
-    private const int TelegramLimit = 4096;
-    private const int SafeLimit = 3800;
+    private const int SafeLimit = 30_000;
 
-    public static IReadOnlyList<string> Format(IReadOnlyList<OutboxItem> batch)
+    public static IReadOnlyList<InputRichMessage> Format(
+        IReadOnlyList<OutboxItem> batch)
     {
-        var messages = new List<string>();
+        var messages = new List<InputRichMessage>();
         var sb = new StringBuilder();
 
-        foreach (var group in batch.GroupBy(i => (i.CompanyName, Kind: i.ChangeKind)).OrderBy(x => x.Key.Kind))
+        foreach (var group in batch
+                     .GroupBy(x => (x.CompanyName, Kind: x.ChangeKind))
+                     .OrderBy(x => x.Key.Kind))
         {
-            var block = RenderBlock(group.Key.CompanyName, group.Key.Kind, [.. group]);
+            var items = group.ToArray();
+            var block = RenderBlock(
+                group.Key.CompanyName,
+                group.Key.Kind,
+                items);
 
             if (sb.Length + block.Length > SafeLimit && sb.Length > 0)
             {
-                messages.Add(sb.ToString());
+                messages.Add(ToRichMessage(sb));
                 sb.Clear();
             }
 
             if (block.Length > SafeLimit)
             {
-                foreach (var chunk in SplitLarge(group.Key.CompanyName, group.Key.Kind, [.. group]))
-                    messages.Add(chunk);
+                foreach (var chunk in SplitLarge(
+                             group.Key.CompanyName,
+                             group.Key.Kind,
+                             items))
+                {
+                    messages.Add(new InputRichMessage
+                    {
+                        Html = chunk
+                    });
+                }
+
                 continue;
             }
 
             sb.Append(block);
         }
 
-        if (sb.Length > 0) messages.Add(sb.ToString());
+        if (sb.Length > 0)
+            messages.Add(ToRichMessage(sb));
 
-        return [.. messages.Select(m => m.Length > TelegramLimit ? m[..TelegramLimit] : m)];
+        return messages;
     }
 
-    private static string RenderBlock(string company, VacancyChangeKind kind, IReadOnlyList<OutboxItem> items)
+    private static InputRichMessage ToRichMessage(StringBuilder sb) =>
+        new()
+        {
+            Html = sb.ToString()
+        };
+
+    private static string RenderBlock(
+        string company,
+        VacancyChangeKind kind,
+        IReadOnlyList<OutboxItem> items)
     {
         var sb = new StringBuilder();
-        sb.Append(Header(kind)).Append(" <b>").Append(Escape(company)).Append("</b>\n");
+
+        sb.Append("<h6>")
+            .Append(Header(kind))
+            .Append(" · ")
+            .Append(Escape(company))
+            .Append("</h6>");
 
         foreach (var item in items)
-            sb.AppendLine(RenderVacancy(item.Vacancy)).AppendLine();
+        {
+            sb.Append("<p>")
+                .Append(RenderVacancy(item.Vacancy))
+                .Append("</p>");
+        }
 
-        sb.AppendLine();
         return sb.ToString();
     }
 
-    private static IEnumerable<string> SplitLarge(string company, VacancyChangeKind kind, IReadOnlyList<OutboxItem> items)
+    private static string RenderVacancy(Vacancy vacancy)
     {
-        const int perMessage = 8;
+        var title = RenderTitleLink(vacancy);
+        var geography = RenderGeography(vacancy);
+        var dates = RenderDate(vacancy.UpdatedAt) ?? RenderDate(vacancy.FirstPublished);
+
+        return $"{title}<br> {geography} · {dates}";
+    }
+
+    private static string RenderTitleLink(Vacancy vacancy) =>
+        $"<a href=\"{Escape(vacancy.Url)}\"><b>{Escape(vacancy.Title)}</b></a>";
+
+    private static IEnumerable<string> SplitLarge(
+        string company,
+        VacancyChangeKind kind,
+        IReadOnlyList<OutboxItem> items)
+    {
+        const int perMessage = 20;
+
         for (var i = 0; i < items.Count; i += perMessage)
-            yield return RenderBlock(company, kind, [.. items.Skip(i).Take(perMessage)]);
-    }
-
-    private static string RenderVacancy(Vacancy v)
-    {
-        var title = RenderTitleLink(v);
-        var geography = RenderGeography(v);
-        var dates = RenderPublishedUpdated(v);
-        return $"{title}\n\t{geography} | {dates}";
-    }
-
-    private static string RenderTitleLink(Vacancy v)
-    {
-        return $"• <a href=\"{Escape(v.Url)}\">{Escape(v.Title)}</a>";
-    }
-
-    private static string? RenderPublishedUpdated(Vacancy vacancy)
-    {
-        var published = RenderDate(vacancy.FirstPublished);
-        var updated = RenderDate(vacancy.UpdatedAt);
-
-        if (published != null && updated != null)
         {
-            if (published == updated)
-                return published;
-
-            return $"{updated} (published {published})";
+            yield return RenderBlock(
+                company,
+                kind,
+                items.Skip(i).Take(perMessage).ToArray());
         }
-
-        if (published != null)
-            return published;
-
-        return updated;
     }
 
     private static string? RenderDate(DateTimeOffset? date)
     {
-        var currentYear = DateTime.UtcNow.Year;
-        if (currentYear != date?.Year)
-            return date?.ToString("yyyy MMMM dd");
-        return date.Value.ToString("M");
+        if (date is null)
+            return null;
+
+        return date.Value.Year == DateTime.UtcNow.Year
+            ? date.Value.ToString("MMMM dd")
+            : date.Value.ToString("yyyy MMMM dd");
     }
 
-    private static string? RenderGeography(Vacancy vacancy)
+    private static string RenderGeography(Vacancy vacancy)
     {
         if (vacancy.Offices.Count > 0)
             return RenderOffices(vacancy.Offices);
-        if (vacancy.Location != null)
-            return RenderLocation(vacancy.Location);
+
+        if (vacancy.Location is not null)
+            return Escape(vacancy.Location);
+
         return "Unknown Location";
     }
 
-    private static string? RenderOffices(IReadOnlyList<string> offices)
-    {
-        if (offices.Count > 0)
-            return offices.Select(Escape).JoinStrings(" · ");
-        return null;
-    }
-
-    private static string? RenderLocation(string location) => Escape(location);
+    private static string RenderOffices(IReadOnlyList<string> offices) =>
+        offices.Select(Escape).JoinStrings(" · ");
 
     private static string Header(VacancyChangeKind kind) => kind switch
     {
-        VacancyChangeKind.New => "\U0001F195 New vacancies:",
-        VacancyChangeKind.Updated => "✏️ Updated:",
-        VacancyChangeKind.Closed => "❌ Closed:",
-        _ => "Changes:"
+        VacancyChangeKind.New => "🆕",
+        VacancyChangeKind.Updated => "✏️",
+        VacancyChangeKind.Closed => "❌",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
     public static string Escape(string? text) =>

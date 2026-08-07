@@ -8,22 +8,16 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
 public sealed class TelegramClientFacade(ITelegramBotClient client)
 {
-    public async Task<TelegramResult> SendMessageAsync(
+    public async Task<TelegramResult> SendRichMessageAsync(
         string chatId,
-        string html,
+        InputRichMessage msg,
         CancellationToken ct)
     {
         try
         {
-            await client.SendMessage(
+            await client.SendRichMessage(
                 chatId: chatId,
-                text: html,
-                parseMode: ParseMode.Html,
-                disableNotification: false,
-                linkPreviewOptions: new LinkPreviewOptions
-                {
-                    IsDisabled = true
-                },
+                msg,
                 cancellationToken: ct);
 
             return TelegramResult.Ok;

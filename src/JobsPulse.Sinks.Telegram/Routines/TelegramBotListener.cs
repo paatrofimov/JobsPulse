@@ -114,9 +114,9 @@ public sealed class TelegramBotListener(
             reply = "Something wrong, see logs";
         }
 
-        await client.SendMessageAsync(
+        await client.SendRichMessageAsync(
             chatId,
-            reply,
+            new InputRichMessage() {Html = reply},
             ct);
     }
 }
