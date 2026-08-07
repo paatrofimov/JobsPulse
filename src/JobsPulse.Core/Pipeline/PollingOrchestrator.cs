@@ -1,28 +1,19 @@
-using System.Threading.RateLimiting;
 using JobsPulse.Core.Abstractions;
-using JobsPulse.Core.Model;
+using JobsPulse.Core.Model.Domain;
+using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace JobsPulse.Core.Pipeline;
 
-/// <summary>
-/// Ядро системы. Один «цикл» = обход всех активных записей watchlist.
-///
-/// Поток данных:
-///   watchlist → источник → фильтр → детектор изменений → (состояние + outbox одной транзакцией)
-///
-/// Оркестратор НЕ отправляет сообщения. Он только кладёт их в outbox.
-/// Отправкой занимается отдельный диспетчер — так падение Telegram не теряет уведомления.
-/// </summary>
 public sealed class PollingOrchestrator(
-    IWatchlistProvider watchlist,
-    ISourceCatalog sources,
-    IStateStore state,
-    VacancyMatcher matcher,
-    ChangeDetector detector,
-    IOptionsMonitor<PollingOptions> options,
+    IWatchlistProvider watchlistProvider,
+    ISourceCatalog sourceCatalog,
+    IStateStore stateStore,
+    VacancyMatcher vacancyMatcher,
+    ChangeDetector changeDetector,
+    IOptionsMonitor<WatchlistPollingOptions> options,
     TimeProvider clock,
     ILogger<PollingOrchestrator> log)
 {
@@ -31,28 +22,26 @@ public sealed class PollingOrchestrator(
     public async Task<CycleReport> RunCycleAsync(CancellationToken ct)
     {
         var opts = options.CurrentValue;
-        var current = watchlist.Current;
+        var current = watchlistProvider.Current;
         var now = clock.GetUtcNow();
 
         var due = current.Entries.Where(e => e.Enabled && IsDue(e, opts, now)).ToList();
 
         if (due.Count == 0)
         {
-            log.LogDebug("Нет записей к обходу (всего в watchlist: {Total})", current.Entries.Count);
+            log.LogDebug("No records for traversal (watchlist total: {Total})", current.Entries.Count);
             return CycleReport.Empty;
         }
 
-        log.LogInformation("Цикл: {Due} из {Total} записей к обходу", due.Count, current.Entries.Count);
+        log.LogInformation("Start cycle: {Due} out of {Total} records to traverse", due.Count, current.Entries.Count);
 
-        using var limiter = CreateRateLimiter(opts);
-        using var gate = new SemaphoreSlim(opts.MaxConcurrency);
+        using var gate = new SemaphoreSlim(opts.MaxConcurrentEntries);
 
         var results = await Task.WhenAll(due.Select(async entry =>
         {
             await gate.WaitAsync(ct);
             try
             {
-                using var lease = await limiter.AcquireAsync(1, ct);
                 return await ProcessEntryAsync(entry, current, opts, ct);
             }
             finally
@@ -61,146 +50,127 @@ public sealed class PollingOrchestrator(
             }
         }));
 
-        foreach (var entry in due) _lastRunByEntry[entry.Id] = now;
+        foreach (var entry in due)
+            _lastRunByEntry[entry.Id] = now;
 
         var report = CycleReport.Aggregate(results);
         log.LogInformation(
-            "Цикл завершён: бордов {Boards}, вакансий {Fetched}, подошло {Matched}, изменений {Changes}, ошибок {Failed}",
+            "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, matched vacancies {Matched}, changes {Changes}, errors {Failed}",
             report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Changes, report.Failed);
 
         return report;
     }
 
     private async Task<EntryReport> ProcessEntryAsync(
-        WatchEntry entry, Watchlist config, PollingOptions opts, CancellationToken ct)
+        WatchEntry entry, Watchlist config, WatchlistPollingOptions opts, CancellationToken ct)
     {
-        var source = sources.GetSource(entry.Source);
+        var source = sourceCatalog.GetSource(entry.VacancySourceId);
         if (source is null)
         {
-            log.LogWarning("Источник '{Source}' не зарегистрирован — запись {Entry} пропущена", entry.Source, entry.Id);
+            log.LogWarning("Source '{Source}' is not registered — skipping entry {Entry}", entry.VacancySourceId, entry.Id);
             return EntryReport.Failure();
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(opts.BoardTimeoutSeconds));
+        timeout.CancelAfter(TimeSpan.FromSeconds(opts.SingleEntryProcessTimeoutSeconds));
 
-        SourceFetchResult fetch;
+        SourceTraverseResult traverse;
         try
         {
-            fetch = await source.FetchAsync(
-                new SourceTarget { SourceId = entry.Source, BoardKey = entry.Board },
+            traverse = await source.TraverseTargetAsync(
+                new SourceTarget { SourceId = entry.VacancySourceId, BoardId = entry.BoardId },
                 timeout.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            log.LogWarning("Таймаут обхода борда {Company} ({Board})", entry.CompanyName, entry.Board);
+            log.LogWarning("Board traversal timeout {Company} ({Board})", entry.CompanyName, entry.BoardId);
             return EntryReport.Failure();
         }
 
-        if (fetch.BoardMissing)
+        if (traverse.BoardMissing)
         {
-            // Борд не существует — ретраить бессмысленно, гасим запись, чтобы не долбить 404.
-            log.LogWarning("Борд {Board} ({Company}) не найден — отключаю запись", entry.Board, entry.CompanyName);
-            await watchlist.SetEnabledAsync(entry.Id, false, ct);
+            log.LogWarning("Board {Board} ({Company}) not found — disabling watchlist entry {Id}", entry.BoardId, entry.CompanyName, entry.Id);
+            await watchlistProvider.SetEnabledAsync(entry.Id, false, ct);
             return EntryReport.Failure();
         }
 
-        if (!fetch.IsComplete)
+        if (!traverse.IsComplete)
         {
-            log.LogWarning("Неполный обход {Company}: {Error}. Изменения не применяются", entry.CompanyName, fetch.Error);
+            log.LogWarning("Incomplete traversal {Company}: {Error}. Changes are not applied", entry.CompanyName, traverse.Error);
             return EntryReport.Failure();
         }
 
-        var filter = entry.Filter ?? config.DefaultFilter;
-        var matched = matcher.Apply(fetch.Vacancies, filter);
-        var seen = await state.LoadSeenAsync(entry.Source, entry.Board, ct);
+        var filter = entry.CustomFilter ?? config.DefaultFilter;
+        var matched = vacancyMatcher.Apply(traverse.Vacancies, filter);
+        var seen = await stateStore.LoadSeenAsync(entry.VacancySourceId, entry.BoardId, ct);
 
-        var detected = detector.Detect(new ChangeDetector.Input
+        var detected = changeDetector.Detect(new ChangeDetector.Input
         {
             Entry = entry,
-            Fetch = fetch,
+            Traverse = traverse,
             Matched = matched,
             Seen = seen
         });
 
-        // Засев: первый проход (или проход после смены фильтра) пишет состояние, но молчит.
-        // Иначе добавление компании = вся её доска вакансий в чат одним залпом.
+        // Seeding: first traversal or after filter has changed.
+        // Seeding should be silent otherwise all company board jobs are sent in one message.
         var filterHash = VacancyHasher.ComputeFilterHash(filter);
         var needsSeeding = entry.SeededAt is null || entry.SeededFilterHash != filterHash;
 
         var notifications = needsSeeding || opts.DryRun
             ? []
-            : BuildNotifications(detected.Changes, entry, config);
+            : BuildNotifications(detected.VacanciesChanges);
 
-        await state.CommitAsync(new StateCommit
+        await stateStore.CommitAsync(new StateCommit
         {
-            SourceId = entry.Source,
-            BoardKey = entry.Board,
-            Upserts = detected.Upserts,
-            Closed = detected.Closed,
+            SourceId = entry.VacancySourceId,
+            BoardId = entry.BoardId,
+            Upserts = detected.VacanciesUpserts,
+            ClosedPostIds = detected.ClosedPostIds,
             Notifications = notifications
         }, ct);
 
         if (needsSeeding)
         {
-            await watchlist.MarkSeededAsync(entry.Id, filterHash, ct);
+            await watchlistProvider.MarkSeededAsync(entry.Id, filterHash, ct);
+
             log.LogInformation(
-                "Засеяно {Company}: {Count} вакансий записано без уведомлений",
-                entry.CompanyName, detected.Upserts.Count);
+                "Seeded {Company}: {Count} vacancies written without notifications",
+                entry.CompanyName, detected.VacanciesUpserts.Count);
         }
-        else if (opts.DryRun && detected.Changes.Count > 0)
+        else if (opts.DryRun && detected.VacanciesChanges.Count > 0)
         {
             log.LogInformation(
-                "DRY-RUN {Company}: улетело бы {Count} уведомлений ({New} новых)",
-                entry.CompanyName, detected.Changes.Count,
-                detected.Changes.Count(c => c.Kind == ChangeKind.New));
+                "DRY-RUN {Company}: would send {Count} outboxes ({New} new)",
+                entry.CompanyName, detected.VacanciesChanges.Count,
+                detected.VacanciesChanges.Count(c => c.Kind == VacancyChangeKind.New));
         }
 
         return new EntryReport(
-            Fetched: fetch.Vacancies.Count,
+            Fetched: traverse.Vacancies.Count,
             Matched: matched.Count,
-            Changes: detected.Changes.Count,
+            Changes: detected.VacanciesChanges.Count,
             Failed: false);
     }
 
-    private static IReadOnlyList<OutboxItem> BuildNotifications(
-        IReadOnlyList<VacancyChange> changes, WatchEntry entry, Watchlist config)
+    private static IReadOnlyList<OutboxItem> BuildNotifications(IReadOnlyList<VacancyChange> changes)
     {
-        var target = entry.Delivery ?? config.DefaultDelivery;
-
-        // Пустой ChatId — это «доставка не настроена», а не «отправить в чат с пустым id».
-        if (target is null || string.IsNullOrWhiteSpace(target.ChatId) || changes.Count == 0) return [];
-
-        return changes.Select(c => new OutboxItem
-        {
-            // Ключ идемпотентности: одно и то же изменение не встанет в очередь дважды.
-            DedupKey = $"{c.Vacancy.Key}|{c.Kind}|{c.ContentHash}",
-            ChatId = target.ChatId,
-            Silent = target.Silent,
-            Kind = c.Kind,
-            CompanyName = c.CompanyName,
-            Vacancy = c.Vacancy
-        }).ToList();
+        return
+        [
+            .. changes.Select(c => new OutboxItem
+            {
+                DedupKey = $"{c.Vacancy.Key}|{c.Kind}|{c.ContentHash}",
+                ChangeKind = c.Kind,
+                CompanyName = c.CompanyName,
+                Vacancy = c.Vacancy
+            })
+        ];
     }
 
-    private bool IsDue(WatchEntry entry, PollingOptions opts, DateTimeOffset now)
+    private bool IsDue(WatchEntry entry, WatchlistPollingOptions opts, DateTimeOffset now)
     {
-        var interval = TimeSpan.FromMinutes(entry.IntervalMinutesOverride ?? opts.IntervalMinutes);
+        var interval = TimeSpan.FromMinutes(entry.IntervalMinutesOverride ?? opts.PollingIntervalMinutes);
         return !_lastRunByEntry.TryGetValue(entry.Id, out var last) || now - last >= interval;
-    }
-
-    private static RateLimiter CreateRateLimiter(PollingOptions opts)
-    {
-        var perSecond = Math.Max(1, (int)Math.Ceiling(opts.MaxRequestsPerSecond));
-        return new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
-        {
-            TokenLimit = perSecond,
-            TokensPerPeriod = perSecond,
-            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
-            QueueLimit = int.MaxValue,
-            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            AutoReplenishment = true
-        });
     }
 }
 
@@ -210,7 +180,11 @@ public readonly record struct EntryReport(int Fetched, int Matched, int Changes,
 }
 
 public readonly record struct CycleReport(
-    int BoardsProcessed, int VacanciesFetched, int VacanciesMatched, int Changes, int Failed)
+    int BoardsProcessed,
+    int VacanciesFetched,
+    int VacanciesMatched,
+    int Changes,
+    int Failed)
 {
     public static readonly CycleReport Empty = new(0, 0, 0, 0, 0);
 

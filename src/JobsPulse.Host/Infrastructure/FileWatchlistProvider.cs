@@ -1,21 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using JobsPulse.Core.Abstractions;
-using JobsPulse.Core.Model;
+using JobsPulse.Core.Model.Infrastructure;
 
 namespace JobsPulse.Host.Infrastructure;
 
-/// <summary>
-/// Watchlist в JSON-файле с горячей перезагрузкой и обратной записью (бот тоже правит этот файл).
-///
-/// Три вещи, ради которых это не просто File.ReadAllText:
-///  1. Файл могут прочитать в момент записи — тогда мы оставляем предыдущую ВАЛИДНУЮ версию.
-///     Битый watchlist никогда не применяется.
-///  2. FileSystemWatcher на Windows шлёт два события на одно сохранение — нужен дебаунс.
-///  3. Свои же записи не должны вызывать перезагрузку по кругу.
-///
-/// На этапе 2 этот класс заменяется реализацией поверх БД. Контракт IWatchlistProvider не меняется.
-/// </summary>
 public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -30,8 +19,6 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
     private readonly ILogger<FileWatchlistProvider> _log;
     private readonly FileSystemWatcher? _watcher;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private readonly List<Action<Watchlist>> _listeners = [];
-    private readonly Lock _listenerLock = new();
 
     private volatile Watchlist _current = new();
     private DateTimeOffset _lastReload = DateTimeOffset.MinValue;
@@ -79,7 +66,7 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 
         await MutateAsync(list => list with
         {
-            Entries = list.Entries.Where(e => !e.Id.Equals(entryId, StringComparison.OrdinalIgnoreCase)).ToList()
+            Entries = [.. list.Entries.Where(e => !e.Id.Equals(entryId, StringComparison.OrdinalIgnoreCase))]
         }, ct);
 
         return true;
@@ -91,9 +78,11 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 
         await MutateAsync(list => list with
         {
-            Entries = list.Entries
-                .Select(e => e.Id.Equals(entryId, StringComparison.OrdinalIgnoreCase) ? e with { Enabled = enabled } : e)
-                .ToList()
+            Entries =
+            [
+                .. list.Entries
+                    .Select(e => e.Id.Equals(entryId, StringComparison.OrdinalIgnoreCase) ? e with { Enabled = enabled } : e)
+            ]
         }, ct);
 
         return true;
@@ -102,18 +91,14 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
     public Task MarkSeededAsync(string entryId, string filterHash, CancellationToken ct) =>
         MutateAsync(list => list with
         {
-            Entries = list.Entries
-                .Select(e => e.Id.Equals(entryId, StringComparison.OrdinalIgnoreCase)
-                    ? e with { SeededAt = Clock.GetUtcNow(), SeededFilterHash = filterHash }
-                    : e)
-                .ToList()
+            Entries =
+            [
+                .. list.Entries
+                    .Select(e => e.Id.Equals(entryId, StringComparison.OrdinalIgnoreCase)
+                        ? e with { SeededAt = Clock.GetUtcNow(), SeededFilterHash = filterHash }
+                        : e)
+            ]
         }, ct);
-
-    public IDisposable OnChange(Action<Watchlist> listener)
-    {
-        lock (_listenerLock) _listeners.Add(listener);
-        return new Subscription(() => { lock (_listenerLock) _listeners.Remove(listener); });
-    }
 
     private async Task MutateAsync(Func<Watchlist, Watchlist> mutate, CancellationToken ct)
     {
@@ -124,13 +109,12 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 
             _selfWrite = true;
 
-            // Пишем через временный файл: читатель никогда не увидит полузаписанный JSON.
+            // Writing via temp file for atomic move
             var temp = _path + ".tmp";
             await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(new Root { Watchlist = updated }, Json), ct);
             File.Move(temp, _path, overwrite: true);
 
             _current = updated;
-            Notify(updated);
         }
         finally
         {
@@ -143,7 +127,6 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
     {
         if (_selfWrite) return;
 
-        // Дебаунс: одно сохранение файла порождает несколько событий.
         var now = Clock.GetUtcNow();
         if (now - _lastReload < DebounceWindow) return;
         _lastReload = now;
@@ -151,25 +134,23 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
         var reloaded = Load();
         if (reloaded is null)
         {
-            _log.LogError("watchlist.json не прочитался — продолжаю работать на предыдущей версии {Version}",
+            _log.LogError("watchlist.json could not be read — using previous version {Version}",
                 _current.Version);
             return;
         }
 
         _current = reloaded;
-        _log.LogInformation("watchlist перезагружен: версия {Version}, записей {Count}",
+        _log.LogInformation("watchlist reloaded: version {Version}, entries {Count}",
             reloaded.Version, reloaded.Entries.Count);
-
-        Notify(reloaded);
     }
 
     private Watchlist? Load()
     {
         try
         {
-            if (!File.Exists(_path)) return new Watchlist();
+            if (!File.Exists(_path))
+                return new Watchlist();
 
-            // Небольшая задержка: редактор мог ещё не отпустить файл.
             var content = ReadWithRetry();
             var root = JsonSerializer.Deserialize<Root>(content, Json);
 
@@ -177,14 +158,14 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Не удалось прочитать {Path}", _path);
+            _log.LogError(ex, "Failed to read path {Path}", _path);
             return null;
         }
     }
 
     private string ReadWithRetry()
     {
-        for (var attempt = 0; ; attempt++)
+        for (var attempt = 0;; attempt++)
         {
             try
             {
@@ -203,13 +184,13 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 
         var bad = list.Entries
             .Where(e => string.IsNullOrWhiteSpace(e.Id)
-                        || string.IsNullOrWhiteSpace(e.Source)
-                        || string.IsNullOrWhiteSpace(e.Board))
+                        || string.IsNullOrWhiteSpace(e.VacancySourceId)
+                        || string.IsNullOrWhiteSpace(e.BoardId))
             .ToList();
 
         if (bad.Count > 0)
         {
-            _log.LogError("В watchlist {Count} некорректных записей — версия отклонена целиком", bad.Count);
+            _log.LogError("Watchlist has {Count} invalid entries — version is rejected", bad.Count);
             return null;
         }
 
@@ -221,23 +202,11 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 
         if (duplicates.Count > 0)
         {
-            _log.LogError("Дублирующиеся Id в watchlist: {Ids}", string.Join(", ", duplicates));
+            _log.LogError("Duplicated watchlist ids: {Ids}", string.Join(", ", duplicates));
             return null;
         }
 
         return list;
-    }
-
-    private void Notify(Watchlist list)
-    {
-        Action<Watchlist>[] snapshot;
-        lock (_listenerLock) snapshot = _listeners.ToArray();
-
-        foreach (var listener in snapshot)
-        {
-            try { listener(list); }
-            catch (Exception ex) { _log.LogWarning(ex, "Подписчик на изменение watchlist упал"); }
-        }
     }
 
     public void Dispose()
@@ -249,10 +218,5 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
     private sealed class Root
     {
         public Watchlist Watchlist { get; set; } = new();
-    }
-
-    private sealed class Subscription(Action dispose) : IDisposable
-    {
-        public void Dispose() => dispose();
     }
 }

@@ -1,19 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
-using JobsPulse.Core.Model;
+using JobsPulse.Core.Model.Domain;
+using JobsPulse.Core.Model.Infrastructure;
 
 namespace JobsPulse.Core.Pipeline;
 
-/// <summary>
-/// Контент-хеш вакансии.
-///
-/// Зачем: у Greenhouse updated_at дёргается от любой правки, включая косметическую.
-/// Сравнивать по нему — значит слать «вакансия обновлена» на каждую опечатку в описании.
-/// Хешируем только то, что реально важно пользователю.
-/// </summary>
 public static class VacancyHasher
 {
-    /// <summary>Unit separator — не встречается в текстах вакансий, поэтому безопасен как разделитель полей.</summary>
     private const char Separator = '\u001F';
 
     public static string Compute(Vacancy v)
@@ -28,10 +21,6 @@ public static class VacancyHasher
         return Hash(sb.ToString());
     }
 
-    /// <summary>
-    /// Хеш фильтра. Если фильтр изменился, набор подходящих вакансий меняется,
-    /// и запись надо пересеять молча — иначе прилетит пачка «новых» вакансий, которые просто раньше отсеивались.
-    /// </summary>
     public static string ComputeFilterHash(FilterSpec f)
     {
         var sb = new StringBuilder();

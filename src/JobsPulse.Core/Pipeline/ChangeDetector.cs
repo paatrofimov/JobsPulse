@@ -1,35 +1,25 @@
-using JobsPulse.Core.Abstractions;
-using JobsPulse.Core.Model;
+using JobsPulse.Core.Model.Domain;
+using JobsPulse.Core.Model.Infrastructure;
 
 namespace JobsPulse.Core.Pipeline;
 
-/// <summary>
-/// Сверка «что было» и «что стало» по одному борду.
-///
-/// Здесь сосредоточены два самых опасных места всей системы:
-///  1. Closed выставляется ТОЛЬКО при полном успешном фетче. Иначе таймаут = «все вакансии закрылись».
-///  2. Хранится и сравнивается только то, что прошло фильтр. Значит, вакансия, переставшая
-///     подходить под фильтр, выглядит как Closed — это осознанный компромисс: пользователю
-///     важно «оно больше не в моей выборке», а не «оно физически удалено».
-/// </summary>
 public sealed class ChangeDetector
 {
     public sealed record Input
     {
         public required WatchEntry Entry { get; init; }
-        public required SourceFetchResult Fetch { get; init; }
+        public required SourceTraverseResult Traverse { get; init; }
 
-        /// <summary>Вакансии, прошедшие фильтр записи.</summary>
         public required IReadOnlyList<Vacancy> Matched { get; init; }
 
-        public required IReadOnlyDictionary<string, SeenVacancy> Seen { get; init; }
+        public required IReadOnlyDictionary<string, Vacancy> Seen { get; init; }
     }
 
     public sealed record Output
     {
-        public required IReadOnlyList<VacancyChange> Changes { get; init; }
-        public required IReadOnlyList<Vacancy> Upserts { get; init; }
-        public required IReadOnlyList<string> Closed { get; init; }
+        public required IReadOnlyList<VacancyChange> VacanciesChanges { get; init; }
+        public required IReadOnlyList<Vacancy> VacanciesUpserts { get; init; }
+        public required IReadOnlyList<string> ClosedPostIds { get; init; }
     }
 
     public Output Detect(Input input)
@@ -37,55 +27,59 @@ public sealed class ChangeDetector
         var changes = new List<VacancyChange>();
         var upserts = new List<Vacancy>(input.Matched.Count);
 
-        // Схлопывание дублей: у Greenhouse одна вакансия может быть несколькими постами
-        // (разные локации/языки). Берём по одному посту на (GroupId, Location).
+        // Single vacancy can be duplicated in many posts (locations/langiages).
+        // Deduplicate by (GroupId, Location).
         foreach (var vacancy in Deduplicate(input.Matched))
         {
             var hash = VacancyHasher.Compute(vacancy);
             upserts.Add(vacancy);
 
-            if (!input.Seen.TryGetValue(vacancy.ExternalId, out var seen))
+            if (!input.Seen.TryGetValue(vacancy.PostId, out var seen))
             {
-                changes.Add(Change(ChangeKind.New, vacancy, hash, input.Entry));
+                changes.Add(Change(VacancyChangeKind.New, vacancy, hash, input.Entry));
             }
             else if (!string.Equals(seen.ContentHash, hash, StringComparison.Ordinal))
             {
-                changes.Add(Change(ChangeKind.Updated, vacancy, hash, input.Entry));
+                changes.Add(Change(VacancyChangeKind.Updated, vacancy, hash, input.Entry));
             }
         }
 
-        // Закрытые определяем только если уверены, что видели борд целиком.
+        // Closed can be set only if complete board was traversed.
+        // Otherwise can false-positively decide that unfetched vacancy is closed.
         var closed = new List<string>();
-        if (input.Fetch.IsComplete)
+        if (input.Traverse.IsComplete)
         {
-            var present = upserts.Select(v => v.ExternalId).ToHashSet(StringComparer.Ordinal);
+            var present = upserts.Select(v => v.PostId).ToHashSet(StringComparer.Ordinal);
 
-            foreach (var (externalId, seen) in input.Seen)
+            foreach (var (postId, seen) in input.Seen)
             {
-                if (present.Contains(externalId)) continue;
+                if (present.Contains(postId))
+                    continue;
 
-                closed.Add(externalId);
+                closed.Add(postId);
+
                 changes.Add(new VacancyChange
                 {
-                    Kind = ChangeKind.Closed,
+                    Kind = VacancyChangeKind.Closed,
                     WatchEntryId = input.Entry.Id,
                     CompanyName = input.Entry.CompanyName,
                     ContentHash = seen.ContentHash,
                     Vacancy = new Vacancy
                     {
-                        SourceId = input.Entry.Source,
-                        BoardKey = input.Entry.Board,
-                        ExternalId = externalId,
+                        SourceId = input.Entry.VacancySourceId,
+                        BoardId = input.Entry.BoardId,
+                        PostId = postId,
                         Title = seen.Title,
                         Location = seen.Location,
                         Url = seen.Url,
-                        UpdatedAt = seen.UpdatedAt
+                        UpdatedAt = seen.UpdatedAt,
+                        ContentHash = seen.ContentHash
                     }
                 });
             }
         }
 
-        return new Output { Changes = changes, Upserts = upserts, Closed = closed };
+        return new Output { VacanciesChanges = changes, VacanciesUpserts = upserts, ClosedPostIds = closed };
     }
 
     private static IEnumerable<Vacancy> Deduplicate(IReadOnlyList<Vacancy> vacancies)
@@ -94,7 +88,7 @@ public sealed class ChangeDetector
 
         foreach (var v in vacancies)
         {
-            // Нет GroupId (prospect-пост) — дедупить не по чему, пропускаем как есть.
+            // prospect-post, skipping
             if (string.IsNullOrEmpty(v.GroupId))
             {
                 yield return v;
@@ -106,7 +100,7 @@ public sealed class ChangeDetector
         }
     }
 
-    private static VacancyChange Change(ChangeKind kind, Vacancy v, string hash, WatchEntry entry) =>
+    private static VacancyChange Change(VacancyChangeKind kind, Vacancy v, string hash, WatchEntry entry) =>
         new()
         {
             Kind = kind,

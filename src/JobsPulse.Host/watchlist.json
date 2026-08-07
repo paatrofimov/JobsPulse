@@ -1,20 +1,23 @@
 {
   "Watchlist": {
     "Version": 1,
-
     "DefaultFilter": {
-      "TitleAnyOf": [ "backend", "platform", "golang", ".net", "c#" ],
-      "TitleNoneOf": [ "intern", "manager", "director", "recruiter" ],
+      "TitleAnyOf": [
+        "backend",
+        "platform",
+        ".net",
+        "c#"
+      ],
+      "TitleNoneOf": [
+        "intern",
+        "manager",
+        "director",
+        "recruiter"
+      ],
       "LocationAnyOf": [],
       "PostedWithinDays": 60,
       "MatchMode": "Contains"
     },
-
-    "DefaultDelivery": {
-      "ChatId": "",
-      "Silent": false
-    },
-
     "Entries": [
       {
         "Id": "greenhouse:nebius",
@@ -29,13 +32,6 @@
         "Source": "greenhouse",
         "Board": "jetbrains",
         "CompanyName": "JetBrains"
-      },
-      {
-        "Id": "greenhouse:finom",
-        "Enabled": false,
-        "Source": "greenhouse",
-        "Board": "finom",
-        "CompanyName": "Finom (борда на Greenhouse нет - см. README)"
       }
     ]
   }
