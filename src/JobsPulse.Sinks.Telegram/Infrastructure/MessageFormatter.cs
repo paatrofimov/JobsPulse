@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 
@@ -15,7 +16,7 @@ public static class MessageFormatter
         var messages = new List<string>();
         var sb = new StringBuilder();
 
-        foreach (var group in batch.GroupBy(i => (i.CompanyName, Kind: i.ChangeKind)))
+        foreach (var group in batch.GroupBy(i => (i.CompanyName, Kind: i.ChangeKind)).OrderBy(x => x.Key.Kind))
         {
             var block = RenderBlock(group.Key.CompanyName, group.Key.Kind, [.. group]);
 
@@ -45,9 +46,10 @@ public static class MessageFormatter
         var sb = new StringBuilder();
         sb.Append(Header(kind)).Append(" <b>").Append(Escape(company)).Append("</b>\n");
 
-        foreach (var item in items) sb.Append(RenderVacancy(item.Vacancy));
+        foreach (var item in items)
+            sb.AppendLine(RenderVacancy(item.Vacancy)).AppendLine();
 
-        sb.Append('\n');
+        sb.AppendLine();
         return sb.ToString();
     }
 
@@ -60,9 +62,61 @@ public static class MessageFormatter
 
     private static string RenderVacancy(Vacancy v)
     {
-        var location = string.IsNullOrWhiteSpace(v.Location) ? "" : $" — {Escape(v.Location)}";
-        return $"• <a href=\"{Escape(v.Url)}\">{Escape(v.Title)}</a>{location}\n";
+        var title = RenderTitleLink(v);
+        var geography = RenderGeography(v);
+        var dates = RenderPublishedUpdated(v);
+        return $"{title}\n\t{geography} | {dates}";
     }
+
+    private static string RenderTitleLink(Vacancy v)
+    {
+        return $"• <a href=\"{Escape(v.Url)}\">{Escape(v.Title)}</a>";
+    }
+
+    private static string? RenderPublishedUpdated(Vacancy vacancy)
+    {
+        var published = RenderDate(vacancy.FirstPublished);
+        var updated = RenderDate(vacancy.UpdatedAt);
+
+        if (published != null && updated != null)
+        {
+            if (published == updated)
+                return published;
+
+            return $"{updated} (published {published})";
+        }
+
+        if (published != null)
+            return published;
+
+        return updated;
+    }
+
+    private static string? RenderDate(DateTimeOffset? date)
+    {
+        var currentYear = DateTime.UtcNow.Year;
+        if (currentYear != date?.Year)
+            return date?.ToString("yyyy MMMM dd");
+        return date.Value.ToString("M");
+    }
+
+    private static string? RenderGeography(Vacancy vacancy)
+    {
+        if (vacancy.Offices.Count > 0)
+            return RenderOffices(vacancy.Offices);
+        if (vacancy.Location != null)
+            return RenderLocation(vacancy.Location);
+        return "Unknown Location";
+    }
+
+    private static string? RenderOffices(IReadOnlyList<string> offices)
+    {
+        if (offices.Count > 0)
+            return offices.Select(Escape).JoinStrings(" · ");
+        return null;
+    }
+
+    private static string? RenderLocation(string location) => Escape(location);
 
     private static string Header(VacancyChangeKind kind) => kind switch
     {

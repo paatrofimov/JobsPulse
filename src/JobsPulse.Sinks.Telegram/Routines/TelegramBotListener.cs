@@ -21,10 +21,10 @@ public sealed class TelegramBotListener(
     {
         var opts = options.Value;
 
-        if (!opts.IsConfigured || !opts.EnableCommands)
+        if (!opts.EnableCommands)
         {
             log.LogInformation(
-                "Bot commands are disabled (no token or EnableCommands=false)");
+                "Bot commands are disabled (EnableCommands=false)");
             return;
         }
 

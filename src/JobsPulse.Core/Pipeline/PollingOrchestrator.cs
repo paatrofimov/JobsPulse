@@ -1,5 +1,6 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Domain;
+using JobsPulse.Core.Model.Domain.Extensions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
 using Microsoft.Extensions.Logging;
@@ -159,7 +160,7 @@ public sealed class PollingOrchestrator(
         [
             .. changes.Select(c => new OutboxItem
             {
-                DedupKey = $"{c.Vacancy.Key}|{c.Kind}|{c.ContentHash}",
+                DedupKey = c.Vacancy.ToDedupKey(c),
                 ChangeKind = c.Kind,
                 CompanyName = c.CompanyName,
                 Vacancy = c.Vacancy

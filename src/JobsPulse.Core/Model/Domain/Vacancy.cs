@@ -4,6 +4,8 @@ namespace JobsPulse.Core.Model.Domain;
 
 public sealed record Vacancy
 {
+    public VacancyKey Key => new(SourceId, BoardId, PostId);
+
     public required string SourceId { get; init; }
 
     public required string BoardId { get; init; }
@@ -26,7 +28,7 @@ public sealed record Vacancy
 
     public DateTimeOffset? FirstPublished { get; init; }
 
-    public VacancyKey Key => new(SourceId, BoardId, PostId);
-
     public string ContentHash { get; init; } = null!;
+
+    public string? Description { get; init; }
 }

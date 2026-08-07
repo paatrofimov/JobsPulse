@@ -34,6 +34,10 @@ public sealed class VacancyMatcher(TimeProvider clock, ILogger<VacancyMatcher> l
             !v.Departments.Any(d => AnyMatch(d, f.DepartmentAnyOf, f.MatchMode)))
             return false;
 
+        if (f.DescriptionAnyOf.Count > 0 &&
+            !AnyMatch(v.Description, f.DescriptionAnyOf, f.MatchMode))
+            return false;
+
         if (f.PostedWithinDays is { } days)
         {
             var since = v.FirstPublished ?? v.UpdatedAt;

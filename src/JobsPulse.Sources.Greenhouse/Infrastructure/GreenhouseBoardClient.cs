@@ -15,14 +15,14 @@ public sealed class GreenhouseBoardClient(
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public async Task<BoardFetch<JobListResponse>> GetJobsAsync(
-        string boardToken, bool includeContent, CancellationToken ct)
+        string boardId, bool includeContent, CancellationToken ct)
     {
-        var url = $"{Uri.EscapeDataString(boardToken)}/jobs" + (includeContent ? "?content=true" : string.Empty);
+        var url = $"{Uri.EscapeDataString(boardId)}/jobs" + (includeContent ? "?content=true" : string.Empty);
         return await GetAsync<JobListResponse>(url, ct);
     }
 
-    public async Task<BoardFetch<BoardDto>> GetBoardAsync(string boardToken, CancellationToken ct) =>
-        await GetAsync<BoardDto>(Uri.EscapeDataString(boardToken), ct);
+    public async Task<BoardFetch<BoardDto>> GetBoardAsync(string boardId, CancellationToken ct) =>
+        await GetAsync<BoardDto>(Uri.EscapeDataString(boardId), ct);
 
     private async Task<BoardFetch<T>> GetAsync<T>(string relativeUrl, CancellationToken ct) where T : class
     {

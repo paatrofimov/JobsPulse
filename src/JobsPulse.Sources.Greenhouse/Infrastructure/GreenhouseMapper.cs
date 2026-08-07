@@ -22,6 +22,7 @@ public static class GreenhouseMapper
             FirstPublished = dto.FirstPublished,
             Departments = Names(dto.Departments),
             Offices = Names(dto.Offices),
+            Description = dto.Description,
         };
     }
 

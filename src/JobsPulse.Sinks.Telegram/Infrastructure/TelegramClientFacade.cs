@@ -6,7 +6,7 @@ using Telegram.Bot.Types.Enums;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
-public sealed class TelegramClientFacade(TelegramBotClient client)
+public sealed class TelegramClientFacade(ITelegramBotClient client)
 {
     public async Task<TelegramResult> SendMessageAsync(
         string chatId,

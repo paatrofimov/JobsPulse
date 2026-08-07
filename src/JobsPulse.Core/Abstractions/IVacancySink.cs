@@ -5,7 +5,5 @@ namespace JobsPulse.Core.Abstractions;
 
 public interface IVacancySink
 {
-    Task<DeliveryResult> DeliverAsync(
-        IReadOnlyList<OutboxItem> batch,
-        CancellationToken ct);
+    Task<DeliveryResult> DeliverAsync(IReadOnlyList<OutboxItem> batch, CancellationToken ct);
 }

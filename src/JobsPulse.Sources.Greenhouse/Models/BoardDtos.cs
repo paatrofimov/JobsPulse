@@ -28,6 +28,8 @@ public sealed class JobDto
 
     [JsonPropertyName("departments")] public List<NamedDto>? Departments { get; set; }
     [JsonPropertyName("offices")] public List<NamedDto>? Offices { get; set; }
+    
+    [JsonPropertyName("content")] public string? Description { get; set; }
 }
 
 public sealed class LocationDto

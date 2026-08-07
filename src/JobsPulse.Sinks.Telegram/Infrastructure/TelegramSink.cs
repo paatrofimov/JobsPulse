@@ -18,11 +18,12 @@ public sealed class TelegramSink(
         IReadOnlyList<OutboxItem> batch,
         CancellationToken ct)
     {
-        if (batch.Count == 0) return DeliveryResult.Ok;
+        if (batch.Count == 0)
+            return DeliveryResult.Ok;
 
         var deliveryOptsValue = deliveryOpts.CurrentValue;
         var tgOptsValue = tgOpts.CurrentValue;
-            
+
         var chatId = tgOptsValue.DefaultChatId;
 
         var pause = TimeSpan.FromSeconds(deliveryOptsValue.DelayBetweenMessagesSeconds);
