@@ -58,7 +58,7 @@ public sealed class OutboxDispatcher(
 
         if (result.Success)
         {
-            await outboxStorage.MarkSentAsync(ids, ct);
+            await outboxStorage.MarkDeliveredAsync(ids, ct);
             log.LogInformation("Sent {Count} messages", items.Count);
             return;
         }

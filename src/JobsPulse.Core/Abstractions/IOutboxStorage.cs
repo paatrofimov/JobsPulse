@@ -6,7 +6,7 @@ public interface IOutboxStorage
 {
     Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(int max, CancellationToken ct);
 
-    Task MarkSentAsync(IReadOnlyList<long> ids, CancellationToken ct);
+    Task MarkDeliveredAsync(IReadOnlyList<long> ids, CancellationToken ct);
 
     Task MarkFailedAsync(IReadOnlyList<long> ids, TimeSpan retryAfter, string error, CancellationToken ct);
 

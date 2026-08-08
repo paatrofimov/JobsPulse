@@ -33,7 +33,7 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
         return [.. entities.Select(x => x.ToDomainModel())];
     }
 
-    public async Task MarkSentAsync(IReadOnlyList<long> ids, CancellationToken ct)
+    public async Task MarkDeliveredAsync(IReadOnlyList<long> ids, CancellationToken ct)
     {
         if (ids.Count == 0)
             return;

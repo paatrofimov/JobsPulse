@@ -2,6 +2,8 @@
 
 ## PollingOrchestrator
 
+One `RunCycleAsync` call is one polling cycle over the whole watchlist. Driven by a hosted routine outside Core.
+
 ### Flow:
 
 - read watchlist entries
@@ -19,13 +21,73 @@
     - insert closed vacancies
     - enqueue outbox
 
+### Scheduling
+
+Due-ness is decided by `_lastRunByEntry`, an in-memory dictionary - nothing is persisted, so after a restart every
+entry is due at once. Interval is `WatchEntry.IntervalMinutesOverride` or `PollingIntervalMinutes`.
+Stamps are written after the whole cycle using the timestamp captured at cycle start, so the interval is measured
+from cycle start and a failed entry is not retried earlier than a successful one.
+
+### Concurrency and timeouts
+
+All due entries are started at once and throttled by a `SemaphoreSlim` of `MaxConcurrentEntries`.
+Each entry gets its own linked CTS with `SingleEntryProcessTimeoutSeconds`; a cancellation is treated as a timeout
+only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and must propagate.
+
+### Bail-outs (no commit at all)
+
+- Source id is not in `ISourceCatalog` - config drift, entry is skipped.
+- `BoardMissing` (HTTP 404) - the entry is disabled in the watchlist, so a dead board stops being polled.
+- `!IsComplete` - partial data is dropped entirely, because missing posts would be detected as closed.
+
+### Seeding
+
+`SeededAt is null || SeededFilterHash != ComputeFilterHash(filter)` means: first traversal, or the filter changed.
+State is still written, but notifications are suppressed - otherwise the whole board (or everything a widened
+filter newly matches) would be delivered as a burst of messages.
+
+`MarkSeededAsync` runs after `CommitAsync` on purpose: a crash in between re-seeds next cycle (silent and
+idempotent) instead of announcing an entire board.
+
+`DryRun` suppresses notifications the same way but does not mark anything - state is still committed.
+
+### Reports
+
+`EntryReport` / `CycleReport` are logging-only aggregates, nothing reads them for control flow.
+
 ## ChangeDetector
 
-Analyzes traversal result after filter and produces new, changed and closed vacancies.
+Pure function - no IO, no clock. Takes the entry, the traversal result, the filtered vacancies and the seen map,
+and returns changes, upserts and closed post ids.
+
+### Deduplication
+
+One job can be posted many times (locations, languages). Posts are deduplicated by `{GroupId}|{Location}`,
+case-insensitive. Posts without `GroupId` (prospect posts) always pass through - they have no group to collapse.
+
+### New / Updated
+
+Lookup in `Seen` is by `PostId`. Missing means `New`; present with a different `ContentHash` means `Updated`.
+The hash is recomputed here, so a source that bumps its own `UpdatedAt` on cosmetic edits produces nothing.
+
+### Closed
+
+Computed only when `Traverse.IsComplete` (the orchestrator already bails out earlier - this is a second guard).
+`Seen` holds only open vacancies of the board, so anything in `Seen` and not among the upserts is closed.
+
+Two consequences worth remembering:
+
+- `Seen` is not filtered, but `Matched` is - a vacancy that stops matching the filter is reported as closed.
+- The present-set is built from post-dedup upserts - a duplicate post that loses deduplication is closed too.
+
+The closed `Vacancy` is rebuilt from the stored row, not from the source (the post is gone), and reuses the stored
+`ContentHash` so the dedup key stays stable.
 
 ## VacancyHasher
 
-Calculates vacancy hash which is used for deduplicating and tracking vacancy changes.
+SHA-256 truncated to 32 hex chars. `Compute` hashes the fields listed in `VacancyExtensions.ToStringForHash`
+(title, location, url, offices) - the set that defines "the posting really changed".
+`ComputeFilterHash` does the same for `FilterSpec` and is what drives re-seeding.
 
 ## VacancyMatcher
 
@@ -33,7 +95,8 @@ Applies filter to a list of vacancies.
 
 ## WatchService
 
-Resolves company by name.
+Backs the bot commands - lookup, add, remove, list. Resolution itself lives in the source projects
+(`IBoardResolver`); this service only orchestrates and filters.
 
 ### Flow:
 
@@ -41,6 +104,20 @@ Resolves company by name.
 - if passed url instead of name then try parse career page
 - if resolved by name then show board candidates
 - nothing found
+
+### LookupAsync
+
+- Exact-ish match against the watchlist first (`Watchlist.Find`: id or company name, case-insensitive).
+- `http://` / `https://` prefix switches to `ResolveByUrlAsync`, everything else goes to `ResolveByNameAsync`.
+- Every registered source is asked. A resolver throwing is logged and skipped, so one broken ATS cannot break the
+  whole lookup; `OperationCanceledException` still propagates.
+- Candidates already in the watchlist are dropped, the rest are ordered `DirectSlug` first, then by `JobCount`,
+  and capped at 5 - the list is rendered as a choice in a chat message.
+
+### AddAsync
+
+`Id` is `{sourceId}:{boardId}` - deterministic, so the same board cannot be added twice under different names.
+`SeededAt` is left null so the first cycle is silent.
 
 # Abstractions
 

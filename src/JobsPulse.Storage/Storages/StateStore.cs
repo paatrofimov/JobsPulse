@@ -99,6 +99,7 @@ internal class StateStore(
                 first_published_at = COALESCE(
                     seen_vacancy.first_published_at,
                     EXCLUDED.first_published_at)
+            WHERE seen_vacancy.content_hash IS DISTINCT FROM EXCLUDED.content_hash
             """;
 
         var affectedRowsTotal = 0;

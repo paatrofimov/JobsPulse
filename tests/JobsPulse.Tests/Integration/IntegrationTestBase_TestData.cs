@@ -2,9 +2,7 @@
 using JobsPulse.Core.Model.Domain.Extensions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
-using JobsPulse.Storage.Infrastructure;
 using JobsPulse.Storage.PersistentModels;
-using Microsoft.EntityFrameworkCore;
 using NUnit.Framework;
 
 namespace JobsPulse.Tests.Integration;
@@ -31,7 +29,9 @@ public abstract partial class IntegrationTestBase
             .Select((v, ind) =>
             {
                 changeKind ??= (VacancyChangeKind)Random.Shared.Next(0, 3);
+
                 var hash = VacancyHasher.Compute(v);
+
                 var companyIndex = Random.Shared.Next(0, 3);
 
                 v = v with { ContentHash = hash };
@@ -66,16 +66,16 @@ public abstract partial class IntegrationTestBase
         return [.. db.Outbox.Select(o => o.ToDomainModel())];
     }
 
-    protected async Task<(StateCommitResult, IReadOnlyList<Vacancy>, IReadOnlyList<OutboxItem>)> InsertNewVacanciesAsync(int take)
+    protected async Task<(StateCommitResult, IReadOnlyList<Vacancy>, IReadOnlyList<OutboxItem>)> InsertVacanciesAsync(int take, VacancyChangeKind changeKind)
     {
         var sourceTarget = new SourceTarget() { SourceId = "greenhouse", BoardId = "nebius", IncludeDescriptions = true };
         var result = await FetchRealVacanciesAsync(sourceTarget);
 
         var vacancies = result.Vacancies.Take(take).ToList();
 
-        var outboxes = MapVacanciesToMockOutboxes(vacancies, changeKind: VacancyChangeKind.New);
+        var outboxes = MapVacanciesToMockOutboxes(vacancies, changeKind);
 
-        var stateCommit = BuildStateCommit(outboxes, vacancies);
+        var stateCommit = BuildStateCommit(outboxes, vacancies, closed: []);
 
         var commitResult = await CommitAsync(stateCommit);
 
@@ -97,7 +97,13 @@ public abstract partial class IntegrationTestBase
         return await StateStore.CommitAsync(stateCommit, cts.Token);
     }
 
-    protected static StateCommit BuildStateCommit(OutboxItem[] notifications, IReadOnlyList<Vacancy> vacancies)
+    protected async Task<IReadOnlyDictionary<string, Vacancy>> LoadSeenVacanciesAsync()
+    {
+        using var cts = new CancellationTokenSource(RequestTimeout);
+        return await StateStore.LoadSeenAsync("greenhouse", "nebius", cts.Token);
+    }
+
+    protected static StateCommit BuildStateCommit(OutboxItem[] notifications, IReadOnlyList<Vacancy> vacancies, IReadOnlyList<string> closed)
     {
         return new StateCommit()
         {
@@ -105,7 +111,7 @@ public abstract partial class IntegrationTestBase
             BoardId = "nebius",
             Notifications = notifications,
             Upserts = vacancies,
-            ClosedPostIds = [],
+            ClosedPostIds = closed,
         };
     }
 }

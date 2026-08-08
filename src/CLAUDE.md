@@ -16,3 +16,8 @@
 - All abstractions should be placed in Abstractions folder
 - All storages should be placed in Storages folder
 
+# Instructions
+
+- Context from CLAUDE.md files regarding requested key words should always be loaded before studying the code and understanding the project's structure.
+- CLAUDE.md files should be loaded in the following order: from the root folder to the deepest subfolder.
+- CLAUDE.md files should always be updated if its contents are becoming not up to date with any changes in the project's structure or code.
