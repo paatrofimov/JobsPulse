@@ -26,7 +26,6 @@ public sealed class JobDto
     [JsonPropertyName("absolute_url")] public string AbsoluteUrl { get; set; } = "";
     [JsonPropertyName("location")] public LocationDto? Location { get; set; }
 
-    [JsonPropertyName("departments")] public List<NamedDto>? Departments { get; set; }
     [JsonPropertyName("offices")] public List<NamedDto>? Offices { get; set; }
     
     [JsonPropertyName("content")] public string? Description { get; set; }

@@ -19,29 +19,34 @@
     - insert closed vacancies
     - enqueue outbox
 
-### ChangeDetector
+## ChangeDetector
 
 Analyzes traversal result after filter and produces new, changed and closed vacancies.
 
-### VacancyHasher
+## VacancyHasher
 
 Calculates vacancy hash which is used for deduplicating and tracking vacancy changes.
 
-### VacancyMatcher
+## VacancyMatcher
 
 Applies filter to a list of vacancies.
 
-### WatchService
+## WatchService
 
 Resolves company by name.
 
 ### Flow:
+
 - already in wathclist
 - if passed url instead of name then try parse career page
 - if resolved by name then show board candidates
 - nothing found
 
 # Abstractions
+
+## IStateStore
+
+Responsible for atomic updates of seen vacancies and enqueueing outbox notifications.
 
 ## IVacancySink
 
@@ -50,10 +55,6 @@ Sink implementations must implement formatting and sending.
 ## IBoardResolver
 
 Searching board via human-readable name - bot command /watch {company_name}
-
-## IStateStore
-
-Responsible for atomic updates of seen vacancies and enqueueing outbox notifications.
 
 # Model Infrastructure
 

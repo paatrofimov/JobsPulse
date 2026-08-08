@@ -13,16 +13,9 @@ public static class VacancyExtensions
         sb.Append(vacancy.Title);
         sb.Append(vacancy.Location);
         sb.Append(vacancy.Url);
-
-        sb.AppendList(nameof(vacancy.Departments), vacancy.Departments);
         sb.AppendList(nameof(vacancy.Offices), vacancy.Offices);
 
         return sb.ToString();
-    }
-
-    public static string ToDedupKey(this Vacancy vacancy, VacancyChange change)
-    {
-        return ToDedupKey(vacancy, change.Kind, change.ContentHash);
     }
 
     public static string ToDedupKey(this Vacancy vacancy, VacancyChangeKind changeKind, string contentHash)

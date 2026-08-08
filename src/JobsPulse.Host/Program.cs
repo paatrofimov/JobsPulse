@@ -6,6 +6,8 @@ using JobsPulse.Host.Rouitines;
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Infrastructure;
 using JobsPulse.Storage.Infrastructure;
+using JobsPulse.Storage.Storages;
+using Microsoft.EntityFrameworkCore;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -25,7 +27,7 @@ builder.Services.AddGreenhouseSource(builder.Configuration);
 var registeredSources = new[] { GreenhouseMapper.SourceId };
 builder.Services.AddSingleton<ISourceCatalog>(sp => new SourceCatalog(sp, registeredSources));
 
-builder.Services.AddStorage(builder.Configuration);
+builder.Services.AddStorage(builder.Configuration, connectionStringName: "Postgres");
 
 builder.Services.AddSingleton<IWatchlistProvider>(sp => new FileWatchlistProvider(
     Path.Combine(AppContext.BaseDirectory, "watchlist.json"),
@@ -43,4 +45,17 @@ builder.Services.AddHostedService<PollingWorker>();
 builder.Services.AddHostedService<OutboxDispatcher>();
 
 var host = builder.Build();
+
+await PrepareStorage(host);
+
 host.Run();
+
+async Task PrepareStorage(IHost h)
+{
+    await using var scope = h.Services.CreateAsyncScope();
+
+    var db = scope.ServiceProvider
+        .GetRequiredService<JobsPulseDbContext>();
+
+    await db.Database.MigrateAsync();
+}

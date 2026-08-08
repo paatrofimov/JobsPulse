@@ -1,17 +1,18 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Infrastructure;
 
 namespace JobsPulse.Host.Infrastructure;
 
 public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions Json = JsonSerializerOptionsFactory.CreateJsonOptions(opts =>
     {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+        opts.WriteIndented = true;
+        opts.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromMilliseconds(500);
 

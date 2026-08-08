@@ -1,4 +1,3 @@
-using System.Text.Json;
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Storage.PersistentModels;
@@ -9,7 +8,9 @@ namespace JobsPulse.Storage.Storages;
 internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, TimeProvider clock) : IOutboxStorage
 {
     // Read and set 'lease' status to 'pending' messages ready for delivery
-    public async Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(int max, CancellationToken ct)
+    public async Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(
+        int max,
+        CancellationToken ct)
     {
         var now = clock.GetUtcNow();
 
@@ -20,7 +21,6 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
             .Where(x =>
                 x.Status == PersistentOutboxStatus.Pending &&
                 (x.NextAttemptAt == null || x.NextAttemptAt <= now))
-            .OrderBy(x => x.DedupKey)
             .Take(max)
             .ToListAsync(ct);
 
@@ -30,17 +30,7 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
         await dbContext.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
-        return
-        [
-            .. entities.Select(x => new OutboxItem
-            {
-                DedupKey = x.DedupKey,
-                ChangeKind = x.ChangeKind,
-                CompanyName = x.CompanyName,
-                Vacancy = JsonSerializer.Deserialize<Vacancy>(x.VacancyPayload) ?? throw new Exception($"Unexpectedly null vacancy payload. Key: {x.DedupKey}"),
-                Attempts = x.Attempts
-            })
-        ];
+        return [.. entities.Select(x => x.ToDomainModel())];
     }
 
     public async Task MarkSentAsync(IReadOnlyList<long> ids, CancellationToken ct)

@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobsPulse.Storage.Storages;
 
-internal class JobsPulseDbContext(
+public class JobsPulseDbContext(
     DbContextOptions<JobsPulseDbContext> options)
     : DbContext(options)
 {
@@ -22,21 +22,30 @@ internal class JobsPulseDbContext(
 
         entity.ToTable("seen_vacancy");
 
-        entity.HasKey(x => new
-        {
-            x.SourceId,
-            x.BoardId,
-            x.PostId
-        });
+        entity.HasKey(x => x.Id);
 
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // ON CONFLICT target + logical identity of vacancy.
         entity.HasIndex(x => new
             {
-                x.SourceId, x.BoardId
+                x.SourceId,
+                x.BoardId,
+                x.PostId
+            })
+            .IsUnique();
+
+        // Fast loading of active vacancies for a board.
+        entity.HasIndex(x => new
+            {
+                x.SourceId,
+                x.BoardId
             })
             .HasFilter("closed_at IS NULL");
 
-        entity.Property(x => x.VacancyPayload)
-            .HasColumnType("jsonb");
+        entity.Property(x => x.Offices)
+            .HasColumnType("text[]");
     }
 
     private static void ConfigureOutbox(ModelBuilder modelBuilder)
@@ -47,6 +56,14 @@ internal class JobsPulseDbContext(
 
         entity.HasKey(x => x.Id);
 
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // ON CONFLICT (dedup_key)
+        entity.HasIndex(x => x.DedupKey)
+            .IsUnique();
+
+        // dispatcher lookup
         entity.HasIndex(x => new
         {
             x.Status,

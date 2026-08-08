@@ -19,6 +19,7 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<IVacancySink, TelegramSink>();
         services.AddSingleton<PendingSelectionStore>();
         services.AddSingleton<CommandRouter>();
+        services.AddSingleton<MessageFormatter>();
         services.AddHostedService<TelegramBotListener>();
 
         return services;

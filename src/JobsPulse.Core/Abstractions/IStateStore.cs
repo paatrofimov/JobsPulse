@@ -7,5 +7,5 @@ public interface IStateStore
 {
     Task<IReadOnlyDictionary<string, Vacancy>> LoadSeenAsync(string sourceId, string boardId, CancellationToken ct);
 
-    Task CommitAsync(StateCommit commit, CancellationToken ct);
+    Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct);
 }

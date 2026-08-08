@@ -1,25 +1,23 @@
 using System.Text.Json;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
+using JobsPulse.Storage.PersistentModels;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace JobsPulse.Storage.Storages;
 
-/// <summary>
-/// Состояние борда + постановка уведомлений. Ключевое свойство — CommitAsync атомарен:
-/// либо вакансия помечена виденной И уведомление в очереди, либо ни то, ни другое.
-/// </summary>
 internal class StateStore(
     IDbContextFactory<JobsPulseDbContext> factory,
     NpgsqlDataSource dataSource,
-    TimeProvider clock) : IStateStore
+    TimeProvider clock,
+    ILogger<StateStore> logger) : IStateStore
 {
-    internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
     public async Task<IReadOnlyDictionary<string, Vacancy>> LoadSeenAsync(
         string sourceId,
         string boardId,
@@ -33,35 +31,40 @@ internal class StateStore(
                 x.SourceId == sourceId &&
                 x.BoardId == boardId &&
                 x.ClosedAt == null)
-            .Select(x => new
-            {
-                x.PostId,
-                x.VacancyPayload
-            })
             .ToListAsync(ct);
 
         return rows.ToDictionary(
             x => x.PostId,
-            x => JsonSerializer.Deserialize<Vacancy>(x.VacancyPayload, Json)
-                 ?? throw new InvalidOperationException($"Failed to deserialize vacancy {x.PostId}"),
-            StringComparer.Ordinal);
+            x => x.ToDomainModel(),
+            StringComparer.Ordinal
+        );
     }
 
-    public async Task CommitAsync(StateCommit commit, CancellationToken ct)
+    public async Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct)
     {
+        if (commit.Upserts.Count == 0 &&
+            commit.ClosedPostIds.Count == 0 &&
+            commit.Notifications.Count == 0)
+        {
+            logger.LogWarning("Nothing to commit");
+            return StateCommitResult.Empty;
+        }
+
         var now = clock.GetUtcNow();
 
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var tx = await connection.BeginTransactionAsync(ct);
 
-        await UpsertSeenVacanciesAsync(connection, tx, commit, now, ct);
-        await CloseSeenVacanciesAsync(connection, tx, commit, now, ct);
-        await EnqueueOutboxAsync(connection, tx, commit, now, ct);
+        var upserts = await UpsertSeenVacanciesAsync(connection, tx, commit, now, ct);
+        var closures = await CloseSeenVacanciesAsync(connection, tx, commit, now, ct);
+        var outboxes = await EnqueueOutboxAsync(connection, tx, commit, now, ct);
 
         await tx.CommitAsync(ct);
+
+        return new StateCommitResult(upserts, closures, outboxes);
     }
 
-    private static async Task UpsertSeenVacanciesAsync(
+    private async Task<int> UpsertSeenVacanciesAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction tx,
         StateCommit commit,
@@ -69,46 +72,70 @@ internal class StateStore(
         CancellationToken ct)
     {
         if (commit.Upserts.Count == 0)
-            return;
+            return 0;
 
         await using var cmd = connection.CreateCommand();
         cmd.Transaction = tx;
+
         cmd.CommandText =
             """
             INSERT INTO seen_vacancy
-                (source_id, board_id, post_id, group_id, content_hash, title, location, url,
-                 first_seen_at, closed_at)
+                (source_id, board_id, post_id, group_id, content_hash,
+                 title, location, url,
+                 first_seen_at, first_published_at, updated_at, closed_at, offices)
             VALUES
-                (@source, @board, @post, @group, @hash, @title, @location, @url,
-                 @now, NULL)
+                (@source, @board, @post, @group, @hash,
+                 @title, @location, @url,
+                 @first_seen_at, @first_published_at, @now, NULL, @offices)
             ON CONFLICT (source_id, board_id, post_id) DO UPDATE SET
-                content_hash = EXCLUDED.content_hash,
-                title        = EXCLUDED.title,
-                location     = EXCLUDED.location,
-                url          = EXCLUDED.url,
-                last_seen_at = EXCLUDED.last_seen_at,
-                closed_at    = NULL
+                group_id           = EXCLUDED.group_id,
+                content_hash       = EXCLUDED.content_hash,
+                title              = EXCLUDED.title,
+                location           = EXCLUDED.location,
+                url                = EXCLUDED.url,
+                updated_at         = EXCLUDED.updated_at,
+                closed_at          = NULL,
+                offices            = EXCLUDED.offices,
+                first_published_at = COALESCE(
+                    seen_vacancy.first_published_at,
+                    EXCLUDED.first_published_at)
             """;
 
-        foreach (var v in commit.Upserts)
+        var affectedRowsTotal = 0;
+
+        foreach (var vacancy in commit.Upserts)
         {
             cmd.Parameters.Clear();
 
-            cmd.Parameters.AddWithValue("source", v.SourceId);
-            cmd.Parameters.AddWithValue("board", v.BoardId);
-            cmd.Parameters.AddWithValue("post", v.PostId);
-            cmd.Parameters.AddWithValue("group", (object?)v.GroupId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("hash", VacancyHasher.Compute(v));
-            cmd.Parameters.AddWithValue("title", v.Title);
-            cmd.Parameters.AddWithValue("location", (object?)v.Location ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("url", v.Url);
+            cmd.Parameters.AddWithValue("source", vacancy.SourceId);
+            cmd.Parameters.AddWithValue("board", vacancy.BoardId);
+            cmd.Parameters.AddWithValue("post", vacancy.PostId);
+            cmd.Parameters.AddWithValue("group", (object?)vacancy.GroupId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("hash", VacancyHasher.Compute(vacancy));
+            cmd.Parameters.AddWithValue("title", vacancy.Title);
+            cmd.Parameters.AddWithValue("location", (object?)vacancy.Location ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("url", vacancy.Url);
+            cmd.Parameters.AddWithValue("first_seen_at", (object?)vacancy.FirstSeenAt ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(
+                "first_published_at",
+                (object?)vacancy.FirstPublishedAt ?? DBNull.Value);
             cmd.Parameters.AddWithValue("now", now);
+            cmd.Parameters.AddWithValue("offices", vacancy.Offices.ToArray());
 
-            await cmd.ExecuteNonQueryAsync(ct);
+            var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+
+            logger.LogDebug(
+                "Upsertion to seen_vacancy table of vacancy '{VacancyKey}' affected {Affected} rows",
+                vacancy.Key,
+                affectedRows);
+
+            affectedRowsTotal += affectedRows;
         }
+
+        return affectedRowsTotal;
     }
 
-    private static async Task CloseSeenVacanciesAsync(
+    private async Task<int> CloseSeenVacanciesAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction tx,
         StateCommit commit,
@@ -116,10 +143,11 @@ internal class StateStore(
         CancellationToken ct)
     {
         if (commit.ClosedPostIds.Count == 0)
-            return;
+            return 0;
 
         await using var cmd = connection.CreateCommand();
         cmd.Transaction = tx;
+
         cmd.CommandText =
             """
             UPDATE seen_vacancy
@@ -127,19 +155,25 @@ internal class StateStore(
             WHERE source_id = @source
               AND board_id = @board
               AND post_id = ANY(@post_ids)
+              AND closed_at IS NULL
             """;
 
         cmd.Parameters.AddWithValue("now", now);
         cmd.Parameters.AddWithValue("source", commit.SourceId);
         cmd.Parameters.AddWithValue("board", commit.BoardId);
-        cmd.Parameters.AddWithValue(
-            "post_ids",
-            commit.ClosedPostIds.ToArray());
+        cmd.Parameters.AddWithValue("post_ids", commit.ClosedPostIds.ToArray());
 
-        await cmd.ExecuteNonQueryAsync(ct);
+        var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+
+        logger.LogDebug(
+            "Closing {ClosedCount} vacancies in seen_vacancy affected {AffectedRows} rows",
+            commit.ClosedPostIds.Count,
+            affectedRows);
+
+        return affectedRows;
     }
 
-    private static async Task EnqueueOutboxAsync(
+    private async Task<int> EnqueueOutboxAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction tx,
         StateCommit commit,
@@ -147,7 +181,7 @@ internal class StateStore(
         CancellationToken ct)
     {
         if (commit.Notifications.Count == 0)
-            return;
+            return 0;
 
         await using var cmd = connection.CreateCommand();
         cmd.Transaction = tx;
@@ -155,29 +189,60 @@ internal class StateStore(
         cmd.CommandText =
             """
             INSERT INTO outbox
-                (dedup_key, kind, company_name, payload, status, created_at)
+            (
+                dedup_key,
+                change_kind,
+                company_name,
+                vacancy_payload,
+                status,
+                attempts,
+                created_at
+            )
             VALUES
-                (@dedup, @kind, @company, @payload, 'pending', @now)
+            (
+                @dedup,
+                @kind,
+                @company,
+                @payload,
+                @status,
+                0,
+                @now
+            )
             ON CONFLICT (dedup_key) DO NOTHING
             """;
+
+        var affectedRowsTotal = 0;
 
         foreach (var item in commit.Notifications)
         {
             cmd.Parameters.Clear();
 
             cmd.Parameters.AddWithValue("dedup", item.DedupKey);
-            cmd.Parameters.AddWithValue("kind", item.ChangeKind.ToString());
+            cmd.Parameters.AddWithValue("kind", (int)item.ChangeKind);
             cmd.Parameters.AddWithValue("company", item.CompanyName);
 
             cmd.Parameters.Add(
                 new NpgsqlParameter("payload", NpgsqlDbType.Jsonb)
                 {
-                    Value = JsonSerializer.Serialize(item.Vacancy, Json)
+                    Value = JsonSerializer.Serialize(item.Vacancy, JsonSerializerOptionsFactory.Instance)
                 });
+
+            cmd.Parameters.AddWithValue(
+                "status",
+                (int)PersistentOutboxStatus.Pending);
 
             cmd.Parameters.AddWithValue("now", now);
 
-            await cmd.ExecuteNonQueryAsync(ct);
+            var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+
+            logger.LogDebug(
+                "Insertion to outbox table of vacancy '{VacancyKey}' affected {Affected} rows",
+                item.Vacancy.Key,
+                affectedRows);
+
+            affectedRowsTotal += affectedRows;
         }
+
+        return affectedRowsTotal;
     }
 }

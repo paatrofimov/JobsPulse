@@ -10,6 +10,7 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
 public sealed class TelegramSink(
     TelegramClientFacade client,
+    MessageFormatter messageFormatter,
     IOptionsMonitor<DeliveryOptions> deliveryOpts,
     IOptionsMonitor<TelegramOptions> tgOpts,
     ILogger<TelegramSink> log) : IVacancySink
@@ -28,7 +29,7 @@ public sealed class TelegramSink(
 
         var pause = TimeSpan.FromSeconds(deliveryOptsValue.DelayBetweenMessagesSeconds);
 
-        var messages = MessageFormatter.Format(batch);
+        var messages = messageFormatter.Format(batch);
 
         for (var i = 0; i < messages.Count; i++)
         {

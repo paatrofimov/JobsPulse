@@ -27,7 +27,7 @@ public sealed class ChangeDetector
         var changes = new List<VacancyChange>();
         var upserts = new List<Vacancy>(input.Matched.Count);
 
-        // Single vacancy can be duplicated in many posts (locations/langiages).
+        // Single vacancy can be duplicated in many posts (locations/languages).
         // Deduplicate by (GroupId, Location).
         foreach (var vacancy in Deduplicate(input.Matched))
         {

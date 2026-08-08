@@ -8,6 +8,7 @@ namespace JobsPulse.Sources.Greenhouse.Infrastructure;
 
 public sealed class GreenhouseBoardSource(
     GreenhouseBoardClient client,
+    GreenhouseMapper mapper,
     IOptions<GreenhouseOptions> options,
     ILogger<GreenhouseBoardSource> log) : IVacancySource
 {
@@ -24,7 +25,7 @@ public sealed class GreenhouseBoardSource(
             return SourceTraverseResult.Failed(response.Error ?? "unknown error");
 
         var vacancies = response.Value!.Jobs
-            .Select(jobDto => GreenhouseMapper.ToVacancy(jobDto, target.BoardId))
+            .Select(jobDto => mapper.ToVacancy(jobDto, target.BoardId))
             .ToList();
 
         var expected = response.Value.Meta?.Total;

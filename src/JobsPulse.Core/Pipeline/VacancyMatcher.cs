@@ -30,17 +30,13 @@ public sealed class VacancyMatcher(TimeProvider clock, ILogger<VacancyMatcher> l
                 return false;
         }
 
-        if (f.DepartmentAnyOf.Count > 0 &&
-            !v.Departments.Any(d => AnyMatch(d, f.DepartmentAnyOf, f.MatchMode)))
-            return false;
-
         if (f.DescriptionAnyOf.Count > 0 &&
             !AnyMatch(v.Description, f.DescriptionAnyOf, f.MatchMode))
             return false;
 
         if (f.PostedWithinDays is { } days)
         {
-            var since = v.FirstPublished ?? v.UpdatedAt;
+            var since = v.FirstSeenAt ?? v.UpdatedAt;
             if (since < clock.GetUtcNow().AddDays(-days))
                 return false;
         }

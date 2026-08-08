@@ -9,9 +9,9 @@ namespace JobsPulse.Storage.Infrastructure;
 
 public static class StorageServiceCollectionExtensions
 {
-    public static IServiceCollection AddStorage(this IServiceCollection services, IConfiguration config)
+    public static IServiceCollection AddStorage(this IServiceCollection services, IConfiguration config, string connectionStringName)
     {
-        var connectionString = config.GetConnectionString("Postgres")
+        var connectionString = config.GetConnectionString(connectionStringName)
                                ?? throw new InvalidOperationException("Connection string 'Postgres' is not configured.");
 
         services.AddNpgsqlDataSource(connectionString);

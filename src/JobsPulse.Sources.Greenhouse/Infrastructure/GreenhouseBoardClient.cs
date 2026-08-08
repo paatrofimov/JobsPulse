@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using JobsPulse.Core.Helpers;
 using JobsPulse.Sources.Greenhouse.Models;
 using Microsoft.Extensions.Logging;
 
@@ -11,8 +12,6 @@ public sealed class GreenhouseBoardClient(
     ILogger<GreenhouseBoardClient> log)
 {
     public const string HttpClientName = "greenhouse";
-
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public async Task<BoardFetch<JobListResponse>> GetJobsAsync(
         string boardId, bool includeContent, CancellationToken ct)
@@ -43,7 +42,7 @@ public sealed class GreenhouseBoardClient(
             if (!response.IsSuccessStatusCode)
                 return BoardFetch<T>.Failure($"HTTP {(int)response.StatusCode}");
 
-            var payload = await response.Content.ReadFromJsonAsync<T>(Json, ct);
+            var payload = await response.Content.ReadFromJsonAsync<T>(JsonSerializerOptionsFactory.Instance, ct);
             return payload is null
                 ? BoardFetch<T>.Failure("empty response")
                 : BoardFetch<T>.Ok(payload);

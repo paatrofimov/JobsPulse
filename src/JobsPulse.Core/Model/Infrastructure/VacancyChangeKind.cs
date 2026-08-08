@@ -2,7 +2,8 @@
 
 public enum VacancyChangeKind
 {
-    New,
-    Updated,
-    Closed
+    Unknown = 0,
+    New = 1,
+    Updated = 2,
+    Closed = 3,
 }

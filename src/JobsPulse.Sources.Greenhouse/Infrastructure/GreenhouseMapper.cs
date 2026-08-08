@@ -3,11 +3,11 @@ using JobsPulse.Sources.Greenhouse.Models;
 
 namespace JobsPulse.Sources.Greenhouse.Infrastructure;
 
-public static class GreenhouseMapper
+public class GreenhouseMapper(TimeProvider clock)
 {
     public const string SourceId = "greenhouse";
 
-    public static Vacancy ToVacancy(JobDto dto, string boardId)
+    public Vacancy ToVacancy(JobDto dto, string boardId)
     {
         return new Vacancy
         {
@@ -18,9 +18,9 @@ public static class GreenhouseMapper
             Title = dto.Title.Trim(),
             Location = dto.Location?.Name?.Trim(),
             Url = dto.AbsoluteUrl,
-            UpdatedAt = dto.UpdatedAt ?? DateTimeOffset.MinValue,
-            FirstPublished = dto.FirstPublished,
-            Departments = Names(dto.Departments),
+            UpdatedAt = dto.UpdatedAt,
+            FirstPublishedAt = dto.FirstPublished,
+            FirstSeenAt = clock.GetUtcNow(),
             Offices = Names(dto.Offices),
             Description = dto.Description,
         };

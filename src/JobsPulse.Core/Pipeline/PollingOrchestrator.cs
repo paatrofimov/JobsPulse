@@ -122,7 +122,7 @@ public sealed class PollingOrchestrator(
             ? []
             : BuildNotifications(detected.VacanciesChanges);
 
-        await stateStore.CommitAsync(new StateCommit
+        var commitResult = await stateStore.CommitAsync(new StateCommit
         {
             SourceId = entry.VacancySourceId,
             BoardId = entry.BoardId,
@@ -130,6 +130,10 @@ public sealed class PollingOrchestrator(
             ClosedPostIds = detected.ClosedPostIds,
             Notifications = notifications
         }, ct);
+
+        log.LogInformation(
+            "State commit result for company {Company}: {Upserts} seen_vacancy upserts, {Closed} seen_vacancy closures, {Notifications} outbox notification",
+            entry.CompanyName, commitResult.UpsertVacanciesAffectedRows, commitResult.CloseVacanciesAffectedRows, commitResult.OutboxAffectedRows);
 
         if (needsSeeding)
         {
@@ -158,12 +162,13 @@ public sealed class PollingOrchestrator(
     {
         return
         [
+            // outbox id is db auto-increment -- therefore, can be omitted
             .. changes.Select(c => new OutboxItem
             {
-                DedupKey = c.Vacancy.ToDedupKey(c),
+                DedupKey = c.Vacancy.ToDedupKey(c.Kind, c.ContentHash),
                 ChangeKind = c.Kind,
                 CompanyName = c.CompanyName,
-                Vacancy = c.Vacancy
+                Vacancy = c.Vacancy,
             })
         ];
     }

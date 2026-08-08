@@ -7,11 +7,11 @@ using Telegram.Bot.Types;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
-public static class MessageFormatter
+public class MessageFormatter(TimeProvider clock)
 {
     private const int SafeLimit = 30_000;
 
-    public static IReadOnlyList<InputRichMessage> Format(
+    public IReadOnlyList<InputRichMessage> Format(
         IReadOnlyList<OutboxItem> batch)
     {
         var messages = new List<InputRichMessage>();
@@ -64,7 +64,7 @@ public static class MessageFormatter
             Html = sb.ToString()
         };
 
-    private static string RenderBlock(
+    private string RenderBlock(
         string company,
         VacancyChangeKind kind,
         IReadOnlyList<OutboxItem> items)
@@ -80,26 +80,26 @@ public static class MessageFormatter
         foreach (var item in items)
         {
             sb.Append("<p>")
-                .Append(RenderVacancy(item.Vacancy))
+                .Append(RenderVacancy(item))
                 .Append("</p>");
         }
 
         return sb.ToString();
     }
 
-    private static string RenderVacancy(Vacancy vacancy)
+    private string RenderVacancy(OutboxItem item)
     {
-        var title = RenderTitleLink(vacancy);
-        var geography = RenderGeography(vacancy);
-        var dates = RenderDate(vacancy.UpdatedAt) ?? RenderDate(vacancy.FirstPublished);
+        var title = RenderTitleLink(item);
+        var geography = RenderGeography(item);
+        var dates = RenderDate(item.Vacancy.UpdatedAt) ?? RenderDate(item.Vacancy.FirstSeenAt);
 
         return $"{title}<br> {geography} · {dates}";
     }
 
-    private static string RenderTitleLink(Vacancy vacancy) =>
-        $"<a href=\"{Escape(vacancy.Url)}\"><b>{Escape(vacancy.Title)}</b></a>";
+    private static string RenderTitleLink(OutboxItem item) =>
+        $"<a href=\"{Escape(item.Vacancy.Url)}\"><b>{Escape(item.Vacancy.Title)}</b></a>";
 
-    private static IEnumerable<string> SplitLarge(
+    private IEnumerable<string> SplitLarge(
         string company,
         VacancyChangeKind kind,
         IReadOnlyList<OutboxItem> items)
@@ -115,23 +115,23 @@ public static class MessageFormatter
         }
     }
 
-    private static string? RenderDate(DateTimeOffset? date)
+    private string? RenderDate(DateTimeOffset? date)
     {
         if (date is null)
             return null;
 
-        return date.Value.Year == DateTime.UtcNow.Year
+        return date.Value.Year == clock.GetUtcNow().Year
             ? date.Value.ToString("MMMM dd")
             : date.Value.ToString("yyyy MMMM dd");
     }
 
-    private static string RenderGeography(Vacancy vacancy)
+    private static string RenderGeography(OutboxItem item)
     {
-        if (vacancy.Offices.Count > 0)
-            return RenderOffices(vacancy.Offices);
+        if (item.Vacancy.Offices.Count > 0)
+            return RenderOffices(item.Vacancy.Offices);
 
-        if (vacancy.Location is not null)
-            return Escape(vacancy.Location);
+        if (item.Vacancy.Location is not null)
+            return Escape(item.Vacancy.Location);
 
         return "Unknown Location";
     }

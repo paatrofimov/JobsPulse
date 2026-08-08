@@ -1,12 +1,18 @@
-﻿## PersistentModels
+﻿# Abstractions
+
+## IVacancySink
+
+Sink implementations must implement formatting and sending.
+
+## IBoardResolver
+
+Searching board via human-readable name - bot command /watch {company_name}
+
+# PersistentModels
 
 Models that are stored in the database and must be used only in the storage layer.
 
-- PersistentOutboxItem - messages in the outbox
-
-## OutboxStorage
-
-Statuses:
+## PersistentOutboxStatus
 
 - Intermediate
     - Pending: ready for delivery if next attempt is due; can switch to Lease status

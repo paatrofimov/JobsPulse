@@ -35,6 +35,8 @@ public static class GreenhouseServiceCollectionExtensions
         services.AddKeyedTransient<IVacancySource, GreenhouseBoardSource>(GreenhouseMapper.SourceId);
         services.AddKeyedTransient<IBoardResolver, GreenhouseBoardResolver>(GreenhouseMapper.SourceId);
 
+        services.AddSingleton<GreenhouseMapper>();
+
         return services;
     }
 }

@@ -1,6 +1,6 @@
 ﻿namespace JobsPulse.Storage.PersistentModels;
 
-internal enum PersistentOutboxStatus
+public enum PersistentOutboxStatus
 {
     Unknown = 0,
     Pending = 1,
