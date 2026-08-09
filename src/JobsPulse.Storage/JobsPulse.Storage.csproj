@@ -12,6 +12,7 @@
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Npgsql.DependencyInjection" Version="10.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageReference Include="Vostok.Logging.Microsoft" Version="2.0.19" />
   </ItemGroup>
 
   <ItemGroup>

@@ -6,9 +6,9 @@ using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Storage.PersistentModels;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Storage.Storages;
 
@@ -16,8 +16,10 @@ internal class StateStore(
     IDbContextFactory<JobsPulseDbContext> factory,
     NpgsqlDataSource dataSource,
     TimeProvider clock,
-    ILogger<StateStore> logger) : IStateStore
+    ILog log) : IStateStore
 {
+    private readonly ILog ctxLog = log.ForContext<StateStore>();
+
     public async Task<IReadOnlyDictionary<string, Vacancy>> LoadSeenAsync(
         string sourceId,
         string boardId,
@@ -46,7 +48,7 @@ internal class StateStore(
             commit.ClosedPostIds.Count == 0 &&
             commit.Notifications.Count == 0)
         {
-            logger.LogWarning("Nothing to commit");
+            ctxLog.Warn("Nothing to commit");
             return StateCommitResult.Empty;
         }
 
@@ -125,7 +127,7 @@ internal class StateStore(
 
             var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
 
-            logger.LogDebug(
+            ctxLog.Debug(
                 "Upsertion to seen_vacancy table of vacancy '{VacancyKey}' affected {Affected} rows",
                 vacancy.Key,
                 affectedRows);
@@ -166,7 +168,7 @@ internal class StateStore(
 
         var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
 
-        logger.LogDebug(
+        ctxLog.Debug(
             "Closing {ClosedCount} vacancies in seen_vacancy affected {AffectedRows} rows",
             commit.ClosedPostIds.Count,
             affectedRows);
@@ -236,7 +238,7 @@ internal class StateStore(
 
             var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
 
-            logger.LogDebug(
+            ctxLog.Debug(
                 "Insertion to outbox table of vacancy '{VacancyKey}' affected {Affected} rows",
                 item.Vacancy.Key,
                 affectedRows);

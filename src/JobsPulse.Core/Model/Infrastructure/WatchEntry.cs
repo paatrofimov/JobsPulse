@@ -1,4 +1,6 @@
-﻿namespace JobsPulse.Core.Model.Infrastructure;
+﻿using System.Text.Json.Serialization;
+
+namespace JobsPulse.Core.Model.Infrastructure;
 
 public sealed record WatchEntry
 {
@@ -7,8 +9,10 @@ public sealed record WatchEntry
 
     public bool Enabled { get; init; } = true;
 
+    [JsonPropertyName("Source")]
     public required string VacancySourceId { get; init; }
 
+    [JsonPropertyName("Board")]
     public required string BoardId { get; init; }
 
     public required string CompanyName { get; init; }
@@ -16,8 +20,4 @@ public sealed record WatchEntry
     public int? IntervalMinutesOverride { get; init; }
 
     public FilterSpec? CustomFilter { get; init; }
-
-    public DateTimeOffset? SeededAt { get; init; }
-
-    public string? SeededFilterHash { get; init; }
 }

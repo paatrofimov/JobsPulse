@@ -1,7 +1,7 @@
 using System.Text;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
-using Microsoft.Extensions.Logging;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
@@ -9,8 +9,10 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 public sealed class CommandRouter(
     WatchService watch,
     PendingSelectionStore pending,
-    ILogger<CommandRouter> log)
+    ILog log)
 {
+    private readonly ILog ctxLog = log.ForContext<CommandRouter>();
+
     public async Task<string> HandleAsync(string chatId, string text, CancellationToken ct)
     {
         text = text.Trim();
@@ -84,7 +86,7 @@ public sealed class CommandRouter(
 
         var candidate = candidates[choice - 1];
         var entry = await watch.AddAsync(candidate, filter: null, ct);
-        log.LogInformation("Company added to watchlist via bot: {Company}", entry.CompanyName);
+        ctxLog.Info("Company added to watchlist via bot: {Company}", entry.CompanyName);
 
         return Added(entry, candidate);
     }
@@ -108,8 +110,8 @@ public sealed class CommandRouter(
         var sb = new StringBuilder("<b>Watching:</b>\n");
         foreach (var e in entries)
         {
-            var status = e.Enabled ? (e.SeededAt is null ? "seeding" : "active") : "disabled";
-            sb.Append($"• <b>{MessageFormatter.Escape(e.CompanyName)}</b> — {status}\n");
+            var status = e.Enabled ? "active" : "disabled";
+            sb.Append($"\n • <b>{MessageFormatter.Escape(e.CompanyName)}</b> — {status}\n");
         }
 
         return sb.ToString();

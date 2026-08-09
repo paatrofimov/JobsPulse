@@ -3,8 +3,8 @@ using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
 using JobsPulse.Sinks.Telegram.Options;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
@@ -13,8 +13,10 @@ public sealed class TelegramSink(
     MessageFormatter messageFormatter,
     IOptionsMonitor<DeliveryOptions> deliveryOpts,
     IOptionsMonitor<TelegramOptions> tgOpts,
-    ILogger<TelegramSink> log) : IVacancySink
+    ILog log) : IVacancySink
 {
+    private readonly ILog ctxLog = log.ForContext<TelegramSink>();
+
     public async Task<DeliveryResult> DeliverAsync(
         IReadOnlyList<OutboxItem> batch,
         CancellationToken ct)
@@ -37,7 +39,7 @@ public sealed class TelegramSink(
 
             if (!result.Success)
             {
-                log.LogWarning("Telegram failed to send message to chat {Chat}: {Error}", chatId, result.Error);
+                ctxLog.Warn("Telegram failed to send message to chat {Chat}: {Error}", chatId, result.Error);
                 return DeliveryResult.Fail(result.Error ?? "unknown", result.RetryAfter);
             }
 

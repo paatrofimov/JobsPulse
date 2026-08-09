@@ -6,7 +6,8 @@
         "backend",
         "platform",
         ".net",
-        "c#"
+        "c#",
+        "sre"
       ],
       "TitleNoneOf": [
         "intern",
@@ -16,7 +17,7 @@
       ],
       "LocationAnyOf": [],
       "PostedWithinDays": 60,
-      "MatchMode": "Contains"
+      "MatchMode": "Substring"
     },
     "Entries": [
       {

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Infrastructure;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Host.Infrastructure;
 
@@ -17,7 +18,7 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromMilliseconds(500);
 
     private readonly string _path;
-    private readonly ILogger<FileWatchlistProvider> _log;
+    private readonly ILog ctxLog;
     private readonly FileSystemWatcher? _watcher;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
@@ -25,11 +26,12 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
     private DateTimeOffset _lastReload = DateTimeOffset.MinValue;
     private bool _selfWrite;
 
-    public FileWatchlistProvider(string path, TimeProvider clock, ILogger<FileWatchlistProvider> log)
+    public FileWatchlistProvider(string path, TimeProvider clock, ILog log)
     {
         _path = Path.GetFullPath(path);
         Clock = clock;
-        _log = log;
+
+        ctxLog = log.ForContext<FileWatchlistProvider>();
 
         _current = Load() ?? new Watchlist();
 
@@ -89,18 +91,6 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
         return true;
     }
 
-    public Task MarkSeededAsync(string entryId, string filterHash, CancellationToken ct) =>
-        MutateAsync(list => list with
-        {
-            Entries =
-            [
-                .. list.Entries
-                    .Select(e => e.Id.Equals(entryId, StringComparison.OrdinalIgnoreCase)
-                        ? e with { SeededAt = Clock.GetUtcNow(), SeededFilterHash = filterHash }
-                        : e)
-            ]
-        }, ct);
-
     private async Task MutateAsync(Func<Watchlist, Watchlist> mutate, CancellationToken ct)
     {
         await _writeLock.WaitAsync(ct);
@@ -135,13 +125,13 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
         var reloaded = Load();
         if (reloaded is null)
         {
-            _log.LogError("watchlist.json could not be read — using previous version {Version}",
+            ctxLog.Error("watchlist.json could not be read — using previous version {Version}",
                 _current.Version);
             return;
         }
 
         _current = reloaded;
-        _log.LogInformation("watchlist reloaded: version {Version}, entries {Count}",
+        ctxLog.Info("watchlist reloaded: version {Version}, entries {Count}",
             reloaded.Version, reloaded.Entries.Count);
     }
 
@@ -159,7 +149,7 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Failed to read path {Path}", _path);
+            ctxLog.Error(ex, "Failed to read path {Path}", _path);
             return null;
         }
     }
@@ -191,7 +181,7 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 
         if (bad.Count > 0)
         {
-            _log.LogError("Watchlist has {Count} invalid entries — version is rejected", bad.Count);
+            ctxLog.Error("Watchlist has {Count} invalid entries — version is rejected", bad.Count);
             return null;
         }
 
@@ -203,7 +193,7 @@ public sealed class FileWatchlistProvider : IWatchlistProvider, IDisposable
 
         if (duplicates.Count > 0)
         {
-            _log.LogError("Duplicated watchlist ids: {Ids}", string.Join(", ", duplicates));
+            ctxLog.Error("Duplicated watchlist ids: {Ids}", string.Join(", ", duplicates));
             return null;
         }
 

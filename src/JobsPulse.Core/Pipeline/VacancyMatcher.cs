@@ -1,12 +1,14 @@
 using System.Text.RegularExpressions;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
-using Microsoft.Extensions.Logging;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Core.Pipeline;
 
-public sealed class VacancyMatcher(TimeProvider clock, ILogger<VacancyMatcher> logger)
+public sealed class VacancyMatcher(TimeProvider clock, ILog log)
 {
+    private readonly ILog ctxLog = log.ForContext<VacancyMatcher>();
+
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(200);
 
     public bool Matches(Vacancy v, FilterSpec f)
@@ -83,12 +85,12 @@ public sealed class VacancyMatcher(TimeProvider clock, ILogger<VacancyMatcher> l
         }
         catch (ArgumentException ex)
         {
-            logger.LogWarning(ex, "Invalid regex pattern: {Pattern}", pattern);
+            ctxLog.Warn(ex, "Invalid regex pattern: {Pattern}", pattern);
             return false;
         }
         catch (RegexMatchTimeoutException ex)
         {
-            logger.LogWarning(ex, "Regex match timed out for pattern: {Pattern}", pattern);
+            ctxLog.Warn(ex, "Regex match timed out for pattern: {Pattern}", pattern);
             return false;
         }
     }

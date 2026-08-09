@@ -3,15 +3,17 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Sources.Greenhouse.Models;
-using Microsoft.Extensions.Logging;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sources.Greenhouse.Infrastructure;
 
 public sealed class GreenhouseBoardClient(
     HttpClient http,
-    ILogger<GreenhouseBoardClient> log)
+    ILog log)
 {
     public const string HttpClientName = "greenhouse";
+
+    private readonly ILog ctxLog = log.ForContext<GreenhouseBoardClient>();
 
     public async Task<BoardFetch<JobListResponse>> GetJobsAsync(
         string boardId, bool includeContent, CancellationToken ct)
@@ -35,7 +37,7 @@ public sealed class GreenhouseBoardClient(
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(30);
-                log.LogWarning("Greenhouse is throttling 429: {Url}, asked to wait for: {Delay}", relativeUrl, retryAfter);
+                ctxLog.Warn("Greenhouse is throttling 429: {Url}, asked to wait for: {Delay}", relativeUrl, retryAfter);
                 return BoardFetch<T>.Failure($"rate limited, retry after {retryAfter.TotalSeconds:F0}s");
             }
 

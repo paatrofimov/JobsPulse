@@ -1,4 +1,5 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Host.Infrastructure;
@@ -8,12 +9,18 @@ using JobsPulse.Sources.Greenhouse.Infrastructure;
 using JobsPulse.Storage.Infrastructure;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Console;
+using Vostok.Logging.Abstractions;
+using Vostok.Logging.Console;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+ConfigureLogging(builder);
+
 builder.Configuration.AddJsonFile("watchlist.json", optional: true, reloadOnChange: false);
 
-// Secrets: locally — user-secrets, prod — env variables (Telegram__BotToken).
+// Secrets: locally — user-secrets (Telegram:BotToken), prod — env variables (Telegram__BotToken).
 builder.Configuration.AddEnvironmentVariables();
 
 builder.Services.AddSingleton(TimeProvider.System);
@@ -32,7 +39,7 @@ builder.Services.AddStorage(builder.Configuration, connectionStringName: "Postgr
 builder.Services.AddSingleton<IWatchlistProvider>(sp => new FileWatchlistProvider(
     Path.Combine(AppContext.BaseDirectory, "watchlist.json"),
     sp.GetRequiredService<TimeProvider>(),
-    sp.GetRequiredService<ILogger<FileWatchlistProvider>>()));
+    sp.GetRequiredService<ILog>()));
 
 builder.Services.AddSingleton<VacancyMatcher>();
 builder.Services.AddSingleton<ChangeDetector>();
@@ -58,4 +65,25 @@ async Task PrepareStorage(IHost h)
         .GetRequiredService<JobsPulseDbContext>();
 
     await db.Database.MigrateAsync();
+}
+
+void ConfigureLogging(HostApplicationBuilder hostApplicationBuilder)
+{
+    hostApplicationBuilder.Services.AddSingleton<ILog>(
+        new CompositeLog(
+            new ConsoleLog(),
+            FileLogProvider.Create("main-log")
+        )
+    );
+    hostApplicationBuilder.Logging.AddFilter<ConsoleLoggerProvider>(
+        "Microsoft.Hosting",
+        LogLevel.None);
+
+    hostApplicationBuilder.Logging.AddFilter<ConsoleLoggerProvider>(
+        "Microsoft.Extensions.Hosting",
+        LogLevel.None);
+
+    builder.Logging.AddFilter(
+        "Microsoft.Extensions.Http",
+        LogLevel.Warning);
 }

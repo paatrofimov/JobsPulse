@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using System.Text.Json.Serialization;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
 

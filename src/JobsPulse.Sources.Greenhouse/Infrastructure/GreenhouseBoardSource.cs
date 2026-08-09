@@ -1,8 +1,8 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Options;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sources.Greenhouse.Infrastructure;
 
@@ -10,8 +10,10 @@ public sealed class GreenhouseBoardSource(
     GreenhouseBoardClient client,
     GreenhouseMapper mapper,
     IOptions<GreenhouseOptions> options,
-    ILogger<GreenhouseBoardSource> log) : IVacancySource
+    ILog log) : IVacancySource
 {
+    private readonly ILog ctxLog = log.ForContext<GreenhouseBoardSource>();
+
     public async Task<SourceTraverseResult> TraverseTargetAsync(SourceTarget target, CancellationToken ct)
     {
         var includeContent = target.IncludeDescriptions || options.Value.IncludeContentOnPoll;
@@ -31,7 +33,7 @@ public sealed class GreenhouseBoardSource(
         var expected = response.Value.Meta?.Total;
         if (expected is { } total && total != vacancies.Count)
         {
-            log.LogWarning("Board {Board}: received {Actual} out of {Expected} — traversal is incomplete",
+            ctxLog.Warn("Board {Board}: received {Actual} out of {Expected} — traversal is incomplete",
                 target.BoardId, vacancies.Count, total);
 
             return new SourceTraverseResult

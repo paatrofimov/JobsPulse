@@ -11,6 +11,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Vostok.Logging.Console" Version="1.0.11" />
+    <PackageReference Include="Vostok.Logging.File" Version="1.0.24" />
 
   </ItemGroup>
 
@@ -23,6 +25,12 @@
 
   <ItemGroup>
     <None Update="watchlist.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="watchlist.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

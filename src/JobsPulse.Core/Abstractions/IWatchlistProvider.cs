@@ -12,6 +12,4 @@ public interface IWatchlistProvider
     Task<bool> RemoveAsync(string entryId, CancellationToken ct);
 
     Task<bool> SetEnabledAsync(string entryId, bool enabled, CancellationToken ct);
-
-    Task MarkSeededAsync(string entryId, string filterHash, CancellationToken ct);
 }

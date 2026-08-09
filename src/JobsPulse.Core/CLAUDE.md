@@ -40,17 +40,6 @@ only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and 
 - `BoardMissing` (HTTP 404) - the entry is disabled in the watchlist, so a dead board stops being polled.
 - `!IsComplete` - partial data is dropped entirely, because missing posts would be detected as closed.
 
-### Seeding
-
-`SeededAt is null || SeededFilterHash != ComputeFilterHash(filter)` means: first traversal, or the filter changed.
-State is still written, but notifications are suppressed - otherwise the whole board (or everything a widened
-filter newly matches) would be delivered as a burst of messages.
-
-`MarkSeededAsync` runs after `CommitAsync` on purpose: a crash in between re-seeds next cycle (silent and
-idempotent) instead of announcing an entire board.
-
-`DryRun` suppresses notifications the same way but does not mark anything - state is still committed.
-
 ### Reports
 
 `EntryReport` / `CycleReport` are logging-only aggregates, nothing reads them for control flow.

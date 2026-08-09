@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sources.Greenhouse.Infrastructure;
 
@@ -30,7 +31,7 @@ public static class GreenhouseServiceCollectionExtensions
 
         services.AddTransient(sp => new GreenhouseBoardClient(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(GreenhouseBoardClient.HttpClientName),
-            sp.GetRequiredService<ILogger<GreenhouseBoardClient>>()));
+            sp.GetRequiredService<ILog>()));
 
         services.AddKeyedTransient<IVacancySource, GreenhouseBoardSource>(GreenhouseMapper.SourceId);
         services.AddKeyedTransient<IBoardResolver, GreenhouseBoardResolver>(GreenhouseMapper.SourceId);

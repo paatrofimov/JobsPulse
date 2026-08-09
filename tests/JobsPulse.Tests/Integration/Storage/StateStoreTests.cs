@@ -1,5 +1,4 @@
 using FluentAssertions;
-using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
 using Microsoft.EntityFrameworkCore;

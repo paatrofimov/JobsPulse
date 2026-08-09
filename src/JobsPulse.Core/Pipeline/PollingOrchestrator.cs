@@ -3,8 +3,8 @@ using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Domain.Extensions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Core.Pipeline;
 
@@ -16,8 +16,9 @@ public sealed class PollingOrchestrator(
     ChangeDetector changeDetector,
     IOptionsMonitor<WatchlistPollingOptions> options,
     TimeProvider clock,
-    ILogger<PollingOrchestrator> log)
+    ILog log)
 {
+    private readonly ILog ctxLog = log.ForContext<PollingOrchestrator>();
     private readonly Dictionary<string, DateTimeOffset> _lastRunByEntry = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<CycleReport> RunCycleAsync(CancellationToken ct)
@@ -30,11 +31,11 @@ public sealed class PollingOrchestrator(
 
         if (due.Count == 0)
         {
-            log.LogDebug("No records for traversal (watchlist total: {Total})", current.Entries.Count);
+            ctxLog.Debug("No records for traversal (watchlist total: {Total})", current.Entries.Count);
             return CycleReport.Empty;
         }
 
-        log.LogInformation("Start cycle: {Due} out of {Total} records to traverse", due.Count, current.Entries.Count);
+        ctxLog.Info("Start cycle: {Due} out of {Total} records to traverse", due.Count, current.Entries.Count);
 
         using var gate = new SemaphoreSlim(opts.MaxConcurrentEntries);
 
@@ -55,7 +56,7 @@ public sealed class PollingOrchestrator(
             _lastRunByEntry[entry.Id] = now;
 
         var report = CycleReport.Aggregate(results);
-        log.LogInformation(
+        ctxLog.Info(
             "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, matched vacancies {Matched}, changes {Changes}, errors {Failed}",
             report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Changes, report.Failed);
 
@@ -68,7 +69,7 @@ public sealed class PollingOrchestrator(
         var source = sourceCatalog.GetSource(entry.VacancySourceId);
         if (source is null)
         {
-            log.LogWarning("Source '{Source}' is not registered — skipping entry {Entry}", entry.VacancySourceId, entry.Id);
+            ctxLog.Warn("Source '{Source}' is not registered — skipping entry {Entry}", entry.VacancySourceId, entry.Id);
             return EntryReport.Failure();
         }
 
@@ -84,20 +85,20 @@ public sealed class PollingOrchestrator(
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            log.LogWarning("Board traversal timeout {Company} ({Board})", entry.CompanyName, entry.BoardId);
+            ctxLog.Warn("Board traversal timeout {Company} ({Board})", entry.CompanyName, entry.BoardId);
             return EntryReport.Failure();
         }
 
         if (traverse.BoardMissing)
         {
-            log.LogWarning("Board {Board} ({Company}) not found — disabling watchlist entry {Id}", entry.BoardId, entry.CompanyName, entry.Id);
+            ctxLog.Warn("Board {Board} ({Company}) not found — disabling watchlist entry {Id}", entry.BoardId, entry.CompanyName, entry.Id);
             await watchlistProvider.SetEnabledAsync(entry.Id, false, ct);
             return EntryReport.Failure();
         }
 
         if (!traverse.IsComplete)
         {
-            log.LogWarning("Incomplete traversal {Company}: {Error}. Changes are not applied", entry.CompanyName, traverse.Error);
+            ctxLog.Warn("Incomplete traversal {Company}: {Error}. Changes are not applied", entry.CompanyName, traverse.Error);
             return EntryReport.Failure();
         }
 
@@ -113,12 +114,7 @@ public sealed class PollingOrchestrator(
             Seen = seen
         });
 
-        // Seeding: first traversal or after filter has changed.
-        // Seeding should be silent otherwise all company board jobs are sent in one message.
-        var filterHash = VacancyHasher.ComputeFilterHash(filter);
-        var needsSeeding = entry.SeededAt is null || entry.SeededFilterHash != filterHash;
-
-        var notifications = needsSeeding || opts.DryRun
+        var notifications = opts.DryRun
             ? []
             : BuildNotifications(detected.VacanciesChanges);
 
@@ -131,21 +127,13 @@ public sealed class PollingOrchestrator(
             Notifications = notifications
         }, ct);
 
-        log.LogInformation(
+        ctxLog.Info(
             "State commit result for company {Company}: {Upserts} seen_vacancy upserts, {Closed} seen_vacancy closures, {Notifications} outbox notification",
             entry.CompanyName, commitResult.UpsertVacanciesAffectedRows, commitResult.CloseVacanciesAffectedRows, commitResult.OutboxAffectedRows);
 
-        if (needsSeeding)
+        if (opts.DryRun && detected.VacanciesChanges.Count > 0)
         {
-            await watchlistProvider.MarkSeededAsync(entry.Id, filterHash, ct);
-
-            log.LogInformation(
-                "Seeded {Company}: {Count} vacancies written without notifications",
-                entry.CompanyName, detected.VacanciesUpserts.Count);
-        }
-        else if (opts.DryRun && detected.VacanciesChanges.Count > 0)
-        {
-            log.LogInformation(
+            ctxLog.Info(
                 "DRY-RUN {Company}: would send {Count} outboxes ({New} new)",
                 entry.CompanyName, detected.VacanciesChanges.Count,
                 detected.VacanciesChanges.Count(c => c.Kind == VacancyChangeKind.New));

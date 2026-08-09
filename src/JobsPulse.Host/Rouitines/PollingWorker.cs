@@ -1,19 +1,22 @@
 using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
 using Microsoft.Extensions.Options;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Host.Rouitines;
 
 public sealed class PollingWorker(
     PollingOrchestrator orchestrator,
     IOptionsMonitor<WatchlistPollingOptions> options,
-    ILogger<PollingWorker> log
+    ILog log
 ) : BackgroundService
 {
+    private readonly ILog ctxLog = log.ForContext<OutboxDispatcher>();
+    
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (options.CurrentValue.DryRun)
-            log.LogWarning("DRY-RUN");
+            ctxLog.Warn("DRY-RUN");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -25,12 +28,12 @@ public sealed class PollingWorker(
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                log.LogDebug("Gracefully finished with cancellation");
+                ctxLog.Debug("Gracefully finished with cancellation");
                 break;
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Polling cycle finished with error");
+                ctxLog.Error(ex, "Polling cycle finished with error");
             }
 
             try
@@ -39,7 +42,7 @@ public sealed class PollingWorker(
             }
             catch (OperationCanceledException)
             {
-                log.LogDebug("Gracefully finished with cancellation");
+                ctxLog.Debug("Gracefully finished with cancellation");
                 break;
             }
         }

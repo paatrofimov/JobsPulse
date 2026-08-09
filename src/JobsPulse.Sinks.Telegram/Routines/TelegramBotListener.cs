@@ -1,9 +1,9 @@
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sinks.Telegram.Options;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Telegram.Bot.Types;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sinks.Telegram.Routines;
 
@@ -11,9 +11,11 @@ public sealed class TelegramBotListener(
     TelegramClientFacade client,
     CommandRouter router,
     IOptions<TelegramOptions> options,
-    ILogger<TelegramBotListener> log) : BackgroundService
+    ILog log) : BackgroundService
 {
     private const int LongPollSeconds = 30;
+
+    private readonly ILog ctxLog = log.ForContext<TelegramSink>();
 
     private int _offset;
 
@@ -23,18 +25,18 @@ public sealed class TelegramBotListener(
 
         if (!opts.EnableCommands)
         {
-            log.LogInformation(
+            ctxLog.Info(
                 "Bot commands are disabled (EnableCommands=false)");
             return;
         }
 
         if (opts.AdminChatIds.Count == 0)
         {
-            log.LogWarning(
+            ctxLog.Warn(
                 "AdminChatIds list is empty — commands will not be applied");
         }
 
-        log.LogInformation("Listening commands");
+        ctxLog.Info("Listening commands");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -53,6 +55,8 @@ public sealed class TelegramBotListener(
                         update,
                         opts,
                         stoppingToken);
+
+                    ctxLog.Debug($"Moved offset to {_offset} after message (prefix): '{update.Message?.Text?[..20] ?? "empty"}'");
                 }
             }
             catch (OperationCanceledException)
@@ -62,7 +66,7 @@ public sealed class TelegramBotListener(
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Error in Telegram getUpdates loop");
+                ctxLog.Error(ex, "Error in Telegram getUpdates loop");
 
                 await Task.Delay(
                     TimeSpan.FromSeconds(10),
@@ -87,7 +91,7 @@ public sealed class TelegramBotListener(
                 chatId,
                 StringComparer.Ordinal))
         {
-            log.LogWarning(
+            ctxLog.Warn(
                 "Command from unauthorized chat {ChatId} ignored",
                 chatId);
 
@@ -106,7 +110,7 @@ public sealed class TelegramBotListener(
         catch (Exception ex)
             when (ex is not OperationCanceledException)
         {
-            log.LogError(
+            ctxLog.Error(
                 ex,
                 "Command '{Text}' failed",
                 message.Text);
@@ -116,7 +120,7 @@ public sealed class TelegramBotListener(
 
         await client.SendRichMessageAsync(
             chatId,
-            new InputRichMessage() {Html = reply},
+            new InputRichMessage() { Html = reply },
             ct);
     }
 }

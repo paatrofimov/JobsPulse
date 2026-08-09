@@ -2,6 +2,7 @@ using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Options;
 using Microsoft.Extensions.Options;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Host.Rouitines;
 
@@ -9,8 +10,10 @@ public sealed class OutboxDispatcher(
     IOutboxStorage outboxStorage,
     IVacancySink sink,
     IOptionsMonitor<DeliveryOptions> deliveryOptions,
-    ILogger<OutboxDispatcher> log) : BackgroundService
+    ILog log) : BackgroundService
 {
+    private readonly ILog ctxLog = log.ForContext<OutboxDispatcher>();
+    
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -28,12 +31,12 @@ public sealed class OutboxDispatcher(
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                log.LogDebug("Gracefully finished with cancellation");
+                ctxLog.Debug("Gracefully finished with cancellation");
                 break;
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Outbox dispatcher iteration fail");
+                ctxLog.Error(ex, "Outbox dispatcher iteration fail");
             }
 
             try
@@ -42,7 +45,7 @@ public sealed class OutboxDispatcher(
             }
             catch (OperationCanceledException)
             {
-                log.LogDebug("Gracefully finished with cancellation");
+                ctxLog.Debug("Gracefully finished with cancellation");
                 break;
             }
         }
@@ -59,7 +62,7 @@ public sealed class OutboxDispatcher(
         if (result.Success)
         {
             await outboxStorage.MarkDeliveredAsync(ids, ct);
-            log.LogInformation("Sent {Count} messages", items.Count);
+            ctxLog.Info("Sent {Count} messages", items.Count);
             return;
         }
 
@@ -68,7 +71,7 @@ public sealed class OutboxDispatcher(
         var backoff = result.RetryAfter ?? TimeSpan.FromSeconds(Math.Min(300, Math.Pow(2, attempts + 1)));
 
         await outboxStorage.MarkFailedAsync(ids, backoff, result.Error ?? "unknown", ct);
-        log.LogWarning("Delivery has failed ({Error}), will retry after {Backoff}",
+        ctxLog.Warn("Delivery has failed ({Error}), will retry after {Backoff}",
             result.Error, backoff);
     }
 }

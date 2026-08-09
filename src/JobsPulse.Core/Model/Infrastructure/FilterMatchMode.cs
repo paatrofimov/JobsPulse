@@ -2,7 +2,8 @@
 
 public enum FilterMatchMode
 {
-    Substring = 0,
-    Exact = 1,
-    Regex = 2
+    Unknown = 0,
+    Substring = 1,
+    Exact = 2,
+    Regex = 3
 }

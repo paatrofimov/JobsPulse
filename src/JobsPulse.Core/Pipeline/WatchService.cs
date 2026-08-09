@@ -1,21 +1,27 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Infrastructure;
-using Microsoft.Extensions.Logging;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Core.Pipeline;
 
 public sealed class WatchService(
     IWatchlistProvider watchlist,
     ISourceCatalog sources,
-    ILogger<WatchService> log)
+    ILog log)
 {
+    private readonly ILog ctxLog = log.ForContext<WatchService>();
+
     public async Task<LookupResult> LookupAsync(string query, CancellationToken ct)
     {
         query = query.Trim();
-        if (query.Length == 0) return LookupResult.NotFound(query);
+        if (query.Length == 0) 
+            return LookupResult.NotFound(query);
 
+        ctxLog.Debug($"Looking up watchlist for query: '{query}'");
+        
         var existing = watchlist.Current.Find(query);
-        if (existing is not null) return LookupResult.AlreadyWatched(existing);
+        if (existing is not null)
+            return LookupResult.AlreadyWatched(existing);
 
         var isUrl = query.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
                     || query.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
@@ -41,7 +47,7 @@ public sealed class WatchService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                log.LogWarning(ex, "Resolver {Source} has failed '{Query}'", sourceId, query);
+                ctxLog.Warn(ex, "Resolver {Source} has failed '{Query}'", sourceId, query);
             }
         }
 
@@ -69,13 +75,10 @@ public sealed class WatchService(
             CompanyName = candidate.DisplayName,
             Enabled = true,
             CustomFilter = filter,
-            
-            // created unseeded - first cycle will be silent
-            SeededAt = null
         };
 
         var added = await watchlist.AddAsync(entry, ct);
-        log.LogInformation("Company added {Company} ({Source}/{Board})",
+        ctxLog.Info("Company added {Company} ({Source}/{Board})",
             added.CompanyName, added.VacancySourceId, added.BoardId);
 
         return added;

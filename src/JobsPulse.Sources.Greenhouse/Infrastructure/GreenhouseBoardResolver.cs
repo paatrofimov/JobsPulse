@@ -2,8 +2,8 @@ using System.Text.RegularExpressions;
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Options;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sources.Greenhouse.Infrastructure;
 
@@ -12,8 +12,10 @@ public sealed partial class GreenhouseBoardResolver(
     GreenhouseBoardClient client,
     IHttpClientFactory httpFactory,
     IOptions<GreenhouseOptions> options,
-    ILogger<GreenhouseBoardResolver> log) : IBoardResolver
+    ILog log) : IBoardResolver
 {
+    private readonly ILog ctxLog = log.ForContext<GreenhouseBoardResolver>();
+
     public async Task<IReadOnlyList<BoardCandidate>> ResolveByNameAsync(string companyName, CancellationToken ct)
     {
         var guesses = SlugGuesser.Generate(companyName, options.Value.MaxSlugGuesses);
@@ -65,7 +67,7 @@ public sealed partial class GreenhouseBoardResolver(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            log.LogWarning(ex, "Failed to resolve page by url {Url}", url);
+            ctxLog.Warn(ex, "Failed to resolve page by url {Url}", url);
         }
 
         return null;
