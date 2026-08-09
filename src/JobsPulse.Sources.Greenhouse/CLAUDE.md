@@ -24,5 +24,6 @@ Thin client over Job Board API.
 
 # SlugGuesser
 
-Generates candidates for board_token from company name.
+`Generate` delegates to `CompanySlugGuesser` in Core (shared by every source); `ExtractFromUrl` is the
+Greenhouse-specific part - it pulls the board token out of a `greenhouse.io` url.
 Most company names are in lowercase.

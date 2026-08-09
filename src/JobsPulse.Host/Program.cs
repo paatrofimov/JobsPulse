@@ -8,6 +8,7 @@ using JobsPulse.Host.Infrastructure;
 using JobsPulse.Host.Rouitines;
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Infrastructure;
+using JobsPulse.Sources.Lever.Infrastructure;
 using JobsPulse.Storage.Infrastructure;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
@@ -32,8 +33,9 @@ builder.Services.Configure<DeliveryOptions>(builder.Configuration.GetSection(Del
 
 // --- New ATS sources should be added below. ---
 builder.Services.AddGreenhouseSource(builder.Configuration);
+builder.Services.AddLeverSource(builder.Configuration);
 
-var registeredSources = new[] { GreenhouseMapper.SourceId };
+var registeredSources = new[] { GreenhouseMapper.SourceId, LeverMapper.SourceId };
 builder.Services.AddSingleton<ISourceCatalog>(sp => new SourceCatalog(sp, registeredSources));
 
 builder.Services.AddStorage(builder.Configuration, connectionStringName: "Postgres");
