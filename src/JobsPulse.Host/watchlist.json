@@ -8,7 +8,11 @@
         ".net",
         "dotnet",
         "c#",
-        "sre"
+        "csharp",
+        "sre",
+        "engineer",
+        "software",
+        "infrastructure"
       ],
       "TitleNoneOf": [
         "intern",
@@ -19,7 +23,8 @@
       "DescriptionAnyOf": [
         ".net",
         "dotnet",
-        "c#"
+        "c#",
+        "csharp"
       ],
       "LocationAnyOf": [],
       "PostedWithinDays": 120,

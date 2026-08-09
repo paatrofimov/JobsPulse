@@ -175,15 +175,19 @@ internal class StateStore(
 
         var outboxDeleted = await ExecuteAsync(connection, tx, "DELETE FROM outbox", ct);
         var vacanciesDeleted = await ExecuteAsync(connection, tx, "DELETE FROM seen_vacancy", ct);
+        var boardsDeleted = await ExecuteAsync(connection, tx, "DELETE FROM board_registry", ct);
+        var crawIndexStateDeleted = await ExecuteAsync(connection, tx, "DELETE FROM crawl_index_state", ct);
 
         await tx.CommitAsync(ct);
 
         ctxLog.Warn(
-            "Purged state: {Vacancies} seen_vacancy rows, {Outbox} outbox rows",
+            "Purged state: {Vacancies} seen_vacancy rows, {Outbox} outbox rows, {Boards} board_registry rows, {CrawlIndexState} crawl_index_state rows",
             vacanciesDeleted,
-            outboxDeleted);
+            outboxDeleted,
+            boardsDeleted,
+            crawIndexStateDeleted);
 
-        return new PurgeResult(vacanciesDeleted, outboxDeleted);
+        return new PurgeResult(vacanciesDeleted, outboxDeleted, boardsDeleted, crawIndexStateDeleted);
     }
 
     private static async Task<int> ExecuteAsync(
