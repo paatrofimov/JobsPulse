@@ -3,7 +3,8 @@ Persistence layer: PostgreSQL + Npgsql + EF Core.
 Implements `IStateStore` and `IOutboxStorage` from `JobsPulse.Core.Abstractions`. Domain models never leave the
 storage layer as persistent models - conversion happens in `PersistencyExtensions`.
 
-Two tables only: `seen_vacancy` (current state of a board) and `outbox` (notifications to deliver).
+Tables: `seen_vacancy` (current state of a board), `outbox` (notifications to deliver), `board_registry`
+(accumulative list of boards that exist) and `crawl_index_state` (which crawl indexes were already mined).
 No `watchlist` table yet - watchlist lives outside this project.
 
 # Infrastructure
@@ -64,6 +65,20 @@ Table `outbox` - transactional outbox for notifications.
 - Index `(status, next_attempt_at)`: the dispatcher's only query - pending items whose next attempt is due.
 - `attempts`, `next_attempt_at`, `last_error`: retry bookkeeping owned by the storage layer.
 
+## PersistentBoardRegistryEntry
+
+Table `board_registry` - every board discovery has ever confirmed to exist.
+
+- Unique `(source_id, board_id)`: the `ON CONFLICT` target. Re-discovering a board refreshes name, url and job
+  count but keeps `discovered_via` / `discovered_at` - the origin of a board is history, not state.
+- `discovered_via`: `common-crawl:{collection}` or `bot` - which discovery source produced the row.
+- `is_active`: reserved for boards that stop answering; nothing flips it yet.
+
+## PersistentCrawlIndexState
+
+Table `crawl_index_state` - one row per `(source_id, collection_id)`. A crawl index is written here only after it
+has been fully scanned, so an interrupted run re-reads it, and a finished one is never read again.
+
 ## PersistentOutboxStatus
 
 - Intermediate
@@ -105,6 +120,12 @@ An empty commit short-circuits before opening a connection.
 Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and
 title. `PurgeAllAsync` deletes `outbox` first, then `seen_vacancy`, in one transaction - after it the next cycle
 re-seeds the boards from scratch.
+
+## BoardRegistryStorage
+
+Reads via EF, writes via raw Npgsql: the upsert needs `ON CONFLICT ... RETURNING (xmax = 0)` to tell a genuinely
+new board from a refreshed one, which is what the discovery report counts. `MarkCrawlProcessedAsync` is the same
+kind of idempotent upsert keyed by `(source_id, collection_id)`.
 
 ## OutboxStorage
 

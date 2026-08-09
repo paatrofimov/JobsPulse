@@ -12,10 +12,14 @@ public sealed class CommandRouter(
     WatchService watch,
     PollingOrchestrator orchestrator,
     IStateStore stateStore,
+    IBoardRegistryStorage boardRegistry,
+    IBoardDiscoveryService discovery,
     IVacancySink sink,
     PendingSelectionStore pending,
     ILog log)
 {
+    private const int BoardsPageSize = 30;
+
     private readonly ILog ctxLog = log.ForContext<CommandRouter>();
 
     public async Task<string> HandleAsync(string chatId, string text, CancellationToken ct)
@@ -43,6 +47,9 @@ public sealed class CommandRouter(
             BotCommandCatalog.ForceCycle => await HandleForceCycleAsync(ct),
             BotCommandCatalog.ShowState => await HandleShowStateAsync(ct),
             BotCommandCatalog.DropData => await HandleDropDataAsync(ct),
+            BotCommandCatalog.Boards => await HandleBoardsAsync(argument, ct),
+            BotCommandCatalog.BoardRemove => await HandleBoardRemoveAsync(argument, ct),
+            BotCommandCatalog.Discover => await HandleDiscoverAsync(),
             BotCommandCatalog.Help or "start" => BotCommandCatalog.RenderHelp(),
             _ => "<p>Unknown command. /help — commands list.</p>"
         };
@@ -133,6 +140,81 @@ public sealed class CommandRouter(
                + $"<p>seen vacancies: <b>{purged.SeenVacanciesDeleted}</b><br>"
                + $"outbox: <b>{purged.OutboxDeleted}</b></p>"
                + "<p>Next cycle will re-seed the boards.</p>";
+    }
+
+    private async Task<string> HandleBoardsAsync(string argument, CancellationToken ct)
+    {
+        var counts = await boardRegistry.CountBySourceAsync(ct);
+        if (counts.Count == 0)
+            return "<p>Board registry is empty. /discover — fill it from crawl indexes.</p>";
+
+        var sourceId = string.IsNullOrWhiteSpace(argument) ? null : argument;
+        var boards = await boardRegistry.ListAsync(sourceId, BoardsPageSize, ct);
+
+        var sb = new StringBuilder("<h6>Board registry</h6><p>");
+        foreach (var (source, count) in counts.OrderBy(c => c.Key, StringComparer.Ordinal))
+            sb.Append($"{MessageFormatter.Escape(source)}: <b>{count}</b><br>");
+
+        sb.Append($"</p><p>Top {boards.Count} by vacancies count:</p><p>");
+
+        foreach (var board in boards)
+        {
+            var title = MessageFormatter.Escape(board.DisplayName ?? board.BoardId);
+            var link = board.BoardUrl is null
+                ? title
+                : $"<a href=\"{MessageFormatter.Escape(board.BoardUrl)}\">{title}</a>";
+
+            sb.Append($"• {link} — <code>{MessageFormatter.Escape(board.SourceId)} {MessageFormatter.Escape(board.BoardId)}</code>"
+                      + $" — {board.JobCount} vacancies<br>");
+        }
+
+        return sb.Append("</p>").ToString();
+    }
+
+    private async Task<string> HandleBoardRemoveAsync(string argument, CancellationToken ct)
+    {
+        var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 2)
+            return "<p>Specify source and board: <code>/board_remove greenhouse acme</code></p>";
+
+        var removed = await boardRegistry.RemoveAsync(parts[0], parts[1], ct);
+        return removed
+            ? $"<p>Board <b>{MessageFormatter.Escape(parts[1])}</b> is removed from the registry.</p>"
+            : "<p>No such board in the registry.</p>";
+    }
+
+    private Task<string> HandleDiscoverAsync()
+    {
+        // A full re-walk of the crawl indexes takes hours — it must not block the command loop.
+        _ = Task.Run(() => RunDiscoveryAsync(), CancellationToken.None);
+
+        return Task.FromResult(
+            "<h6>🔎 Discovery started</h6>"
+            + "<p>Crawl indexes are re-walked from scratch, already known boards are skipped.<br>"
+            + "The result is written to the log; a second run is ignored while this one is alive.<br>"
+            + "/boards — to inspect the registry.</p>");
+    }
+
+    private async Task RunDiscoveryAsync()
+    {
+        try
+        {
+            var report = await discovery.RunAsync(full: true, CancellationToken.None);
+
+            if (!report.Started)
+            {
+                ctxLog.Info("Forced discovery is skipped — another run is in progress");
+                return;
+            }
+
+            ctxLog.Info(
+                "Forced discovery finished: {Collections} indexes, {Tokens} tokens, {Added} new boards",
+                report.CollectionsProcessed, report.TokensFound, report.BoardsAdded);
+        }
+        catch (Exception ex)
+        {
+            ctxLog.Error(ex, "Forced discovery has failed");
+        }
     }
 
     private async Task<string> HandleShowStateAsync(CancellationToken ct)

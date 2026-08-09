@@ -21,6 +21,7 @@
     <ProjectReference Include="..\JobsPulse.Storage\JobsPulse.Storage.csproj" />
     <ProjectReference Include="..\JobsPulse.Sources.Greenhouse\JobsPulse.Sources.Greenhouse.csproj" />
     <ProjectReference Include="..\JobsPulse.Sinks.Telegram\JobsPulse.Sinks.Telegram.csproj" />
+    <ProjectReference Include="..\JobsPulse.Discovery\JobsPulse.Discovery.csproj" />
   </ItemGroup>
 
   <ItemGroup>

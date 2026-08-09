@@ -9,11 +9,55 @@ public class JobsPulseDbContext(
 {
     public DbSet<PersistentSeenVacancy> SeenVacancies => Set<PersistentSeenVacancy>();
     public DbSet<PersistentOutboxItem> Outbox => Set<PersistentOutboxItem>();
+    public DbSet<PersistentBoardRegistryEntry> BoardRegistry => Set<PersistentBoardRegistryEntry>();
+    public DbSet<PersistentCrawlIndexState> CrawlIndexState => Set<PersistentCrawlIndexState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureSeenVacancy(modelBuilder);
         ConfigureOutbox(modelBuilder);
+        ConfigureBoardRegistry(modelBuilder);
+        ConfigureCrawlIndexState(modelBuilder);
+    }
+
+    private static void ConfigureBoardRegistry(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentBoardRegistryEntry>();
+
+        entity.ToTable("board_registry");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // ON CONFLICT target - the logical identity of a board.
+        entity.HasIndex(x => new
+            {
+                x.SourceId,
+                x.BoardId
+            })
+            .IsUnique();
+    }
+
+    private static void ConfigureCrawlIndexState(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentCrawlIndexState>();
+
+        entity.ToTable("crawl_index_state");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // One row per (source, crawl index) - a processed index is never read again.
+        entity.HasIndex(x => new
+            {
+                x.SourceId,
+                x.CollectionId
+            })
+            .IsUnique();
     }
 
     private static void ConfigureSeenVacancy(ModelBuilder modelBuilder)

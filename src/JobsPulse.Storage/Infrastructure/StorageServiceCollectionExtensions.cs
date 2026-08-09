@@ -45,6 +45,7 @@ public static class StorageServiceCollectionExtensions
 
         services.AddSingleton<IStateStore, StateStore>();
         services.AddSingleton<IOutboxStorage, OutboxStorage>();
+        services.AddSingleton<IBoardRegistryStorage, BoardRegistryStorage>();
 
         return services;
     }

@@ -38,6 +38,9 @@ public static class GreenhouseServiceCollectionExtensions
 
         services.AddSingleton<GreenhouseMapper>();
 
+        // Board discovery reads crawl indexes generically; this is the Greenhouse-specific part of it.
+        services.AddSingleton<IBoardUrlParser, GreenhouseBoardUrlParser>();
+
         return services;
     }
 }

@@ -138,7 +138,24 @@ Sink implementations must implement formatting and sending.
 
 ## IBoardResolver
 
-Searching board via human-readable name - bot command /watch {company_name}
+Searching board via human-readable name - bot command /watch {company_name}.
+`ProbeAsync` is also the validation step of board discovery - a token exists only if the ATS answers for it.
+
+## IBoardUrlParser
+
+ATS-specific knowledge for crawl index mining: which url patterns to ask the index for and how to read a board id
+out of a captured url. Implemented in the source projects, consumed by `JobsPulse.Discovery`.
+
+## IBoardRegistryStorage
+
+The accumulative registry of boards known to exist (`board_registry`) plus the processed crawl indexes
+(`crawl_index_state`). Independent from the watchlist: the registry is «what exists», the watchlist is «what we
+watch».
+
+## IBoardDiscoveryService
+
+Fills the registry. Implemented in `JobsPulse.Discovery`; Core only holds the contract so the bot does not depend
+on the discovery project.
 
 # Model Infrastructure
 

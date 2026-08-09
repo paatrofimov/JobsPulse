@@ -3,6 +3,7 @@ using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
+using JobsPulse.Discovery.Infrastructure;
 using JobsPulse.Host.Infrastructure;
 using JobsPulse.Host.Rouitines;
 using JobsPulse.Sinks.Telegram.Infrastructure;
@@ -47,6 +48,8 @@ builder.Services.AddSingleton<VacancyMatcher>();
 builder.Services.AddSingleton<ChangeDetector>();
 builder.Services.AddSingleton<PollingOrchestrator>();
 builder.Services.AddSingleton<WatchService>();
+
+builder.Services.AddBoardDiscovery(builder.Configuration);
 
 builder.Services.AddTelegramSink(builder.Configuration);
 

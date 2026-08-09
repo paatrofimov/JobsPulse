@@ -8,6 +8,12 @@ Resolves company board via name of career page url parsing.
 
 Greenhouse vacancy source implementation.
 
+## GreenhouseBoardUrlParser
+
+`IBoardUrlParser` for crawl index mining: url patterns of the three Greenhouse hosts and slug extraction reusing
+`SlugGuesser.ExtractFromUrl`. Reserved path segments (`embed`, `v1`, `api`, ...) and anything that does not look
+like a board token are rejected, so the discovery pipeline does not validate garbage.
+
 ## GreenhouseBoardClient
 
 Thin client over Job Board API.
