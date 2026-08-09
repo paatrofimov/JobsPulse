@@ -1,5 +1,6 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Host.Infrastructure;
@@ -41,6 +42,7 @@ builder.Services.AddSingleton<IWatchlistProvider>(sp => new FileWatchlistProvide
     sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILog>()));
 
+builder.Services.AddSingleton<IPollingTrigger, PollingTrigger>();
 builder.Services.AddSingleton<VacancyMatcher>();
 builder.Services.AddSingleton<ChangeDetector>();
 builder.Services.AddSingleton<PollingOrchestrator>();

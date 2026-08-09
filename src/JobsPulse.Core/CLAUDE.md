@@ -30,6 +30,12 @@ from cycle start and a failed entry is not retried earlier than a successful one
 
 ### Concurrency and timeouts
 
+`RunCycleAsync` is serialized by a `SemaphoreSlim(1, 1)` - cycles never overlap, a forced wake-up arriving
+mid-cycle waits for the running one. `_lastRunByEntry` is therefore touched by one thread at a time.
+`TryRunCycleAsync` takes the same gate with a zero timeout and returns `CycleRunResult.Busy` instead of queueing -
+it backs the `/force_cycle` bot command. A forced cycle ignores `_lastRunByEntry` completely and processes every
+enabled entry, as if the process had just started.
+
 All due entries are started at once and throttled by a `SemaphoreSlim` of `MaxConcurrentEntries`.
 Each entry gets its own linked CTS with `SingleEntryProcessTimeoutSeconds`; a cancellation is treated as a timeout
 only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and must propagate.
@@ -107,12 +113,24 @@ Backs the bot commands - lookup, add, remove, list. Resolution itself lives in t
 
 `Id` is `{sourceId}:{boardId}` - deterministic, so the same board cannot be added twice under different names.
 `SeededAt` is left null so the first cycle is silent.
+After a successful add `IPollingTrigger.RequestImmediateRun` wakes the polling loop - the new entry has no
+`_lastRunByEntry` stamp, so it is due at once.
+
+# Infrastructure
+
+## PollingTrigger
+
+Latching wake-up signal between `WatchService` and the polling routine. `RequestImmediateRun` is a no-op when a
+request is already pending, so repeated adds do not queue extra cycles; a request raised while the cycle is running
+is not lost - the next `WaitAsync` returns immediately. `WaitAsync` returns on the wake-up or after the period,
+whichever comes first.
 
 # Abstractions
 
 ## IStateStore
 
 Responsible for atomic updates of seen vacancies and enqueueing outbox notifications.
+`LoadAllAsync` and `PurgeAllAsync` are admin operations exposed through bot commands, not used by the pipeline.
 
 ## IVacancySink
 

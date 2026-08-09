@@ -7,6 +7,7 @@ namespace JobsPulse.Core.Pipeline;
 public sealed class WatchService(
     IWatchlistProvider watchlist,
     ISourceCatalog sources,
+    IPollingTrigger pollingTrigger,
     ILog log)
 {
     private readonly ILog ctxLog = log.ForContext<WatchService>();
@@ -80,6 +81,9 @@ public sealed class WatchService(
         var added = await watchlist.AddAsync(entry, ct);
         ctxLog.Info("Company added {Company} ({Source}/{Board})",
             added.CompanyName, added.VacancySourceId, added.BoardId);
+
+        // A brand new entry is due immediately -- do not wait for the next scheduled cycle.
+        pollingTrigger.RequestImmediateRun();
 
         return added;
     }

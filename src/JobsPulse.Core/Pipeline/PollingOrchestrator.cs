@@ -20,14 +20,48 @@ public sealed class PollingOrchestrator(
 {
     private readonly ILog ctxLog = log.ForContext<PollingOrchestrator>();
     private readonly Dictionary<string, DateTimeOffset> _lastRunByEntry = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim cycleGate = new(1, 1);
 
     public async Task<CycleReport> RunCycleAsync(CancellationToken ct)
+    {
+        // Cycles never overlap: a forced wake-up arriving mid-cycle waits for the running one to finish.
+        await cycleGate.WaitAsync(ct);
+        try
+        {
+            return await RunCycleCoreAsync(force: false, ct);
+        }
+        finally
+        {
+            cycleGate.Release();
+        }
+    }
+
+    /// <summary>Runs a forced cycle over every enabled entry, only if none is in progress.</summary>
+    public async Task<CycleRunResult> TryRunCycleAsync(CancellationToken ct)
+    {
+        if (!await cycleGate.WaitAsync(0, ct))
+            return CycleRunResult.Busy;
+
+        try
+        {
+            return CycleRunResult.Completed(await RunCycleCoreAsync(force: true, ct));
+        }
+        finally
+        {
+            cycleGate.Release();
+        }
+    }
+
+    private async Task<CycleReport> RunCycleCoreAsync(bool force, CancellationToken ct)
     {
         var opts = options.CurrentValue;
         var current = watchlistProvider.Current;
         var now = clock.GetUtcNow();
 
-        var due = current.Entries.Where(e => e.Enabled && IsDue(e, opts, now)).ToList();
+        // A forced cycle ignores the scheduling state entirely -- every enabled entry is processed as on start-up.
+        var due = force
+            ? current.Entries.Where(e => e.Enabled).ToList()
+            : current.Entries.Where(e => e.Enabled && IsDue(e, opts, now)).ToList();
 
         if (due.Count == 0)
         {

@@ -42,6 +42,57 @@ internal class StateStore(
         );
     }
 
+    public async Task<IReadOnlyList<SeenVacancySnapshot>> LoadAllAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var rows = await db.SeenVacancies
+            .AsNoTracking()
+            .OrderBy(x => x.SourceId)
+            .ThenBy(x => x.BoardId)
+            .ThenBy(x => x.Title)
+            .ToListAsync(ct);
+
+        return rows
+            .Select(x => new SeenVacancySnapshot
+            {
+                Vacancy = x.ToDomainModel(),
+                ClosedAt = x.ClosedAt
+            })
+            .ToList();
+    }
+
+    public async Task<PurgeResult> PurgeAllAsync(CancellationToken ct)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        await using var tx = await connection.BeginTransactionAsync(ct);
+
+        var outboxDeleted = await ExecuteAsync(connection, tx, "DELETE FROM outbox", ct);
+        var vacanciesDeleted = await ExecuteAsync(connection, tx, "DELETE FROM seen_vacancy", ct);
+
+        await tx.CommitAsync(ct);
+
+        ctxLog.Warn(
+            "Purged state: {Vacancies} seen_vacancy rows, {Outbox} outbox rows",
+            vacanciesDeleted,
+            outboxDeleted);
+
+        return new PurgeResult(vacanciesDeleted, outboxDeleted);
+    }
+
+    private static async Task<int> ExecuteAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction tx,
+        string sql,
+        CancellationToken ct)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = sql;
+
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct)
     {
         if (commit.Upserts.Count == 0 &&
@@ -88,7 +139,7 @@ internal class StateStore(
             VALUES
                 (@source, @board, @post, @group, @hash,
                  @title, @location, @url,
-                 @first_seen_at, @first_published_at, @now, NULL, @offices)
+                 @first_seen_at, @first_published_at, @updated_at, NULL, @offices)
             ON CONFLICT (source_id, board_id, post_id) DO UPDATE SET
                 group_id           = EXCLUDED.group_id,
                 content_hash       = EXCLUDED.content_hash,
@@ -122,7 +173,7 @@ internal class StateStore(
             cmd.Parameters.AddWithValue(
                 "first_published_at",
                 (object?)vacancy.FirstPublishedAt ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("now", now);
+            cmd.Parameters.AddWithValue("updated_at", (object?)vacancy.UpdatedAt ?? DBNull.Value);
             cmd.Parameters.AddWithValue("offices", vacancy.Offices.ToArray());
 
             var affectedRows = await cmd.ExecuteNonQueryAsync(ct);

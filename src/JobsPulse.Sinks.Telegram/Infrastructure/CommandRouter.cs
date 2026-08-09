@@ -1,13 +1,18 @@
 using System.Text;
+using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Model.Domain;
+using JobsPulse.Core.Model.Domain.Extensions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
 using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
-// todo (patrofimov) check if this can be replcaed by framework api
 public sealed class CommandRouter(
     WatchService watch,
+    PollingOrchestrator orchestrator,
+    IStateStore stateStore,
+    IVacancySink sink,
     PendingSelectionStore pending,
     ILog log)
 {
@@ -22,27 +27,31 @@ public sealed class CommandRouter(
             return await HandleSelectionAsync(chatId, choice, ct);
 
         var space = text.IndexOf(' ');
-        var command = (space < 0 ? text : text[..space]).ToLowerInvariant();
+        var command = (space < 0 ? text : text[..space]).ToLowerInvariant().TrimStart('/');
         var argument = space < 0 ? string.Empty : text[(space + 1)..].Trim();
 
         // commands are received as /watch@my_bot
         var at = command.IndexOf('@');
-        if (at > 0) command = command[..at];
+        if (at > 0)
+            command = command[..at];
 
         return command switch
         {
-            "/watch" or "/add" => await HandleWatchAsync(chatId, argument, ct),
-            "/list" => RenderList(),
-            "/remove" or "/unwatch" => await HandleRemoveAsync(argument, ct),
-            "/start" or "/help" => Help(),
-            _ => "Unknown command. /help — commands list."
+            BotCommandCatalog.Watch or "add" => await HandleWatchAsync(chatId, argument, ct),
+            BotCommandCatalog.List => RenderList(),
+            BotCommandCatalog.Remove or "unwatch" => await HandleRemoveAsync(argument, ct),
+            BotCommandCatalog.ForceCycle => await HandleForceCycleAsync(ct),
+            BotCommandCatalog.ShowState => await HandleShowStateAsync(ct),
+            BotCommandCatalog.DropData => await HandleDropDataAsync(ct),
+            BotCommandCatalog.Help or "start" => BotCommandCatalog.RenderHelp(),
+            _ => "<p>Unknown command. /help — commands list.</p>"
         };
     }
 
     private async Task<string> HandleWatchAsync(string chatId, string argument, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(argument))
-            return "Specify company name: <code>/watch CompanyName</code>";
+            return "<p>Specify company name: <code>/watch CompanyName</code></p>";
 
         pending.Clear(chatId);
 
@@ -51,15 +60,12 @@ public sealed class CommandRouter(
         switch (result.Status)
         {
             case LookupStatus.AlreadyWatched:
-                return $"Already watching for <b>{MessageFormatter.Escape(result.Existing!.CompanyName)}</b>.";
+                return $"<p>Already watching for <b>{MessageFormatter.Escape(result.Existing!.CompanyName)}</b>.</p>";
 
             case LookupStatus.NotFound:
-                return $"""
-                        Could not find «{MessageFormatter.Escape(argument)}».
-
-                        Send url to career page — will try to parse its board directly:
-                        <code>/watch https://example.com/careers</code>
-                        """;
+                return $"<p>Could not find «{MessageFormatter.Escape(argument)}».</p>"
+                       + "<p>Send url to career page — will try to parse its board directly:<br>"
+                       + "<code>/watch https://example.com/careers</code></p>";
 
             case LookupStatus.Found when result.Candidates.Count == 1:
                 var only = result.Candidates[0];
@@ -76,12 +82,12 @@ public sealed class CommandRouter(
     {
         var candidates = pending.Take(chatId);
         if (candidates is null)
-            return "Nothing to select — start via <code>/watch CompanyName</code>.";
+            return "<p>Nothing to select — start via <code>/watch CompanyName</code>.</p>";
 
         if (choice < 1 || choice > candidates.Count)
         {
             pending.Set(chatId, candidates);
-            return $"Input number 1 to {candidates.Count}.";
+            return $"<p>Input number 1 to {candidates.Count}.</p>";
         }
 
         var candidate = candidates[choice - 1];
@@ -94,56 +100,112 @@ public sealed class CommandRouter(
     private async Task<string> HandleRemoveAsync(string argument, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(argument))
-            return "Specify company name: <code>/remove CompanyName</code>";
+            return "<p>Specify company name: <code>/remove CompanyName</code></p>";
 
         var removed = await watch.RemoveAsync(argument, ct);
         return removed
-            ? $"Stopped watching for <b>{MessageFormatter.Escape(argument)}</b>."
-            : $"«{MessageFormatter.Escape(argument)}» is excluded from list. /list — to inspect watched companies.";
+            ? $"<p>Stopped watching for <b>{MessageFormatter.Escape(argument)}</b>.</p>"
+            : $"<p>«{MessageFormatter.Escape(argument)}» is excluded from list.<br>/list — to inspect watched companies.</p>";
+    }
+
+    private async Task<string> HandleForceCycleAsync(CancellationToken ct)
+    {
+        var result = await orchestrator.TryRunCycleAsync(ct);
+
+        if (!result.Started)
+            return "<p>Cycle is already running — a new one is not started.</p>";
+
+        var report = result.Report;
+        return "<h6>✅ Cycle finished</h6>"
+               + $"<p>boards: <b>{report.BoardsProcessed}</b><br>"
+               + $"fetched: <b>{report.VacanciesFetched}</b><br>"
+               + $"matched: <b>{report.VacanciesMatched}</b><br>"
+               + $"changes: <b>{report.Changes}</b><br>"
+               + $"errors: <b>{report.Failed}</b></p>";
+    }
+
+    private async Task<string> HandleDropDataAsync(CancellationToken ct)
+    {
+        var purged = await stateStore.PurgeAllAsync(ct);
+        ctxLog.Warn("State dropped via bot command");
+
+        return "<h6>🧹 Data dropped</h6>"
+               + $"<p>seen vacancies: <b>{purged.SeenVacanciesDeleted}</b><br>"
+               + $"outbox: <b>{purged.OutboxDeleted}</b></p>"
+               + "<p>Next cycle will re-seed the boards.</p>";
+    }
+
+    private async Task<string> HandleShowStateAsync(CancellationToken ct)
+    {
+        var rows = await stateStore.LoadAllAsync(ct);
+        if (rows.Count == 0)
+            return "<p>Vacancies table is empty.</p>";
+
+        // Stored rows are rendered by the very same pipeline as real notifications.
+        var result = await sink.DeliverAsync(ToOutboxItems(rows), ct);
+
+        if (!result.Success)
+            return $"<p>❌ Failed to render state: {MessageFormatter.Escape(result.Error)}</p>";
+
+        return $"<p>Stored vacancies: <b>{rows.Count}</b>, open: <b>{rows.Count(r => r.IsOpen)}</b>.</p>";
+    }
+
+    private IReadOnlyList<OutboxItem> ToOutboxItems(IReadOnlyList<SeenVacancySnapshot> rows)
+    {
+        var companies = watch.List()
+            .GroupBy(e => $"{e.VacancySourceId}/{e.BoardId}", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().CompanyName, StringComparer.OrdinalIgnoreCase);
+
+        return rows
+            .Select(row =>
+            {
+                var vacancy = row.Vacancy;
+                var kind = row.IsOpen ? VacancyChangeKind.New : VacancyChangeKind.Closed;
+                var board = $"{vacancy.SourceId}/{vacancy.BoardId}";
+
+                return new OutboxItem
+                {
+                    DedupKey = vacancy.ToDedupKey(kind, vacancy.ContentHash),
+                    ChangeKind = kind,
+                    CompanyName = companies.GetValueOrDefault(board, board),
+                    Vacancy = vacancy
+                };
+            })
+            .ToList();
     }
 
     private string RenderList()
     {
         var entries = watch.List();
-        if (entries.Count == 0) return "List is empty. Add company: <code>/watch CompanyName</code>";
+        if (entries.Count == 0)
+            return "<p>List is empty. Add company: <code>/watch CompanyName</code></p>";
 
-        var sb = new StringBuilder("<b>Watching:</b>\n");
+        var sb = new StringBuilder("<h6>Watching</h6><p>");
         foreach (var e in entries)
         {
             var status = e.Enabled ? "active" : "disabled";
-            sb.Append($"\n • <b>{MessageFormatter.Escape(e.CompanyName)}</b> — {status}\n");
+            sb.Append($"• <b>{MessageFormatter.Escape(e.CompanyName)}</b> — {status}<br>");
         }
 
-        return sb.ToString();
+        return sb.Append("</p>").ToString();
     }
 
     private static string RenderCandidates(IReadOnlyList<BoardCandidate> candidates)
     {
-        var sb = new StringBuilder("Found multiple matching candidates. Choose one:\n\n");
+        var sb = new StringBuilder("<h6>Found multiple matching candidates</h6><p>");
 
         for (var i = 0; i < candidates.Count; i++)
         {
             var c = candidates[i];
-            sb.Append($"<b>{i + 1}.</b> {MessageFormatter.Escape(c.DisplayName)} — {c.JobCount} vacancies\n");
+            sb.Append($"<b>{i + 1}.</b> {MessageFormatter.Escape(c.DisplayName)} — {c.JobCount} vacancies<br>");
         }
 
-        sb.Append("\nRespond with number.");
+        sb.Append("</p><p>Respond with number.</p>");
         return sb.ToString();
     }
 
     private static string Added(WatchEntry entry, BoardCandidate candidate) =>
-        $"""
-         ✅ <b>{MessageFormatter.Escape(entry.CompanyName)}</b> is added to watchlist ({candidate.JobCount} vacancies).
-
-         First traversal will be silent — otherwise whole board will be sent immediately.
-         From now on only board changes will be tracked.
-         """;
-
-    private static string Help() =>
-        """
-        <b>Commands</b>
-        /watch &lt;CompanyName&gt; — start watching (can process career page URL instead of CompanyName)
-        /list — the list of the companies being watched
-        /remove &lt;CompanyName&gt; — stop watching
-        """;
+        $"<h6>✅ {MessageFormatter.Escape(entry.CompanyName)}</h6>"
+        + $"<p>Added to watchlist ({candidate.JobCount} vacancies).</p>"
+        + "From now on only board changes will be tracked.</p>";
 }

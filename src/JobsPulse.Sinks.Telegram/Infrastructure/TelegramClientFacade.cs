@@ -36,6 +36,22 @@ public sealed class TelegramClientFacade(ITelegramBotClient client)
         }
     }
 
+    /// <summary>Populates the bot menu, so commands are suggested by the Telegram client itself.</summary>
+    public async Task<TelegramResult> SetCommandsAsync(
+        IEnumerable<BotCommand> commands,
+        CancellationToken ct)
+    {
+        try
+        {
+            await client.SetMyCommands(commands, cancellationToken: ct);
+            return TelegramResult.Ok;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return TelegramResult.Fail(ex.Message);
+        }
+    }
+
     public async Task<IReadOnlyList<Update>> GetUpdatesAsync(
         int offset,
         int timeoutSeconds,

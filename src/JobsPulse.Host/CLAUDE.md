@@ -1,5 +1,10 @@
 ﻿# Routines
 
+## PollingWorker
+
+Runs `PollingOrchestrator.RunCycleAsync` in a loop. Between cycles it waits on `IPollingTrigger` instead of a plain
+delay, so a new watchlist entry starts a cycle immediately; overlapping runs are prevented by the orchestrator gate.
+
 ## OutboxDispatcher
 
 ### Flow:

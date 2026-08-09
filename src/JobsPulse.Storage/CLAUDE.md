@@ -47,7 +47,7 @@ Table `seen_vacancy` - last known state of every post ever observed on a board.
 - `content_hash`: change detection. Recomputed by `VacancyHasher` on write, not taken from the domain model.
 - `first_seen_at` vs `first_published_at`: ours vs the board's. `first_published_at` is `COALESCE`d on update so the
   earliest known value is never overwritten by a later/absent one from the source.
-- `updated_at`: write time of the row, not the source's `updated_at` - ATS boards bump their own timestamp on
+- `updated_at`: write time of the source's `updated_at` - ATS boards bump their own timestamp on
   cosmetic edits, which is why hashing exists at all.
 - `offices`: native `text[]`. Small, fixed, always read whole - a join table would buy nothing.
 
@@ -99,6 +99,12 @@ be enqueued without the state change that produced it, and vice versa.
 - Enqueue: per-item insert with `ON CONFLICT (dedup_key) DO NOTHING`.
 
 An empty commit short-circuits before opening a connection.
+
+### LoadAllAsync / PurgeAllAsync
+
+Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and
+title. `PurgeAllAsync` deletes `outbox` first, then `seen_vacancy`, in one transaction - after it the next cycle
+re-seeds the boards from scratch.
 
 ## OutboxStorage
 

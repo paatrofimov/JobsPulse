@@ -127,11 +127,11 @@ public class MessageFormatter(TimeProvider clock)
 
     private static string RenderGeography(OutboxItem item)
     {
-        if (item.Vacancy.Offices.Count > 0)
-            return RenderOffices(item.Vacancy.Offices);
-
         if (item.Vacancy.Location is not null)
             return Escape(item.Vacancy.Location);
+
+        if (item.Vacancy.Offices.Count > 0)
+            return RenderOffices(item.Vacancy.Offices);
 
         return "Unknown Location";
     }

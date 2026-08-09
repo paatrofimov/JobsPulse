@@ -1,3 +1,4 @@
+using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
 using Microsoft.Extensions.Options;
@@ -7,6 +8,7 @@ namespace JobsPulse.Host.Rouitines;
 
 public sealed class PollingWorker(
     PollingOrchestrator orchestrator,
+    IPollingTrigger pollingTrigger,
     IOptionsMonitor<WatchlistPollingOptions> options,
     ILog log
 ) : BackgroundService
@@ -38,7 +40,8 @@ public sealed class PollingWorker(
 
             try
             {
-                await Task.Delay(period, stoppingToken);
+                // Returns earlier than the period when a new watchlist entry forces a run.
+                await pollingTrigger.WaitAsync(period, stoppingToken);
             }
             catch (OperationCanceledException)
             {

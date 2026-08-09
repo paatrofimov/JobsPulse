@@ -36,6 +36,10 @@ public sealed class TelegramBotListener(
                 "AdminChatIds list is empty — commands will not be applied");
         }
 
+        var menu = await client.SetCommandsAsync(BotCommandCatalog.All, stoppingToken);
+        if (!menu.Success)
+            ctxLog.Warn("Failed to publish bot commands menu: {Error}", menu.Error);
+
         ctxLog.Info("Listening commands");
 
         while (!stoppingToken.IsCancellationRequested)
@@ -56,7 +60,7 @@ public sealed class TelegramBotListener(
                         opts,
                         stoppingToken);
 
-                    ctxLog.Debug($"Moved offset to {_offset} after message (prefix): '{update.Message?.Text?[..20] ?? "empty"}'");
+                    ctxLog.Debug($"Moved offset to {_offset}");
                 }
             }
             catch (OperationCanceledException)
@@ -120,7 +124,7 @@ public sealed class TelegramBotListener(
 
         await client.SendRichMessageAsync(
             chatId,
-            new InputRichMessage() { Html = reply },
+            new InputRichMessage { Html = reply },
             ct);
     }
 }
