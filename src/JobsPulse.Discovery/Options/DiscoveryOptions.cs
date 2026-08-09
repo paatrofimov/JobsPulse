@@ -9,7 +9,7 @@ public sealed class DiscoveryOptions
     public string IndexBaseUrl { get; set; } = "https://index.commoncrawl.org/";
 
     /// <summary>How many years of crawl indexes the bootstrap union covers.</summary>
-    public int BootstrapYears { get; set; } = 3;
+    public int BootstrapYears { get; set; } = 1;
 
     /// <summary>Delay before the first run, so the polling pipeline starts first.</summary>
     public int StartDelayMinutes { get; set; } = 2;

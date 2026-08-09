@@ -11,4 +11,7 @@ public interface IOutboxStorage
     Task MarkFailedAsync(IReadOnlyList<long> ids, TimeSpan retryAfter, string error, CancellationToken ct);
 
     Task MarkAsDeadLetterAsync(int maxAttempts, CancellationToken ct);
+
+    /// <summary>Deletes already delivered notifications sent before the threshold. Returns the number of rows.</summary>
+    Task<int> PurgeDeliveredAsync(DateTimeOffset sentBefore, CancellationToken ct);
 }

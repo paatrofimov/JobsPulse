@@ -119,7 +119,7 @@ An empty commit short-circuits before opening a connection.
 
 Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and
 title. `PurgeAllAsync` deletes `outbox` first, then `seen_vacancy`, in one transaction - after it the next cycle
-re-seeds the boards from scratch.
+refills the boards from scratch.
 
 ## BoardRegistryStorage
 
@@ -132,6 +132,10 @@ kind of idempotent upsert keyed by `(source_id, collection_id)`.
 Pure EF. `ReadAndLease` selects due `Pending` items and flips them to `Leased` inside a transaction, so two
 dispatchers cannot pick the same item. Terminal transitions use `ExecuteUpdate` - single round trip, and
 `Attempts + 1` is computed by the database, so concurrent failures cannot lose an increment.
+
+`PurgeDeliveredAsync` drops `Delivered` rows sent before a threshold - single `ExecuteDelete`, retention is decided
+by the caller. Dedup keys of deleted rows can never come back: they carry the content hash of a change that is
+already applied to `seen_vacancy`.
 
 Known gap: a lease has no expiry or owner. If a dispatcher dies after leasing, the item stays `Leased` forever -
 there is no reaper. `MarkAsDeadLetterAsync` only moves exhausted `Pending` items to `Dead`.

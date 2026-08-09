@@ -13,9 +13,7 @@ One `RunCycleAsync` call is one polling cycle over the whole watchlist. Driven b
 - filter matching board vacations
 - load seen vacancies from the same source and board
 - detect vacancies changes from stored seen vacancies
-- if board is traversed for the first time
-    - then mark watchlist entries as seeded
-    - else build outbox notifications
+- build outbox notifications
 - update state as a single transaction:
     - upsert new seen vacancy
     - insert closed vacancies
@@ -50,6 +48,24 @@ only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and 
 
 `EntryReport` / `CycleReport` are logging-only aggregates, nothing reads them for control flow.
 
+## EntryProcessor
+
+One board traversal: fetch → filter → detect → commit state and notifications. Shared by `PollingOrchestrator`
+(priority watchlist feed) and `RegistryPollingService` (background registry feed) - they differ only in which
+entries they feed here and what they do with a dead board, which is why `BoardMissing` is returned instead of
+being handled inside.
+
+## RegistryPollingService
+
+Secondary cycle over `board_registry`. Never touches the watchlist: boards that are already watched are filtered
+out, so the priority cycle stays the only writer for them.
+
+The registry is walked round-robin - `BoardsPerCycle` boards per cycle from an in-memory cursor (after a restart
+the walk simply starts over). Concurrency, the per-board pause and the cycle interval are separate options, so the
+background traffic does not starve the watchlist polling or the discovery crawler. Cycles never overlap
+(`TryRunCycleAsync` with a zero-timeout gate); a board answering 404 is deactivated in the registry
+(`is_active = false`) instead of being deleted.
+
 ## ChangeDetector
 
 Pure function - no IO, no clock. Takes the entry, the traversal result, the filtered vacancies and the seen map,
@@ -81,8 +97,6 @@ The closed `Vacancy` is rebuilt from the stored row, not from the source (the po
 ## VacancyHasher
 
 SHA-256 truncated to 32 hex chars. `Compute` hashes the fields listed in `VacancyExtensions.ToStringForHash`
-(title, location, url, offices) - the set that defines "the posting really changed".
-`ComputeFilterHash` does the same for `FilterSpec` and is what drives re-seeding.
 
 ## VacancyMatcher
 
@@ -109,10 +123,9 @@ Backs the bot commands - lookup, add, remove, list. Resolution itself lives in t
 - Candidates already in the watchlist are dropped, the rest are ordered `DirectSlug` first, then by `JobCount`,
   and capped at 5 - the list is rendered as a choice in a chat message.
 
-### AddAsync
+### AddAsync~~~~
 
 `Id` is `{sourceId}:{boardId}` - deterministic, so the same board cannot be added twice under different names.
-`SeededAt` is left null so the first cycle is silent.
 After a successful add `IPollingTrigger.RequestImmediateRun` wakes the polling loop - the new entry has no
 `_lastRunByEntry` stamp, so it is due at once.
 

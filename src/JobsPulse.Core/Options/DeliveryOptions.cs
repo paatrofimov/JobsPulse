@@ -17,4 +17,9 @@ public sealed class DeliveryOptions
     [Range(1, 300)] public int DispatchOutboxIntervalSeconds { get; set; } = 5;
 
     [Range(1, 20)] public int MaxAttemptsBeforeDeadLetter { get; set; } = 6;
+
+    // Delivered notifications are kept for a while for troubleshooting, then dropped
+    [Range(0, 8760)] public int DeliveredRetentionHours { get; set; } = 24;
+
+    [Range(1, 1440)] public int CleanupIntervalMinutes { get; set; } = 60;
 }

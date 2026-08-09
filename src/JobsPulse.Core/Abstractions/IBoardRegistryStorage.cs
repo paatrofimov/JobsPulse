@@ -15,6 +15,8 @@ public interface IBoardRegistryStorage
 
     Task<bool> RemoveAsync(string sourceId, string boardId, CancellationToken ct);
 
+    Task SetActiveAsync(string sourceId, string boardId, bool isActive, CancellationToken ct);
+
     Task<IReadOnlyCollection<string>> GetProcessedCrawlsAsync(string sourceId, CancellationToken ct);
 
     Task MarkCrawlProcessedAsync(CrawlIndexProgress progress, CancellationToken ct);

@@ -72,6 +72,18 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
                 ct);
     }
 
+    // Delivered letters are pure history - the dedup key of a change never comes back
+    public async Task<int> PurgeDeliveredAsync(DateTimeOffset sentBefore, CancellationToken ct)
+    {
+        await using var dbContext = await factory.CreateDbContextAsync(ct);
+
+        return await dbContext.Outbox
+            .Where(x =>
+                x.Status == PersistentOutboxStatus.Delivered &&
+                (x.SentAt == null || x.SentAt <= sentBefore))
+            .ExecuteDeleteAsync(ct);
+    }
+
     // Set 'dead' status to 'pending' letters if all attempts are exhausted
     public async Task MarkAsDeadLetterAsync(int maxAttempts, CancellationToken ct)
     {

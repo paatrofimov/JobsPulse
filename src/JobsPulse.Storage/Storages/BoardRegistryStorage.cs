@@ -123,6 +123,15 @@ internal class BoardRegistryStorage(
         return affected > 0;
     }
 
+    public async Task SetActiveAsync(string sourceId, string boardId, bool isActive, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        await db.BoardRegistry
+            .Where(x => x.SourceId == sourceId && x.BoardId == boardId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsActive, isActive), ct);
+    }
+
     public async Task<IReadOnlyCollection<string>> GetProcessedCrawlsAsync(string sourceId, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);

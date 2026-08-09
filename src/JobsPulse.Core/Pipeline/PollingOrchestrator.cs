@@ -1,6 +1,4 @@
 using JobsPulse.Core.Abstractions;
-using JobsPulse.Core.Model.Domain;
-using JobsPulse.Core.Model.Domain.Extensions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
 using Microsoft.Extensions.Options;
@@ -10,10 +8,7 @@ namespace JobsPulse.Core.Pipeline;
 
 public sealed class PollingOrchestrator(
     IWatchlistProvider watchlistProvider,
-    ISourceCatalog sourceCatalog,
-    IStateStore stateStore,
-    VacancyMatcher vacancyMatcher,
-    ChangeDetector changeDetector,
+    EntryProcessor entryProcessor,
     IOptionsMonitor<WatchlistPollingOptions> options,
     TimeProvider clock,
     ILog log)
@@ -100,99 +95,19 @@ public sealed class PollingOrchestrator(
     private async Task<EntryReport> ProcessEntryAsync(
         WatchEntry entry, Watchlist config, WatchlistPollingOptions opts, CancellationToken ct)
     {
-        var source = sourceCatalog.GetSource(entry.VacancySourceId);
-        if (source is null)
-        {
-            ctxLog.Warn("Source '{Source}' is not registered — skipping entry {Entry}", entry.VacancySourceId, entry.Id);
-            return EntryReport.Failure();
-        }
+        var result = await entryProcessor.ProcessAsync(
+            entry,
+            entry.CustomFilter ?? config.DefaultFilter,
+            new EntryProcessSettings(opts.SingleEntryProcessTimeoutSeconds, opts.DryRun),
+            ct);
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(opts.SingleEntryProcessTimeoutSeconds));
-
-        SourceTraverseResult traverse;
-        try
-        {
-            traverse = await source.TraverseTargetAsync(
-                new SourceTarget { SourceId = entry.VacancySourceId, BoardId = entry.BoardId },
-                timeout.Token);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            ctxLog.Warn("Board traversal timeout {Company} ({Board})", entry.CompanyName, entry.BoardId);
-            return EntryReport.Failure();
-        }
-
-        if (traverse.BoardMissing)
+        if (result.BoardMissing)
         {
             ctxLog.Warn("Board {Board} ({Company}) not found — disabling watchlist entry {Id}", entry.BoardId, entry.CompanyName, entry.Id);
             await watchlistProvider.SetEnabledAsync(entry.Id, false, ct);
-            return EntryReport.Failure();
         }
 
-        if (!traverse.IsComplete)
-        {
-            ctxLog.Warn("Incomplete traversal {Company}: {Error}. Changes are not applied", entry.CompanyName, traverse.Error);
-            return EntryReport.Failure();
-        }
-
-        var filter = entry.CustomFilter ?? config.DefaultFilter;
-        var matched = vacancyMatcher.Apply(traverse.Vacancies, filter);
-        var seen = await stateStore.LoadSeenAsync(entry.VacancySourceId, entry.BoardId, ct);
-
-        var detected = changeDetector.Detect(new ChangeDetector.Input
-        {
-            Entry = entry,
-            Traverse = traverse,
-            Matched = matched,
-            Seen = seen
-        });
-
-        var notifications = opts.DryRun
-            ? []
-            : BuildNotifications(detected.VacanciesChanges);
-
-        var commitResult = await stateStore.CommitAsync(new StateCommit
-        {
-            SourceId = entry.VacancySourceId,
-            BoardId = entry.BoardId,
-            Upserts = detected.VacanciesUpserts,
-            ClosedPostIds = detected.ClosedPostIds,
-            Notifications = notifications
-        }, ct);
-
-        ctxLog.Info(
-            "State commit result for company {Company}: {Upserts} seen_vacancy upserts, {Closed} seen_vacancy closures, {Notifications} outbox notification",
-            entry.CompanyName, commitResult.UpsertVacanciesAffectedRows, commitResult.CloseVacanciesAffectedRows, commitResult.OutboxAffectedRows);
-
-        if (opts.DryRun && detected.VacanciesChanges.Count > 0)
-        {
-            ctxLog.Info(
-                "DRY-RUN {Company}: would send {Count} outboxes ({New} new)",
-                entry.CompanyName, detected.VacanciesChanges.Count,
-                detected.VacanciesChanges.Count(c => c.Kind == VacancyChangeKind.New));
-        }
-
-        return new EntryReport(
-            Fetched: traverse.Vacancies.Count,
-            Matched: matched.Count,
-            Changes: detected.VacanciesChanges.Count,
-            Failed: false);
-    }
-
-    private static IReadOnlyList<OutboxItem> BuildNotifications(IReadOnlyList<VacancyChange> changes)
-    {
-        return
-        [
-            // outbox id is db auto-increment -- therefore, can be omitted
-            .. changes.Select(c => new OutboxItem
-            {
-                DedupKey = c.Vacancy.ToDedupKey(c.Kind, c.ContentHash),
-                ChangeKind = c.Kind,
-                CompanyName = c.CompanyName,
-                Vacancy = c.Vacancy,
-            })
-        ];
+        return result.Report;
     }
 
     private bool IsDue(WatchEntry entry, WatchlistPollingOptions opts, DateTimeOffset now)

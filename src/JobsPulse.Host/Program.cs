@@ -44,9 +44,13 @@ builder.Services.AddSingleton<IWatchlistProvider>(sp => new FileWatchlistProvide
     sp.GetRequiredService<ILog>()));
 
 builder.Services.AddSingleton<IPollingTrigger, PollingTrigger>();
+builder.Services.Configure<RegistryPollingOptions>(builder.Configuration.GetSection(RegistryPollingOptions.SectionName));
+
 builder.Services.AddSingleton<VacancyMatcher>();
 builder.Services.AddSingleton<ChangeDetector>();
+builder.Services.AddSingleton<EntryProcessor>();
 builder.Services.AddSingleton<PollingOrchestrator>();
+builder.Services.AddSingleton<RegistryPollingService>();
 builder.Services.AddSingleton<WatchService>();
 
 builder.Services.AddBoardDiscovery(builder.Configuration);
@@ -54,7 +58,9 @@ builder.Services.AddBoardDiscovery(builder.Configuration);
 builder.Services.AddTelegramSink(builder.Configuration);
 
 builder.Services.AddHostedService<PollingWorker>();
+builder.Services.AddHostedService<RegistryPollingWorker>();
 builder.Services.AddHostedService<OutboxDispatcher>();
+builder.Services.AddHostedService<OutboxCleanupWorker>();
 
 var host = builder.Build();
 

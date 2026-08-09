@@ -138,8 +138,7 @@ public sealed class CommandRouter(
 
         return "<h6>🧹 Data dropped</h6>"
                + $"<p>seen vacancies: <b>{purged.SeenVacanciesDeleted}</b><br>"
-               + $"outbox: <b>{purged.OutboxDeleted}</b></p>"
-               + "<p>Next cycle will re-seed the boards.</p>";
+               + $"outbox: <b>{purged.OutboxDeleted}</b></p>";
     }
 
     private async Task<string> HandleBoardsAsync(string argument, CancellationToken ct)
