@@ -18,6 +18,9 @@ public sealed class DeliveryOptions
 
     [Range(1, 20)] public int MaxAttemptsBeforeDeadLetter { get; set; } = 6;
 
+    // Vacancies published within this window are highlighted in messages
+    [Range(0, 365)] public int FreshVacancyDays { get; set; } = 3;
+
     // Delivered notifications are kept for a while for troubleshooting, then dropped
     [Range(0, 8760)] public int DeliveredRetentionHours { get; set; } = 24;
 

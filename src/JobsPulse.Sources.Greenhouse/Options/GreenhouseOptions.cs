@@ -6,7 +6,7 @@ public sealed class GreenhouseOptions
 
     public string BaseUrl { get; set; } = "https://boards-api.greenhouse.io/v1/boards/";
 
-    public bool IncludeContentOnPoll { get; set; }
+    public bool IncludeContentOnPoll { get; set; } = true;
 
     public int MaxSlugGuesses { get; set; } = 8;
 }

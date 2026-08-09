@@ -62,6 +62,112 @@ internal class StateStore(
             .ToList();
     }
 
+    public async Task<IReadOnlyList<SeenVacancySnapshot>> LoadStaleFilterAsync(
+        IReadOnlyList<string> knownFilterHashes,
+        int limit,
+        CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var rows = await db.SeenVacancies
+            .AsNoTracking()
+            .Where(x =>
+                x.ClosedAt == null &&
+                (x.FilterHash == null || !knownFilterHashes.Contains(x.FilterHash)))
+            .OrderBy(x => x.Id)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        return rows
+            .Select(x => new SeenVacancySnapshot
+            {
+                Vacancy = x.ToDomainModel(),
+                ClosedAt = x.ClosedAt
+            })
+            .ToList();
+    }
+
+    public async Task<int> DeleteAsync(IReadOnlyList<VacancyKey> keys, CancellationToken ct)
+    {
+        return await ExecuteByBoardAsync(
+            keys,
+            """
+            DELETE FROM seen_vacancy
+            WHERE source_id = @source AND board_id = @board AND post_id = ANY(@post_ids)
+            """,
+            _ => { },
+            ct);
+    }
+
+    public async Task<int> SetFilterHashAsync(IReadOnlyList<VacancyKey> keys, string filterHash, CancellationToken ct)
+    {
+        return await ExecuteByBoardAsync(
+            keys,
+            """
+            UPDATE seen_vacancy
+            SET filter_hash = @filter_hash
+            WHERE source_id = @source AND board_id = @board AND post_id = ANY(@post_ids)
+            """,
+            cmd => cmd.Parameters.AddWithValue("filter_hash", filterHash),
+            ct);
+    }
+
+    public async Task<IReadOnlyDictionary<string, int>> CountOpenByBoardAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var counts = await db.SeenVacancies
+            .AsNoTracking()
+            .Where(x => x.ClosedAt == null)
+            .GroupBy(x => new
+            {
+                x.SourceId,
+                x.BoardId
+            })
+            .Select(g => new
+            {
+                g.Key.SourceId,
+                g.Key.BoardId,
+                Count = g.Count()
+            })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(
+            x => $"{x.SourceId}/{x.BoardId}",
+            x => x.Count,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Composite keys cannot be passed as one array - statements are grouped per board instead.</summary>
+    private async Task<int> ExecuteByBoardAsync(
+        IReadOnlyList<VacancyKey> keys,
+        string sql,
+        Action<NpgsqlCommand> bindExtra,
+        CancellationToken ct)
+    {
+        if (keys.Count == 0)
+            return 0;
+
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+
+        var affectedTotal = 0;
+
+        foreach (var board in keys.GroupBy(k => (k.SourceId, k.BoardId)))
+        {
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+
+            cmd.Parameters.AddWithValue("source", board.Key.SourceId);
+            cmd.Parameters.AddWithValue("board", board.Key.BoardId);
+            cmd.Parameters.AddWithValue("post_ids", board.Select(k => k.PostId).ToArray());
+            bindExtra(cmd);
+
+            affectedTotal += await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        return affectedTotal;
+    }
+
     public async Task<PurgeResult> PurgeAllAsync(CancellationToken ct)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
@@ -133,16 +239,17 @@ internal class StateStore(
         cmd.CommandText =
             """
             INSERT INTO seen_vacancy
-                (source_id, board_id, post_id, group_id, content_hash,
+                (source_id, board_id, post_id, group_id, content_hash, filter_hash,
                  title, location, url,
                  first_seen_at, first_published_at, updated_at, closed_at, offices)
             VALUES
-                (@source, @board, @post, @group, @hash,
+                (@source, @board, @post, @group, @hash, @filter_hash,
                  @title, @location, @url,
                  @first_seen_at, @first_published_at, @updated_at, NULL, @offices)
             ON CONFLICT (source_id, board_id, post_id) DO UPDATE SET
                 group_id           = EXCLUDED.group_id,
                 content_hash       = EXCLUDED.content_hash,
+                filter_hash        = EXCLUDED.filter_hash,
                 title              = EXCLUDED.title,
                 location           = EXCLUDED.location,
                 url                = EXCLUDED.url,
@@ -166,6 +273,7 @@ internal class StateStore(
             cmd.Parameters.AddWithValue("post", vacancy.PostId);
             cmd.Parameters.AddWithValue("group", (object?)vacancy.GroupId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("hash", VacancyHasher.Compute(vacancy));
+            cmd.Parameters.AddWithValue("filter_hash", (object?)commit.FilterHash ?? DBNull.Value);
             cmd.Parameters.AddWithValue("title", vacancy.Title);
             cmd.Parameters.AddWithValue("location", (object?)vacancy.Location ?? DBNull.Value);
             cmd.Parameters.AddWithValue("url", vacancy.Url);

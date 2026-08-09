@@ -11,5 +11,16 @@ public interface IStateStore
 
     Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct);
 
+    /// <summary>Open vacancies stored under a filter hash that is no longer in use.</summary>
+    Task<IReadOnlyList<SeenVacancySnapshot>> LoadStaleFilterAsync(
+        IReadOnlyList<string> knownFilterHashes, int limit, CancellationToken ct);
+
+    Task<int> DeleteAsync(IReadOnlyList<VacancyKey> keys, CancellationToken ct);
+
+    Task<int> SetFilterHashAsync(IReadOnlyList<VacancyKey> keys, string filterHash, CancellationToken ct);
+
+    /// <summary>Number of open (matching) vacancies per '{sourceId}/{boardId}'.</summary>
+    Task<IReadOnlyDictionary<string, int>> CountOpenByBoardAsync(CancellationToken ct);
+
     Task<PurgeResult> PurgeAllAsync(CancellationToken ct);
 }

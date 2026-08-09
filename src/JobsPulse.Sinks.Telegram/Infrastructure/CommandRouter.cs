@@ -19,6 +19,7 @@ public sealed class CommandRouter(
     ILog log)
 {
     private const int BoardsPageSize = 30;
+    private const int BoardsScanLimit = 1000;
 
     private readonly ILog ctxLog = log.ForContext<CommandRouter>();
 
@@ -148,15 +149,24 @@ public sealed class CommandRouter(
             return "<p>Board registry is empty. /discover — fill it from crawl indexes.</p>";
 
         var sourceId = string.IsNullOrWhiteSpace(argument) ? null : argument;
-        var boards = await boardRegistry.ListAsync(sourceId, BoardsPageSize, ct);
+
+        // Boards are ranked by how many vacancies actually match the filter; the board size only breaks ties.
+        var matched = await stateStore.CountOpenByBoardAsync(ct);
+
+        var boards = (await boardRegistry.ListAsync(sourceId, BoardsScanLimit, ct))
+            .Select(b => (Board: b, Matched: matched.GetValueOrDefault($"{b.SourceId}/{b.BoardId}")))
+            .OrderByDescending(x => x.Matched)
+            .ThenByDescending(x => x.Board.JobCount)
+            .Take(BoardsPageSize)
+            .ToList();
 
         var sb = new StringBuilder("<h6>Board registry</h6><p>");
         foreach (var (source, count) in counts.OrderBy(c => c.Key, StringComparer.Ordinal))
             sb.Append($"{MessageFormatter.Escape(source)}: <b>{count}</b><br>");
 
-        sb.Append($"</p><p>Top {boards.Count} by vacancies count:</p><p>");
+        sb.Append($"</p><p>Top {boards.Count} by matching vacancies:</p><p>");
 
-        foreach (var board in boards)
+        foreach (var (board, matchedCount) in boards)
         {
             var title = MessageFormatter.Escape(board.DisplayName ?? board.BoardId);
             var link = board.BoardUrl is null
@@ -164,7 +174,7 @@ public sealed class CommandRouter(
                 : $"<a href=\"{MessageFormatter.Escape(board.BoardUrl)}\">{title}</a>";
 
             sb.Append($"• {link} — <code>{MessageFormatter.Escape(board.SourceId)} {MessageFormatter.Escape(board.BoardId)}</code>"
-                      + $" — {board.JobCount} vacancies<br>");
+                      + $" — <b>{matchedCount}</b> matching of {board.JobCount}<br>");
         }
 
         return sb.Append("</p>").ToString();

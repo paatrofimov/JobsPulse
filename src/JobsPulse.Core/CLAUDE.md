@@ -66,6 +66,18 @@ background traffic does not starve the watchlist polling or the discovery crawle
 (`TryRunCycleAsync` with a zero-timeout gate); a board answering 404 is deactivated in the registry
 (`is_active = false`) instead of being deleted.
 
+## FilterMaintenanceService
+
+Every `seen_vacancy` row stores `filter_hash` - the hash of the filter it passed. When the filter changes, the rows
+whose hash is no longer in use are re-evaluated: non-matching ones are deleted and the count is logged, matching
+ones just get the new hash. Newly matching vacancies are not fetched here - the next cycle finds them.
+
+Runs at the start of every `PollingWorker` iteration and short-circuits when nothing is stale.
+
+Boards with a `CustomFilter` keep their own hash, so they are not touched by a change of the default filter.
+`DescriptionAnyOf` is dropped from the filter copy used for re-evaluation - descriptions are not persisted, so that
+rule cannot be re-checked offline and would otherwise wipe everything.
+
 ## ChangeDetector
 
 Pure function - no IO, no clock. Takes the entry, the traversal result, the filtered vacancies and the seen map,

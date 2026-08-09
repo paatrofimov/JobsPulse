@@ -3,11 +3,13 @@ using System.Text;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
+using JobsPulse.Core.Options;
+using Microsoft.Extensions.Options;
 using Telegram.Bot.Types;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
-public class MessageFormatter(TimeProvider clock)
+public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOptions> deliveryOptions)
 {
     private const int SafeLimit = 30_000;
 
@@ -17,11 +19,13 @@ public class MessageFormatter(TimeProvider clock)
         var messages = new List<InputRichMessage>();
         var sb = new StringBuilder();
 
+        // The freshest vacancies come first - both the blocks and the items inside them.
         foreach (var group in batch
                      .GroupBy(x => (x.CompanyName, Kind: x.ChangeKind))
-                     .OrderBy(x => x.Key.Kind))
+                     .OrderByDescending(g => g.Max(PublishedAt) ?? DateTimeOffset.MinValue)
+                     .ThenBy(g => g.Key.Kind))
         {
-            var items = group.ToArray();
+            var items = Sorted(group);
             var block = RenderBlock(
                 group.Key.CompanyName,
                 group.Key.Kind,
@@ -89,12 +93,34 @@ public class MessageFormatter(TimeProvider clock)
 
     private string RenderVacancy(OutboxItem item)
     {
+        var fresh = IsFresh(item);
+
         var title = RenderTitleLink(item);
         var geography = RenderGeography(item);
-        var dates = RenderDate(item.Vacancy.UpdatedAt) ?? RenderDate(item.Vacancy.FirstSeenAt);
+        var dates = RenderDate(PublishedAt(item)) ?? RenderDate(item.Vacancy.FirstSeenAt);
 
-        return $"{title}<br> {geography} · {dates}";
+        var line = $"{title}<br> {geography} · {dates}";
+
+        return fresh ? $"🔥 <b>{line}</b>" : line;
     }
+
+    /// <summary>Freshness is the board's own publication date; the update date is the fallback.</summary>
+    private static DateTimeOffset? PublishedAt(OutboxItem item) =>
+        item.Vacancy.FirstPublishedAt ?? item.Vacancy.UpdatedAt;
+
+    private bool IsFresh(OutboxItem item)
+    {
+        var days = deliveryOptions.CurrentValue.FreshVacancyDays;
+        if (days <= 0)
+            return false;
+
+        return PublishedAt(item) is { } published && published >= clock.GetUtcNow().AddDays(-days);
+    }
+
+    private static IReadOnlyList<OutboxItem> Sorted(IEnumerable<OutboxItem> items) =>
+    [
+        .. items.OrderByDescending(PublishedAt).ThenBy(i => i.Vacancy.Title, StringComparer.OrdinalIgnoreCase)
+    ];
 
     private static string RenderTitleLink(OutboxItem item) =>
         $"<a href=\"{Escape(item.Vacancy.Url)}\"><b>{Escape(item.Vacancy.Title)}</b></a>";

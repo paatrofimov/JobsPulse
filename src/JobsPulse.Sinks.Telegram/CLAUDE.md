@@ -9,6 +9,12 @@ Replies longer than the Telegram message limit are split by lines before sending
 
 # Infrastructure
 
+## MessageFormatter
+
+Blocks are ordered by their freshest vacancy, and vacancies inside a block by freshness too. Freshness is
+`FirstPublishedAt`, falling back to `UpdatedAt`. Anything published within `Delivery:FreshVacancyDays` is
+highlighted with 🔥 and bold text.
+
 ## CommandRouter
 
 Responsible for implementing user scenarios business-logic. Returns HTML-response in the same markup as
@@ -26,7 +32,8 @@ Manages watchlist entries (resolving by name/url, adding/removing, enabling/disa
 - /show_state → every row of `seen_vacancy` is wrapped into `OutboxItem` (open → `New`, closed → `Closed`) and sent
   through `IVacancySink`, so the dump looks exactly like a real notification; the reply itself is only a summary
 - /drop_data → wipes `seen_vacancy` and `outbox`
-- /boards [source] → registry counts per source + top boards by vacancies count
+- /boards [source] → registry counts per source + top boards ranked by matching (stored open) vacancies, board
+  size only breaks ties
 - /board_remove &lt;source&gt; &lt;board&gt; → drops one row from the registry
 - /discover → forced full re-walk of crawl indexes; started detached (it takes hours) and reports into the log
 - /help

@@ -1,4 +1,5 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Discovery.Abstractions;
 using JobsPulse.Discovery.Models;
@@ -53,7 +54,7 @@ public sealed class BoardDiscoveryService(
         }
 
         var window = SelectCollections(collections, full, opts);
-
+        
         var report = new BoardDiscoveryReport(true, 0, 0, 0, 0, 0);
 
         foreach (var parser in boardUrlParsers)

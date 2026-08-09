@@ -79,7 +79,8 @@ public sealed class EntryProcessor(
             BoardId = entry.BoardId,
             Upserts = detected.VacanciesUpserts,
             ClosedPostIds = detected.ClosedPostIds,
-            Notifications = notifications
+            Notifications = notifications,
+            FilterHash = filter is null ? null : VacancyHasher.ComputeFilterHash(filter)
         }, ct);
 
         ctxLog.Info(

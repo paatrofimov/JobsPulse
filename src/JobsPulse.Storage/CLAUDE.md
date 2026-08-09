@@ -45,6 +45,8 @@ Table `seen_vacancy` - last known state of every post ever observed on a board.
 
 - `closed_at`: soft close. Rows are never deleted, so a vacancy that reappears keeps its `id` and `first_seen_at`,
   and history stays queryable. Reopening is just `closed_at = NULL` in the upsert.
+- `filter_hash`: which filter the row passed. `FilterMaintenanceService` re-evaluates and deletes rows whose hash
+  fell out of use, so a narrowed filter cleans the table instead of leaving stale rows behind.
 - `content_hash`: change detection. Recomputed by `VacancyHasher` on write, not taken from the domain model.
 - `first_seen_at` vs `first_published_at`: ours vs the board's. `first_published_at` is `COALESCE`d on update so the
   earliest known value is never overwritten by a later/absent one from the source.

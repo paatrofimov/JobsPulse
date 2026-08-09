@@ -49,6 +49,7 @@ builder.Services.Configure<RegistryPollingOptions>(builder.Configuration.GetSect
 builder.Services.AddSingleton<VacancyMatcher>();
 builder.Services.AddSingleton<ChangeDetector>();
 builder.Services.AddSingleton<EntryProcessor>();
+builder.Services.AddSingleton<FilterMaintenanceService>();
 builder.Services.AddSingleton<PollingOrchestrator>();
 builder.Services.AddSingleton<RegistryPollingService>();
 builder.Services.AddSingleton<WatchService>();

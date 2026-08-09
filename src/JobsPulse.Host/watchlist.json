@@ -6,6 +6,7 @@
         "backend",
         "platform",
         ".net",
+        "dotnet",
         "c#",
         "sre"
       ],
@@ -15,8 +16,13 @@
         "director",
         "recruiter"
       ],
+      "DescriptionAnyOf": [
+        ".net",
+        "dotnet",
+        "c#"
+      ],
       "LocationAnyOf": [],
-      "PostedWithinDays": 60,
+      "PostedWithinDays": 120,
       "MatchMode": "Substring"
     },
     "Entries": [

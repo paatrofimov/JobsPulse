@@ -8,6 +8,7 @@ namespace JobsPulse.Host.Rouitines;
 
 public sealed class PollingWorker(
     PollingOrchestrator orchestrator,
+    FilterMaintenanceService filterMaintenance,
     IPollingTrigger pollingTrigger,
     IOptionsMonitor<WatchlistPollingOptions> options,
     ILog log
@@ -26,6 +27,8 @@ public sealed class PollingWorker(
 
             try
             {
+                // Stored vacancies are re-evaluated first, so the cycle works against the current filter.
+                await filterMaintenance.RunAsync(stoppingToken);
                 await orchestrator.RunCycleAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

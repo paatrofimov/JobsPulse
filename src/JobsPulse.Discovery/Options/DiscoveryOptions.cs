@@ -12,7 +12,7 @@ public sealed class DiscoveryOptions
     public int BootstrapYears { get; set; } = 1;
 
     /// <summary>Delay before the first run, so the polling pipeline starts first.</summary>
-    public int StartDelayMinutes { get; set; } = 2;
+    public int StartDelayMinutes { get; set; } = 0;
 
     public int RunIntervalHours { get; set; } = 24;
 
