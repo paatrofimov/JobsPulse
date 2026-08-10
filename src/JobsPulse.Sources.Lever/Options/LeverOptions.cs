@@ -3,8 +3,14 @@ namespace JobsPulse.Sources.Lever.Options;
 public sealed class LeverOptions
 {
     public const string SectionName = "Sources:Lever";
-    
+
     public bool IncludeContentOnPoll { get; set; }
+
+    /// <summary>
+    /// Lever instances to look a site up on, in order: `global`, `eu`. A site lives on exactly one of them, so the
+    /// order only decides which one is asked first. An empty or unknown list falls back to all known instances.
+    /// </summary>
+    public IReadOnlyList<string> Regions { get; set; } = ["global", "eu"];
 
     /// <summary>Page size of the postings API (`limit`). Lever caps it at 100.</summary>
     public int PageSize { get; set; } = 100;

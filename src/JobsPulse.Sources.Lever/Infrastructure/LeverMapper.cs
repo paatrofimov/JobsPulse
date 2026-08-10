@@ -7,7 +7,7 @@ public class LeverMapper(TimeProvider clock)
 {
     public const string SourceId = "lever";
 
-    public Vacancy ToVacancy(PostingDto dto, string boardId)
+    public Vacancy ToVacancy(PostingDto dto, string boardId, LeverRegion region)
     {
         var categories = dto.Categories;
 
@@ -20,7 +20,8 @@ public class LeverMapper(TimeProvider clock)
             GroupId = null,
             Title = dto.Text?.Trim() ?? dto.Id,
             Location = categories?.Location?.Trim(),
-            Url = dto.HostedUrl ?? dto.ApplyUrl ?? $"https://jobs.lever.co/{boardId}/{dto.Id}",
+            // The url of the instance the site lives on - the global and the EU board are different hosts.
+            Url = dto.HostedUrl ?? dto.ApplyUrl ?? region.PostingUrl(boardId, dto.Id),
             // The postings API exposes only the creation time.
             UpdatedAt = null,
             FirstPublishedAt = dto.CreatedAt is { } ms ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null,

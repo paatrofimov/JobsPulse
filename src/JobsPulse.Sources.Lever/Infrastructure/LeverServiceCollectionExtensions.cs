@@ -18,8 +18,7 @@ public static class LeverServiceCollectionExtensions
 
         services.AddHttpClient(LeverPostingsClient.HttpClientName, (sp, http) =>
             {
-                // todo (patrofimov) global lever instance
-                http.BaseAddress = new Uri("https://api.eu.lever.co/v0/postings/"); // eu Lever instance 
+                // No base address: the client builds absolute urls, because the instance depends on the site.
                 http.Timeout = TimeSpan.FromSeconds(30);
                 http.DefaultRequestHeaders.UserAgent.ParseAdd("jobs-pulse-job-watcher/0.1");
             })
@@ -29,9 +28,13 @@ public static class LeverServiceCollectionExtensions
                 PooledConnectionLifetime = TimeSpan.FromMinutes(5)
             });
 
+        // Singleton: the site-to-instance mapping must outlive the transient clients that fill it.
+        services.AddSingleton<LeverRegionMap>();
+
         services.AddTransient(sp => new LeverPostingsClient(
             sp.GetRequiredService<IHttpClientFactory>()
                 .CreateLoggingClient(LeverPostingsClient.HttpClientName, sp.GetRequiredService<ILog>()),
+            sp.GetRequiredService<LeverRegionMap>(),
             sp.GetRequiredService<IOptionsMonitor<LeverOptions>>(),
             sp.GetRequiredService<ILog>()));
 

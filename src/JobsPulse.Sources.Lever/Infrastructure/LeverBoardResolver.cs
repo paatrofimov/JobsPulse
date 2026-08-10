@@ -95,16 +95,20 @@ public sealed partial class LeverBoardResolver(
         if (!postings.Success || postings.Value!.Count == 0)
             return null;
 
+        // The probe has already resolved the instance, so the board url points at the right host.
+        var region = await client.GetRegionAsync(boardId, ct) ?? client.DefaultRegion;
+
         return new BoardCandidate
         {
             SourceId = LeverMapper.SourceId,
             BoardId = boardId,
             DisplayName = boardId,
             JobCount = postings.Value!.Count,
-            BoardUrl = $"https://jobs.eu.lever.co/{boardId}"
+            BoardUrl = region.BoardUrl(boardId)
         };
     }
 
-    [GeneratedRegex(@"jobs\.eu\.lever\.co/(?<slug>[a-z0-9_-]+)", RegexOptions.IgnoreCase)]
+    /// <summary>Both instances at once - `jobs.lever.co` and `jobs.eu.lever.co`.</summary>
+    [GeneratedRegex(@"jobs\.(?:eu\.)?lever\.co/(?<slug>[a-z0-9_-]+)", RegexOptions.IgnoreCase)]
     private static partial Regex SiteUrlPattern();
 }

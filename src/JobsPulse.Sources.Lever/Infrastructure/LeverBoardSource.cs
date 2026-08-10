@@ -22,6 +22,9 @@ public sealed class LeverBoardSource(
         var pageSize = Math.Clamp(opts.PageSize, 1, 100);
         var vacancies = new List<Vacancy>();
 
+        // Cached after the first lookup, so paging does not re-probe the instances.
+        var region = await client.GetRegionAsync(target.BoardId, ct) ?? client.DefaultRegion;
+
         for (var page = 0; page < Math.Max(1, opts.MaxPages); page++)
         {
             ct.ThrowIfCancellationRequested();
@@ -40,7 +43,7 @@ public sealed class LeverBoardSource(
                 return SourceTraverseResult.Failed(response.Error ?? "unknown error");
 
             var postings = response.Value!;
-            vacancies.AddRange(postings.Select(p => mapper.ToVacancy(p, target.BoardId)));
+            vacancies.AddRange(postings.Select(p => mapper.ToVacancy(p, target.BoardId, region)));
 
             // A short page is the last one - the API has no total count.
             if (postings.Count < pageSize)
