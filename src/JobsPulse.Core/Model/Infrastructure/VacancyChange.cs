@@ -8,7 +8,10 @@ public sealed record VacancyChange
 
     public required Vacancy Vacancy { get; init; }
 
-    public required string WatchEntryId { get; init; }
+    /// <summary>The watchlist this change belongs to - one vacancy can produce one change per watchlist.</summary>
+    public required long WatchlistId { get; init; }
+
+    public required string WatchlistName { get; init; }
 
     public required string CompanyName { get; init; }
 

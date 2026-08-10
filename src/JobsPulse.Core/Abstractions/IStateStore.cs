@@ -5,7 +5,11 @@ namespace JobsPulse.Core.Abstractions;
 
 public interface IStateStore
 {
+    /// <summary>Open vacancies of a board - global state, not bound to any watchlist.</summary>
     Task<IReadOnlyDictionary<string, Vacancy>> LoadSeenAsync(string sourceId, string boardId, CancellationToken ct);
+
+    /// <summary>Match layer of a board: which watchlist reported which vacancy, and with which content.</summary>
+    Task<IReadOnlyList<WatchlistMatch>> LoadMatchesAsync(string sourceId, string boardId, CancellationToken ct);
 
     Task<IReadOnlyList<SeenVacancySnapshot>> LoadAllAsync(CancellationToken ct);
 
@@ -19,8 +23,11 @@ public interface IStateStore
 
     Task<int> SetFilterHashAsync(IReadOnlyList<VacancyKey> keys, string filterHash, CancellationToken ct);
 
-    /// <summary>Number of open (matching) vacancies per '{sourceId}/{boardId}'.</summary>
+    /// <summary>Number of open vacancies per '{sourceId}/{boardId}'.</summary>
     Task<IReadOnlyDictionary<string, int>> CountOpenByBoardAsync(CancellationToken ct);
+
+    /// <summary>Number of vacancies matching each watchlist, by watchlist id.</summary>
+    Task<IReadOnlyDictionary<long, int>> CountMatchesByWatchlistAsync(CancellationToken ct);
 
     Task<PurgeResult> PurgeAllAsync(CancellationToken ct);
 }

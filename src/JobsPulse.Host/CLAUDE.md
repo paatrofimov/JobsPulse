@@ -1,4 +1,16 @@
-﻿# Routines
+# Infrastructure
+
+## SourceCatalog
+
+Resolves `IVacancySource` / `IBoardResolver` by source id out of the keyed DI registrations.
+
+## LegacyWatchlistImporter
+
+One-shot import of the retired `watchlist.json` into PostgreSQL: runs after the migration, only while there is no
+watchlist at all, and creates a single watchlist named `default` with the old `defaultFilter` and entries. After that
+the file is dead weight - the database is the only source of truth and the bot is the only way to change it.
+
+# Routines
 
 ## PollingWorker
 

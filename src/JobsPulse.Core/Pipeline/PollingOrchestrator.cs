@@ -6,15 +6,22 @@ using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Core.Pipeline;
 
+/// <summary>
+/// The priority cycle: every board of every enabled watchlist. Boards shared by several watchlists are fetched once
+/// and evaluated against each of their filters, so adding a board to a second watchlist costs no extra traffic.
+/// </summary>
 public sealed class PollingOrchestrator(
-    IWatchlistProvider watchlistProvider,
-    EntryProcessor entryProcessor,
+    IWatchlistStorage watchlists,
+    BoardProcessor boardProcessor,
     IOptionsMonitor<WatchlistPollingOptions> options,
     TimeProvider clock,
     ILog log)
 {
     private readonly ILog ctxLog = log.ForContext<PollingOrchestrator>();
-    private readonly Dictionary<string, DateTimeOffset> _lastRunByEntry = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Scheduling state is per board, not per watchlist entry - the fetch is what has to be throttled.</summary>
+    private readonly Dictionary<string, DateTimeOffset> lastRunByBoard = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly SemaphoreSlim cycleGate = new(1, 1);
 
     public async Task<CycleReport> RunCycleAsync(CancellationToken ct)
@@ -31,7 +38,7 @@ public sealed class PollingOrchestrator(
         }
     }
 
-    /// <summary>Runs a forced cycle over every enabled entry, only if none is in progress.</summary>
+    /// <summary>Runs a forced cycle over every board of every enabled watchlist, only if none is in progress.</summary>
     public async Task<CycleRunResult> TryRunCycleAsync(CancellationToken ct)
     {
         if (!await cycleGate.WaitAsync(0, ct))
@@ -50,30 +57,44 @@ public sealed class PollingOrchestrator(
     private async Task<CycleReport> RunCycleCoreAsync(bool force, CancellationToken ct)
     {
         var opts = options.CurrentValue;
-        var current = watchlistProvider.Current;
+        var plan = WatchlistPlan.Build(await watchlists.GetEnabledAsync(ct));
         var now = clock.GetUtcNow();
 
-        // A forced cycle ignores the scheduling state entirely -- every enabled entry is processed as on start-up.
-        var due = force
-            ? current.Entries.Where(e => e.Enabled).ToList()
-            : current.Entries.Where(e => e.Enabled && IsDue(e, opts, now)).ToList();
-
-        if (due.Count == 0)
+        if (plan.Boards.Count == 0)
         {
-            ctxLog.Debug("No records for traversal (watchlist total: {Total})", current.Entries.Count);
+            ctxLog.Debug("No boards to traverse — no enabled watchlist has entries");
             return CycleReport.Empty;
         }
 
-        ctxLog.Info("Start cycle: {Due} out of {Total} records to traverse", due.Count, current.Entries.Count);
+        // A forced cycle ignores the scheduling state entirely -- every board is processed as on start-up.
+        var due = force
+            ? plan.Boards
+            : plan.Boards.Where(b => IsDue(b, opts, now)).ToList();
+
+        if (due.Count == 0)
+        {
+            ctxLog.Debug("No boards are due for traversal (watchlist boards total: {Total})", plan.Boards.Count);
+            return CycleReport.Empty;
+        }
+
+        ctxLog.Info(
+            "Start cycle: {Due} out of {Total} boards to traverse, {Filters} watchlist filters",
+            due.Count, plan.Boards.Count, plan.StorageFilters.Count);
+
+        var settings = new BoardProcessSettings(
+            opts.SingleEntryProcessTimeoutSeconds,
+            opts.DryRun,
+            plan.StorageFilters,
+            plan.StorageFilterHash);
 
         using var gate = new SemaphoreSlim(opts.MaxConcurrentEntries);
 
-        var results = await Task.WhenAll(due.Select(async entry =>
+        var results = await Task.WhenAll(due.Select(async board =>
         {
             await gate.WaitAsync(ct);
             try
             {
-                return await ProcessEntryAsync(entry, current, opts, ct);
+                return await ProcessBoardAsync(board, settings, ct);
             }
             finally
             {
@@ -81,60 +102,40 @@ public sealed class PollingOrchestrator(
             }
         }));
 
-        foreach (var entry in due)
-            _lastRunByEntry[entry.Id] = now;
+        foreach (var board in due)
+            lastRunByBoard[board.BoardKey] = now;
 
         var report = CycleReport.Aggregate(results);
         ctxLog.Info(
-            "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, matched vacancies {Matched}, changes {Changes}, errors {Failed}",
+            "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, watchlist matches {Matched}, changes {Changes}, errors {Failed}",
             report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Changes, report.Failed);
 
         return report;
     }
 
-    private async Task<EntryReport> ProcessEntryAsync(
-        WatchEntry entry, Watchlist config, WatchlistPollingOptions opts, CancellationToken ct)
+    private async Task<BoardReport> ProcessBoardAsync(
+        BoardWorkItem board,
+        BoardProcessSettings settings,
+        CancellationToken ct)
     {
-        var result = await entryProcessor.ProcessAsync(
-            entry,
-            entry.CustomFilter ?? config.DefaultFilter,
-            new EntryProcessSettings(opts.SingleEntryProcessTimeoutSeconds, opts.DryRun),
-            ct);
+        var result = await boardProcessor.ProcessAsync(board, settings, ct);
 
         if (result.BoardMissing)
         {
-            ctxLog.Warn("Board {Board} ({Company}) not found — disabling watchlist entry {Id}", entry.BoardId, entry.CompanyName, entry.Id);
-            await watchlistProvider.SetEnabledAsync(entry.Id, false, ct);
+            // The board is dead for everybody, not just for one watchlist.
+            var disabled = await watchlists.DisableBoardAsync(board.SourceId, board.BoardId, ct);
+
+            ctxLog.Warn(
+                "Board {Board} ({Company}) not found — {Count} watchlist entries disabled",
+                board.BoardKey, board.CompanyName, disabled);
         }
 
         return result.Report;
     }
 
-    private bool IsDue(WatchEntry entry, WatchlistPollingOptions opts, DateTimeOffset now)
+    private bool IsDue(BoardWorkItem board, WatchlistPollingOptions opts, DateTimeOffset now)
     {
-        var interval = TimeSpan.FromMinutes(entry.IntervalMinutesOverride ?? opts.PollingIntervalMinutes);
-        return !_lastRunByEntry.TryGetValue(entry.Id, out var last) || now - last >= interval;
+        var interval = TimeSpan.FromMinutes(board.IntervalMinutesOverride ?? opts.PollingIntervalMinutes);
+        return !lastRunByBoard.TryGetValue(board.BoardKey, out var last) || now - last >= interval;
     }
-}
-
-public readonly record struct EntryReport(int Fetched, int Matched, int Changes, bool Failed)
-{
-    public static EntryReport Failure() => new(0, 0, 0, true);
-}
-
-public readonly record struct CycleReport(
-    int BoardsProcessed,
-    int VacanciesFetched,
-    int VacanciesMatched,
-    int Changes,
-    int Failed)
-{
-    public static readonly CycleReport Empty = new(0, 0, 0, 0, 0);
-
-    public static CycleReport Aggregate(IReadOnlyList<EntryReport> entries) => new(
-        entries.Count,
-        entries.Sum(e => e.Fetched),
-        entries.Sum(e => e.Matched),
-        entries.Sum(e => e.Changes),
-        entries.Count(e => e.Failed));
 }

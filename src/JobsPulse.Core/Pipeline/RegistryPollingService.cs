@@ -9,11 +9,14 @@ namespace JobsPulse.Core.Pipeline;
 /// <summary>
 /// Secondary polling cycle over the discovered board registry. The watchlist cycle stays the priority feed -
 /// this one walks the registry round-robin, a slice per cycle, with its own throttling.
+///
+/// Registry boards belong to no watchlist, so they never notify: the cycle only keeps the global vacancy state warm
+/// (which is what makes /boards useful) and deactivates boards that stopped answering.
 /// </summary>
 public sealed class RegistryPollingService(
     IBoardRegistryStorage registry,
-    IWatchlistProvider watchlistProvider,
-    EntryProcessor entryProcessor,
+    IWatchlistStorage watchlists,
+    BoardProcessor boardProcessor,
     IOptionsMonitor<RegistryPollingOptions> options,
     ILog log)
 {
@@ -41,11 +44,18 @@ public sealed class RegistryPollingService(
     private async Task<CycleReport> RunCycleCoreAsync(CancellationToken ct)
     {
         var opts = options.CurrentValue;
-        var watchlist = watchlistProvider.Current;
+        var plan = WatchlistPlan.Build(await watchlists.GetEnabledAsync(ct));
 
-        // Boards of the watchlist are polled by the priority cycle - polling them twice would only duplicate work.
-        var watched = watchlist.Entries
-            .Select(e => $"{e.VacancySourceId}/{e.BoardId}")
+        // Without a single enabled watchlist nothing is relevant, so there is nothing to store either.
+        if (!plan.HasWatchlists)
+        {
+            ctxLog.Debug("No enabled watchlists — registry cycle is skipped");
+            return CycleReport.Empty;
+        }
+
+        // Boards of the watchlists are polled by the priority cycle - polling them twice would only duplicate work.
+        var watched = plan.Boards
+            .Select(b => b.BoardKey)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var boards = (await registry.ListAsync(null, opts.MaxRegistryBoards, ct))
@@ -64,6 +74,12 @@ public sealed class RegistryPollingService(
             "Start registry cycle: {Slice} of {Total} boards (cursor {Cursor})",
             slice.Count, boards.Count, cursor);
 
+        var settings = new BoardProcessSettings(
+            opts.SingleEntryProcessTimeoutSeconds,
+            opts.DryRun,
+            plan.StorageFilters,
+            plan.StorageFilterHash);
+
         using var gate = new SemaphoreSlim(opts.MaxConcurrentBoards);
 
         var results = await Task.WhenAll(slice.Select(async board =>
@@ -71,7 +87,7 @@ public sealed class RegistryPollingService(
             await gate.WaitAsync(ct);
             try
             {
-                return await ProcessBoardAsync(board, watchlist.DefaultFilter, opts, ct);
+                return await ProcessBoardAsync(board, settings, opts, ct);
             }
             finally
             {
@@ -81,31 +97,27 @@ public sealed class RegistryPollingService(
 
         var report = CycleReport.Aggregate(results);
         ctxLog.Info(
-            "Registry cycle finished: boards {Boards}, fetched {Fetched}, matched {Matched}, changes {Changes}, errors {Failed}",
-            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Changes, report.Failed);
+            "Registry cycle finished: boards {Boards}, fetched {Fetched}, stored {Stored}, errors {Failed}",
+            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Failed);
 
         return report;
     }
 
-    private async Task<EntryReport> ProcessBoardAsync(
+    private async Task<BoardReport> ProcessBoardAsync(
         RegisteredBoard board,
-        FilterSpec? filter,
+        BoardProcessSettings settings,
         RegistryPollingOptions opts,
         CancellationToken ct)
     {
-        var entry = new WatchEntry
+        // No subscriptions: the board is not watched, so the run produces state only.
+        var work = new BoardWorkItem
         {
-            Id = $"{board.SourceId}:{board.BoardId}",
-            VacancySourceId = board.SourceId,
+            SourceId = board.SourceId,
             BoardId = board.BoardId,
             CompanyName = board.DisplayName ?? board.BoardId
         };
 
-        var result = await entryProcessor.ProcessAsync(
-            entry,
-            filter,
-            new EntryProcessSettings(opts.SingleEntryProcessTimeoutSeconds, opts.DryRun),
-            ct);
+        var result = await boardProcessor.ProcessAsync(work, settings, ct);
 
         if (result.BoardMissing)
         {

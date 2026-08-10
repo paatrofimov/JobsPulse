@@ -19,14 +19,17 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         var messages = new List<InputRichMessage>();
         var sb = new StringBuilder();
 
-        // The freshest vacancies come first - both the blocks and the items inside them.
+        // One block per (watchlist, company, kind): the same vacancy may arrive for several watchlists at once,
+        // and the reader has to see which watchlist every notification belongs to.
         foreach (var group in batch
-                     .GroupBy(x => (x.CompanyName, Kind: x.ChangeKind))
-                     .OrderByDescending(g => g.Max(PublishedAt) ?? DateTimeOffset.MinValue)
+                     .GroupBy(x => (x.WatchlistName, x.CompanyName, Kind: x.ChangeKind))
+                     .OrderBy(g => g.Key.WatchlistName, StringComparer.OrdinalIgnoreCase)
+                     .ThenByDescending(g => g.Max(PublishedAt) ?? DateTimeOffset.MinValue)
                      .ThenBy(g => g.Key.Kind))
         {
             var items = Sorted(group);
             var block = RenderBlock(
+                group.Key.WatchlistName,
                 group.Key.CompanyName,
                 group.Key.Kind,
                 items);
@@ -40,6 +43,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
             if (block.Length > SafeLimit)
             {
                 foreach (var chunk in SplitLarge(
+                             group.Key.WatchlistName,
                              group.Key.CompanyName,
                              group.Key.Kind,
                              items))
@@ -69,6 +73,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         };
 
     private string RenderBlock(
+        string? watchlist,
         string company,
         VacancyChangeKind kind,
         IReadOnlyList<OutboxItem> items)
@@ -78,8 +83,13 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         sb.Append("<h6>")
             .Append(Header(kind))
             .Append(" · ")
-            .Append(Escape(company))
-            .Append("</h6>");
+            .Append(Escape(company));
+
+        // A state dump has no watchlist, a real notification always has one.
+        if (!string.IsNullOrWhiteSpace(watchlist))
+            sb.Append(" · ").Append(Escape(watchlist));
+
+        sb.Append("</h6>");
 
         foreach (var item in items)
         {
@@ -126,6 +136,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         $"<a href=\"{Escape(item.Vacancy.Url)}\"><b>{Escape(item.Vacancy.Title)}</b></a>";
 
     private IEnumerable<string> SplitLarge(
+        string? watchlist,
         string company,
         VacancyChangeKind kind,
         IReadOnlyList<OutboxItem> items)
@@ -135,6 +146,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         for (var i = 0; i < items.Count; i += perMessage)
         {
             yield return RenderBlock(
+                watchlist,
                 company,
                 kind,
                 items.Skip(i).Take(perMessage).ToArray());

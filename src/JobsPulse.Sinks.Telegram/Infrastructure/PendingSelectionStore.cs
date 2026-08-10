@@ -9,16 +9,17 @@ public sealed class PendingSelectionStore(TimeProvider clock)
 
     private readonly ConcurrentDictionary<string, Pending> _byChat = new(StringComparer.Ordinal);
 
-    public void Set(string chatId, IReadOnlyList<BoardCandidate> candidates) =>
-        _byChat[chatId] = new Pending(candidates, clock.GetUtcNow().Add(Lifetime));
+    /// <summary>The target watchlist is part of the dialogue state - the answer «1» carries no destination.</summary>
+    public void Set(string chatId, long watchlistId, IReadOnlyList<BoardCandidate> candidates) =>
+        _byChat[chatId] = new Pending(watchlistId, candidates, clock.GetUtcNow().Add(Lifetime));
 
-    public IReadOnlyList<BoardCandidate>? Take(string chatId)
+    public Pending? Take(string chatId)
     {
         if (!_byChat.TryRemove(chatId, out var pending)) return null;
-        return pending.ExpiresAt < clock.GetUtcNow() ? null : pending.Candidates;
+        return pending.ExpiresAt < clock.GetUtcNow() ? null : pending;
     }
 
     public void Clear(string chatId) => _byChat.TryRemove(chatId, out _);
 
-    private sealed record Pending(IReadOnlyList<BoardCandidate> Candidates, DateTimeOffset ExpiresAt);
+    public sealed record Pending(long WatchlistId, IReadOnlyList<BoardCandidate> Candidates, DateTimeOffset ExpiresAt);
 }

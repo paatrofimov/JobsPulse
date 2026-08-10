@@ -41,8 +41,10 @@ public abstract partial class IntegrationTestBase
                     Id = ind,
                     ChangeKind = changeKind.Value,
                     CompanyName = $"TEST COMPANY {companyIndex}",
+                    WatchlistId = 1,
+                    WatchlistName = "TEST WATCHLIST",
                     Vacancy = v,
-                    DedupKey = v.ToDedupKey(changeKind.Value, hash),
+                    DedupKey = v.ToDedupKey(changeKind.Value, hash, watchlistId: 1),
                 };
             })
             .ToArray();

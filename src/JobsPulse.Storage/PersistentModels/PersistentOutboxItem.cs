@@ -1,4 +1,4 @@
-﻿using JobsPulse.Core.Model.Infrastructure;
+using JobsPulse.Core.Model.Infrastructure;
 
 namespace JobsPulse.Storage.PersistentModels;
 
@@ -10,6 +10,11 @@ public class PersistentOutboxItem
 
     public required VacancyChangeKind ChangeKind { get; set; }
     public required string CompanyName { get; set; }
+
+    // Which watchlist the notification belongs to. Kept denormalized (and without a FK) on purpose: a delivered
+    // notification must stay readable after its watchlist is renamed or deleted.
+    public long? WatchlistId { get; set; }
+    public string? WatchlistName { get; set; }
 
     // can not use join instead because seen vacancies are mutable and outbox must contain immutable snapshot of sent vacancy
     public required string VacancyPayload { get; set; }

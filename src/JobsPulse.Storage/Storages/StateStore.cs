@@ -42,6 +42,38 @@ internal class StateStore(
         );
     }
 
+    public async Task<IReadOnlyList<WatchlistMatch>> LoadMatchesAsync(
+        string sourceId,
+        string boardId,
+        CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var rows = await db.WatchlistVacancies
+            .AsNoTracking()
+            .Where(x => x.SourceId == sourceId && x.BoardId == boardId)
+            .ToListAsync(ct);
+
+        return [.. rows.Select(x => x.ToDomainModel())];
+    }
+
+    public async Task<IReadOnlyDictionary<long, int>> CountMatchesByWatchlistAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var counts = await db.WatchlistVacancies
+            .AsNoTracking()
+            .GroupBy(x => x.WatchlistId)
+            .Select(g => new
+            {
+                WatchlistId = g.Key,
+                Count = g.Count()
+            })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(x => x.WatchlistId, x => x.Count);
+    }
+
     public async Task<IReadOnlyList<SeenVacancySnapshot>> LoadAllAsync(CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
@@ -174,6 +206,8 @@ internal class StateStore(
         await using var tx = await connection.BeginTransactionAsync(ct);
 
         var outboxDeleted = await ExecuteAsync(connection, tx, "DELETE FROM outbox", ct);
+        // The match layer is derived state - it is wiped with the vacancies, the watchlists themselves are config.
+        var matchesDeleted = await ExecuteAsync(connection, tx, "DELETE FROM watchlist_vacancy", ct);
         var vacanciesDeleted = await ExecuteAsync(connection, tx, "DELETE FROM seen_vacancy", ct);
         var boardsDeleted = await ExecuteAsync(connection, tx, "DELETE FROM board_registry", ct);
         var crawIndexStateDeleted = await ExecuteAsync(connection, tx, "DELETE FROM crawl_index_state", ct);
@@ -181,13 +215,15 @@ internal class StateStore(
         await tx.CommitAsync(ct);
 
         ctxLog.Warn(
-            "Purged state: {Vacancies} seen_vacancy rows, {Outbox} outbox rows, {Boards} board_registry rows, {CrawlIndexState} crawl_index_state rows",
+            "Purged state: {Vacancies} seen_vacancy rows, {Matches} watchlist_vacancy rows, {Outbox} outbox rows, "
+            + "{Boards} board_registry rows, {CrawlIndexState} crawl_index_state rows",
             vacanciesDeleted,
+            matchesDeleted,
             outboxDeleted,
             boardsDeleted,
             crawIndexStateDeleted);
 
-        return new PurgeResult(vacanciesDeleted, outboxDeleted, boardsDeleted, crawIndexStateDeleted);
+        return new PurgeResult(vacanciesDeleted, outboxDeleted, boardsDeleted, crawIndexStateDeleted, matchesDeleted);
     }
 
     private static async Task<int> ExecuteAsync(
@@ -205,9 +241,7 @@ internal class StateStore(
 
     public async Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct)
     {
-        if (commit.Upserts.Count == 0 &&
-            commit.ClosedPostIds.Count == 0 &&
-            commit.Notifications.Count == 0)
+        if (commit.IsEmpty)
             return StateCommitResult.Empty;
 
         var now = clock.GetUtcNow();
@@ -217,11 +251,16 @@ internal class StateStore(
 
         var upserts = await UpsertSeenVacanciesAsync(connection, tx, commit, now, ct);
         var closures = await CloseSeenVacanciesAsync(connection, tx, commit, now, ct);
+
+        // The match layer and the notifications must land together with the state that produced them.
+        var matches = await UpsertMatchesAsync(connection, tx, commit, now, ct);
+        matches += await RemoveMatchesAsync(connection, tx, commit, ct);
+
         var outboxes = await EnqueueOutboxAsync(connection, tx, commit, now, ct);
 
         await tx.CommitAsync(ct);
 
-        return new StateCommitResult(upserts, closures, outboxes);
+        return new StateCommitResult(upserts, closures, outboxes, matches);
     }
 
     private async Task<int> UpsertSeenVacanciesAsync(
@@ -336,6 +375,98 @@ internal class StateStore(
         return affectedRows;
     }
 
+    private async Task<int> UpsertMatchesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction tx,
+        StateCommit commit,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        if (commit.MatchUpserts.Count == 0)
+            return 0;
+
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+
+        cmd.CommandText =
+            """
+            INSERT INTO watchlist_vacancy
+                (watchlist_id, source_id, board_id, post_id, content_hash, filter_hash, matched_at)
+            VALUES
+                (@watchlist, @source, @board, @post, @hash, @filter_hash, @matched_at)
+            ON CONFLICT (watchlist_id, source_id, board_id, post_id) DO UPDATE SET
+                content_hash = EXCLUDED.content_hash,
+                filter_hash  = EXCLUDED.filter_hash,
+                matched_at   = EXCLUDED.matched_at
+            WHERE watchlist_vacancy.content_hash IS DISTINCT FROM EXCLUDED.content_hash
+               OR watchlist_vacancy.filter_hash IS DISTINCT FROM EXCLUDED.filter_hash
+            """;
+
+        var affectedRowsTotal = 0;
+
+        foreach (var match in commit.MatchUpserts)
+        {
+            cmd.Parameters.Clear();
+
+            cmd.Parameters.AddWithValue("watchlist", match.WatchlistId);
+            cmd.Parameters.AddWithValue("source", match.SourceId);
+            cmd.Parameters.AddWithValue("board", match.BoardId);
+            cmd.Parameters.AddWithValue("post", match.PostId);
+            cmd.Parameters.AddWithValue("hash", match.ContentHash);
+            cmd.Parameters.AddWithValue("filter_hash", match.FilterHash);
+            cmd.Parameters.AddWithValue("matched_at", now);
+
+            affectedRowsTotal += await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        return affectedRowsTotal;
+    }
+
+    private async Task<int> RemoveMatchesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction tx,
+        StateCommit commit,
+        CancellationToken ct)
+    {
+        if (commit.MatchRemovals.Count == 0)
+            return 0;
+
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+
+        cmd.CommandText =
+            """
+            DELETE FROM watchlist_vacancy
+            WHERE watchlist_id = @watchlist
+              AND source_id = @source
+              AND board_id = @board
+              AND post_id = ANY(@post_ids)
+            """;
+
+        var affectedRowsTotal = 0;
+
+        // One statement per watchlist - the composite key cannot be passed as a single array.
+        foreach (var group in commit.MatchRemovals.GroupBy(m => m.WatchlistId))
+        {
+            cmd.Parameters.Clear();
+
+            cmd.Parameters.AddWithValue("watchlist", group.Key);
+            cmd.Parameters.AddWithValue("source", commit.SourceId);
+            cmd.Parameters.AddWithValue("board", commit.BoardId);
+            cmd.Parameters.AddWithValue("post_ids", group.Select(m => m.PostId).ToArray());
+
+            var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+
+            ctxLog.Debug(
+                "Removed {Affected} watchlist_vacancy rows of watchlist {Watchlist} on board {Source}/{Board}",
+                affectedRows, group.Key, commit.SourceId, commit.BoardId);
+
+            affectedRowsTotal += affectedRows;
+        }
+
+        return affectedRowsTotal;
+    }
+
     private async Task<int> EnqueueOutboxAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction tx,
@@ -356,6 +487,8 @@ internal class StateStore(
                 dedup_key,
                 change_kind,
                 company_name,
+                watchlist_id,
+                watchlist_name,
                 vacancy_payload,
                 status,
                 attempts,
@@ -366,6 +499,8 @@ internal class StateStore(
                 @dedup,
                 @kind,
                 @company,
+                @watchlist,
+                @watchlist_name,
                 @payload,
                 @status,
                 0,
@@ -383,6 +518,8 @@ internal class StateStore(
             cmd.Parameters.AddWithValue("dedup", item.DedupKey);
             cmd.Parameters.AddWithValue("kind", (int)item.ChangeKind);
             cmd.Parameters.AddWithValue("company", item.CompanyName);
+            cmd.Parameters.AddWithValue("watchlist", (object?)item.WatchlistId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("watchlist_name", (object?)item.WatchlistName ?? DBNull.Value);
 
             cmd.Parameters.Add(
                 new NpgsqlParameter("payload", NpgsqlDbType.Jsonb)

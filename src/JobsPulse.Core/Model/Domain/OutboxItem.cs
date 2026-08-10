@@ -12,5 +12,10 @@ public sealed record OutboxItem
     public required string CompanyName { get; init; }
     public required Vacancy Vacancy { get; init; }
 
+    /// <summary>Which watchlist produced the notification. Null only for synthetic items (a state dump).</summary>
+    public long? WatchlistId { get; init; }
+
+    public string? WatchlistName { get; init; }
+
     public int Attempts { get; init; }
 }

@@ -22,8 +22,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 ConfigureLogging(builder);
 
-builder.Configuration.AddJsonFile("watchlist.json", optional: true, reloadOnChange: false);
-
+// The watchlist configuration lives in PostgreSQL - the config file only carries infrastructure settings.
 // Secrets: locally — user-secrets (Telegram:BotToken), prod — env variables (Telegram__BotToken).
 builder.Configuration.AddEnvironmentVariables();
 
@@ -42,17 +41,12 @@ builder.Services.AddSingleton<ISourceCatalog>(sp => new SourceCatalog(sp, regist
 
 builder.Services.AddStorage(builder.Configuration, connectionStringName: "Postgres");
 
-builder.Services.AddSingleton<IWatchlistProvider>(sp => new FileWatchlistProvider(
-    Path.Combine(AppContext.BaseDirectory, "watchlist.json"),
-    sp.GetRequiredService<TimeProvider>(),
-    sp.GetRequiredService<ILog>()));
-
 builder.Services.AddSingleton<IPollingTrigger, PollingTrigger>();
 builder.Services.Configure<RegistryPollingOptions>(builder.Configuration.GetSection(RegistryPollingOptions.SectionName));
 
 builder.Services.AddSingleton<VacancyMatcher>();
 builder.Services.AddSingleton<ChangeDetector>();
-builder.Services.AddSingleton<EntryProcessor>();
+builder.Services.AddSingleton<BoardProcessor>();
 builder.Services.AddSingleton<FilterMaintenanceService>();
 builder.Services.AddSingleton<PollingOrchestrator>();
 builder.Services.AddSingleton<RegistryPollingService>();
@@ -81,6 +75,13 @@ async Task PrepareStorage(IHost h)
         .GetRequiredService<JobsPulseDbContext>();
 
     await db.Database.MigrateAsync();
+
+    // Legacy `watchlist.json` is imported once, only into an empty installation.
+    await LegacyWatchlistImporter.ImportAsync(
+        scope.ServiceProvider.GetRequiredService<IWatchlistStorage>(),
+        Path.Combine(AppContext.BaseDirectory, "watchlist.json"),
+        scope.ServiceProvider.GetRequiredService<ILog>(),
+        CancellationToken.None);
 }
 
 void ConfigureLogging(HostApplicationBuilder hostApplicationBuilder)

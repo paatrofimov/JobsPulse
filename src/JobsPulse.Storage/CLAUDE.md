@@ -1,11 +1,12 @@
-Persistence layer: PostgreSQL + Npgsql + EF Core.
+﻿Persistence layer: PostgreSQL + Npgsql + EF Core.
 
 Implements `IStateStore` and `IOutboxStorage` from `JobsPulse.Core.Abstractions`. Domain models never leave the
 storage layer as persistent models - conversion happens in `PersistencyExtensions`.
 
-Tables: `seen_vacancy` (current state of a board), `outbox` (notifications to deliver), `board_registry`
+Tables: `seen_vacancy` (current state of a board), `watchlist_vacancy` (which watchlist a vacancy matches),
+`outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `board_registry`
 (accumulative list of boards that exist) and `crawl_index_state` (which crawl indexes were already mined).
-No `watchlist` table yet - watchlist lives outside this project.
+The watchlist configuration lives here now - there is no JSON watchlist any more.
 
 # Infrastructure
 
@@ -18,12 +19,19 @@ No `watchlist` table yet - watchlist lives outside this project.
   routines, and a `DbContext` is not thread-safe. Every method creates and disposes its own context.
 - `UseSnakeCaseNamingConvention()` (EFCore.NamingConventions) - C# `PostId` maps to `post_id` automatically, so
   hand-written SQL in `StateStore` matches the EF model without explicit column mappings.
-- `IStateStore` and `IOutboxStorage` as singletons; implementations are `internal`.
+- `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage` and `IWatchlistStorage` as singletons; implementations
+  are `internal`.
+
+## DesignTimeDbContextFactory
+
+Only for `dotnet ef migrations` - the tool needs a context without the host and without a reachable database. The
+runtime context always comes from `AddStorage`.
 
 # Migrations
 
 EF Core migrations, generated against `JobsPulseDbContext`. `20260808131550_InititalCreate` creates both tables and
-all indexes. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
+all indexes; `20260810175506_AddWatchlists` adds `watchlist`, `watchlist_entry`, `watchlist_vacancy` and the
+`watchlist_id` / `watchlist_name` columns of `outbox`. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
 
@@ -59,7 +67,11 @@ Table `seen_vacancy` - last known state of every post ever observed on a board.
 Table `outbox` - transactional outbox for notifications.
 
 - `dedup_key`: unique, `ON CONFLICT DO NOTHING` on insert. Idempotency is enforced by the database, not by the
-  pipeline, so a retried poll cannot enqueue the same change twice. Format is described in Core CLAUDE.md.
+  pipeline, so a retried poll cannot enqueue the same change twice. The watchlist id is part of the key, so one
+  vacancy can notify once per watchlist. Format is described in Core CLAUDE.md.
+- `watchlist_id` / `watchlist_name`: which watchlist produced the notification. Denormalized and without a FK on
+  purpose - a delivered message must stay readable after its watchlist is renamed or deleted. Null only for the
+  synthetic items of `/show_state`.
 - `vacancy_payload`: `jsonb` snapshot of the vacancy, serialized with `JsonSerializerOptionsFactory.Instance`.
   Deliberately not a FK to `seen_vacancy` - that row is mutable, and a notification must be delivered exactly as it
   looked when the change was detected.
@@ -75,6 +87,23 @@ Table `board_registry` - every board discovery has ever confirmed to exist.
   count but keeps `discovered_via` / `discovered_at` - the origin of a board is history, not state.
 - `discovered_via`: `common-crawl:{collection}` or `bot` - which discovery source produced the row.
 - `is_active`: reserved for boards that stop answering; nothing flips it yet.
+
+## PersistentWatchlist / PersistentWatchlistEntry
+
+Tables `watchlist` and `watchlist_entry` - the configuration. The filter is a single `jsonb` column: it is always read
+and written whole and never queried by field, so a column per rule would buy nothing. `name` is unique because the bot
+addresses a watchlist by name; entries are unique per `(watchlist_id, source_id, board_id)` and are deleted with their
+watchlist (cascade).
+
+## PersistentWatchlistVacancy
+
+Table `watchlist_vacancy` - the match layer, one row per `(watchlist, vacancy)`, unique on
+`(watchlist_id, source_id, board_id, post_id)` (the `ON CONFLICT` target) with a second index on
+`(source_id, board_id)` for the per-board read of a polling cycle.
+
+Derived state on purpose: a row is deleted the moment the vacancy stops matching that watchlist, and the history of
+what was sent stays in `outbox`. `content_hash` is the content last reported to this watchlist - the basis of the
+`Updated` change - which is why it cannot live in `seen_vacancy`, where one row is shared by all watchlists.
 
 ## PersistentCrawlIndexState
 
@@ -117,17 +146,33 @@ be enqueued without the state change that produced it, and vice versa.
 
 An empty commit short-circuits before opening a connection.
 
+### Match layer
+
+`UpsertMatchesAsync` and `RemoveMatchesAsync` run inside the same transaction as the vacancies and the outbox, so a
+notification, the state that produced it and the match row that proves it was reported land together. The upsert is
+guarded by `content_hash IS DISTINCT FROM` (plus the filter hash), so an unchanged match is a no-op; removals are one
+statement per watchlist, because the composite key cannot be passed as a single array.
+
 ### LoadAllAsync / PurgeAllAsync
 
 Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and
-title. `PurgeAllAsync` deletes `outbox` first, then `seen_vacancy`, in one transaction - after it the next cycle
-refills the boards from scratch.
+title. `PurgeAllAsync` deletes `outbox`, `watchlist_vacancy`, `seen_vacancy`, `board_registry` and `crawl_index_state` in one
+transaction - after it the next cycle refills the boards from scratch. The watchlists themselves are configuration and
+are never purged.
 
 ## BoardRegistryStorage
 
 Reads via EF, writes via raw Npgsql: the upsert needs `ON CONFLICT ... RETURNING (xmax = 0)` to tell a genuinely
 new board from a refreshed one, which is what the discovery report counts. `MarkCrawlProcessedAsync` is the same
 kind of idempotent upsert keyed by `(source_id, collection_id)`.
+
+## WatchlistStorage
+
+Pure EF: the configuration is small, read whole (`Include(Entries)`) and written one row at a time. Every mutation is
+committed immediately - the bot has no other way to change the configuration, and nothing caches it, so a change is
+visible to the next polling cycle. `CreateAsync` rejects a duplicate name case-insensitively; `AddEntryAsync` refreshes
+and re-enables an existing entry instead of inserting a second one; `DisableBoardAsync` switches off every entry
+pointing at a dead board, in every watchlist at once.
 
 ## OutboxStorage
 

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Infrastructure;
 
@@ -18,8 +18,16 @@ public static class VacancyExtensions
         return sb.ToString();
     }
 
-    public static string ToDedupKey(this Vacancy vacancy, VacancyChangeKind changeKind, string contentHash)
+    /// <summary>
+    /// The watchlist is part of the key: one vacancy legitimately produces one notification per watchlist, and
+    /// idempotency must still hold inside every one of them.
+    /// </summary>
+    public static string ToDedupKey(
+        this Vacancy vacancy,
+        VacancyChangeKind changeKind,
+        string contentHash,
+        long? watchlistId)
     {
-        return $"{vacancy.Key}|{changeKind}|{contentHash}";
+        return $"{vacancy.Key}|{watchlistId?.ToString() ?? "-"}|{changeKind}|{contentHash}";
     }
 }
