@@ -9,7 +9,7 @@ public static class LeverSiteSlug
     };
 
     /// <summary>
-    /// jobs.lever.co/{site}/{postingId}, jobs.eu.lever.co/{site}, api.lever.co/v0/postings/{site}.
+    /// jobs.lever.co/{site}/{postingId}, jobs.eu.lever.co/{site}, api.eu.lever.co/v0/postings/{site}.
     /// </summary>
     public static string? ExtractFromUrl(string url)
     {

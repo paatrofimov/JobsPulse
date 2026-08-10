@@ -208,10 +208,7 @@ internal class StateStore(
         if (commit.Upserts.Count == 0 &&
             commit.ClosedPostIds.Count == 0 &&
             commit.Notifications.Count == 0)
-        {
-            ctxLog.Warn("Nothing to commit");
             return StateCommitResult.Empty;
-        }
 
         var now = clock.GetUtcNow();
 

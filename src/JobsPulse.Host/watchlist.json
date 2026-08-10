@@ -44,6 +44,13 @@
         "Source": "greenhouse",
         "Board": "jetbrains",
         "CompanyName": "JetBrains"
+      },
+      {
+        "Id": "lever:finom",
+        "Enabled": true,
+        "Source": "lever",
+        "Board": "pnlfin",
+        "CompanyName": "Finom"
       }
     ]
   }

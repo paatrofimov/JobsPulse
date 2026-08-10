@@ -37,6 +37,8 @@ public sealed class BoardDiscoveryWorker(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var pause = TimeSpan.FromHours(Math.Max(1, options.CurrentValue.RunIntervalHours));
+
             try
             {
                 var report = await discovery.RunAsync(full, stoppingToken);
@@ -51,6 +53,7 @@ public sealed class BoardDiscoveryWorker(
             }
             catch (Exception ex)
             {
+                pause = TimeSpan.FromMinutes(Math.Max(1, options.CurrentValue.PauseOnErrorMinutes));
                 ctxLog.Error(ex, "Board discovery iteration has failed");
             }
 
@@ -59,12 +62,11 @@ public sealed class BoardDiscoveryWorker(
 
             try
             {
-                await Task.Delay(
-                    TimeSpan.FromHours(Math.Max(1, options.CurrentValue.RunIntervalHours)),
-                    stoppingToken);
+                await Task.Delay(pause, stoppingToken);
             }
             catch (OperationCanceledException)
             {
+                ctxLog.Debug("Gracefully finished with cancellation");
                 break;
             }
         }

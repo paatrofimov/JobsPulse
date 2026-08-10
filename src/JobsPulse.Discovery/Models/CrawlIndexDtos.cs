@@ -21,8 +21,4 @@ public sealed record CrawlIndexPagesDto
 public sealed record CrawlIndexRecordDto
 {
     [JsonPropertyName("url")] public string? Url { get; init; }
-
-    [JsonPropertyName("timestamp")] public string? Timestamp { get; init; }
-
-    [JsonPropertyName("status")] public string? Status { get; init; }
 }

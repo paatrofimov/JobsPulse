@@ -1,5 +1,4 @@
 using JobsPulse.Core.Abstractions;
-using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Discovery.Abstractions;
 using JobsPulse.Discovery.Models;
@@ -54,7 +53,7 @@ public sealed class BoardDiscoveryService(
         }
 
         var window = SelectCollections(collections, full, opts);
-        
+
         var report = new BoardDiscoveryReport(true, 0, 0, 0, 0, 0);
 
         foreach (var parser in boardUrlParsers)
@@ -81,10 +80,12 @@ public sealed class BoardDiscoveryService(
 
         var since = clock.GetUtcNow().Year - Math.Max(1, opts.BootstrapYears) + 1;
 
-        return collections
+        var crawlCollections = collections
             .Where(c => c.Year == 0 || c.Year >= since)
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
+
+        return crawlCollections;
     }
 
     private async Task<BoardDiscoveryReport> DiscoverSourceAsync(
@@ -107,6 +108,8 @@ public sealed class BoardDiscoveryService(
             ctxLog.Debug("No new crawl indexes for source {Source}", parser.SourceId);
             return new BoardDiscoveryReport(true, 0, 0, 0, 0, 0);
         }
+
+        ctxLog.Debug("Pending collections to crawl: {Count}. Known: {Known}, Processed: {Processed}", pending.Count, known.Count, processed.Count);
 
         var totals = new BoardDiscoveryReport(true, 0, 0, 0, 0, 0);
 
@@ -159,7 +162,10 @@ public sealed class BoardDiscoveryService(
 
             var pages = await index.GetPageCountAsync(query, ct);
             if (pages == 0)
+            {
+                ctxLog.Debug("No pages for collection {Collection} and pattern {Pattern}", collection.Id, pattern);
                 continue;
+            }
 
             if (opts.MaxPagesPerCollection > 0)
                 pages = Math.Min(pages, opts.MaxPagesPerCollection);
@@ -190,6 +196,12 @@ public sealed class BoardDiscoveryService(
 
                         return (records, fresh.ToList());
                     }
+                }
+
+                if (options.CurrentValue.PauseBetweenPagesMsec.HasValue)
+                {
+                    var pause = TimeSpan.FromMilliseconds(options.CurrentValue.PauseBetweenPagesMsec.Value);
+                    await Task.Delay(pause, ct);
                 }
             }
         }

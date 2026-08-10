@@ -3,9 +3,7 @@ namespace JobsPulse.Sources.Lever.Options;
 public sealed class LeverOptions
 {
     public const string SectionName = "Sources:Lever";
-
-    public string BaseUrl { get; set; } = "https://api.lever.co/v0/postings/";
-
+    
     public bool IncludeContentOnPoll { get; set; }
 
     /// <summary>Page size of the postings API (`limit`). Lever caps it at 100.</summary>

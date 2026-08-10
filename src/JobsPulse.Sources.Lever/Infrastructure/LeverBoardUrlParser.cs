@@ -8,9 +8,8 @@ public sealed class LeverBoardUrlParser : IBoardUrlParser
 
     public IReadOnlyList<string> IndexUrlPatterns =>
     [
-        "jobs.lever.co/*",
         "jobs.eu.lever.co/*",
-        "api.lever.co/v0/postings/*"
+        "api.eu.lever.co/v0/postings/*"
     ];
 
     public bool TryParseBoardId(string url, out string boardId)

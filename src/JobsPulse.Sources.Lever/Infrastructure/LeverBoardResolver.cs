@@ -100,10 +100,10 @@ public sealed partial class LeverBoardResolver(
             BoardId = boardId,
             DisplayName = boardId,
             JobCount = postings.Value!.Count,
-            BoardUrl = $"https://jobs.lever.co/{boardId}"
+            BoardUrl = $"https://jobs.eu.lever.co/{boardId}"
         };
     }
 
-    [GeneratedRegex(@"jobs(?:\.eu)?\.lever\.co/(?<slug>[a-z0-9_-]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"jobs\.eu\.lever\.co/(?<slug>[a-z0-9_-]+)", RegexOptions.IgnoreCase)]
     private static partial Regex SiteUrlPattern();
 }

@@ -16,6 +16,10 @@ public sealed class DiscoveryOptions
 
     public int RunIntervalHours { get; set; } = 24;
 
+    public int PauseOnErrorMinutes { get; set; } = 3;
+
+    public long? PauseBetweenPagesMsec { get; set; } = 500;
+
     /// <summary>0 - no cap. A single collection can hold hundreds of index pages.</summary>
     public int MaxPagesPerCollection { get; set; }
 
@@ -30,5 +34,5 @@ public sealed class DiscoveryOptions
 
     public int IndexRetries { get; set; } = 3;
 
-    public int IndexRetryDelaySeconds { get; set; } = 10;
+    public int IndexRetryDelaySeconds { get; set; } = 60;
 }

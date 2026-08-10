@@ -32,10 +32,10 @@ builder.Services.Configure<WatchlistPollingOptions>(builder.Configuration.GetSec
 builder.Services.Configure<DeliveryOptions>(builder.Configuration.GetSection(DeliveryOptions.SectionName));
 
 // --- New ATS sources should be added below. ---
-builder.Services.AddGreenhouseSource(builder.Configuration);
 builder.Services.AddLeverSource(builder.Configuration);
+builder.Services.AddGreenhouseSource(builder.Configuration);
 
-var registeredSources = new[] { GreenhouseMapper.SourceId, LeverMapper.SourceId };
+var registeredSources = new[] { LeverMapper.SourceId, GreenhouseMapper.SourceId };
 builder.Services.AddSingleton<ISourceCatalog>(sp => new SourceCatalog(sp, registeredSources));
 
 builder.Services.AddStorage(builder.Configuration, connectionStringName: "Postgres");

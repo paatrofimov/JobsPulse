@@ -1,4 +1,4 @@
-Lever source: postings API (`https://api.lever.co/v0/postings/{site}?mode=json`).
+Lever eu source: postings API (`https://api.eu.lever.co/v0/postings/{site}?mode=json`).
 
 Differences from Greenhouse that shape this project:
 
@@ -29,7 +29,7 @@ treated as non-existent, otherwise discovery would store every random path segme
 ## LeverBoardUrlParser
 
 `IBoardUrlParser` for crawl index mining: `jobs.lever.co/*`, `jobs.eu.lever.co/*`,
-`api.lever.co/v0/postings/*`.
+`api.eu.lever.co/v0/postings/*`.
 
 ## LeverSiteSlug
 

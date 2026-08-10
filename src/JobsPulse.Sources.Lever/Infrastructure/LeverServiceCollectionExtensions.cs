@@ -17,8 +17,8 @@ public static class LeverServiceCollectionExtensions
 
         services.AddHttpClient(LeverPostingsClient.HttpClientName, (sp, http) =>
             {
-                var opts = sp.GetRequiredService<IOptions<LeverOptions>>().Value;
-                http.BaseAddress = new Uri(opts.BaseUrl);
+                // todo (patrofimov) global lever instance
+                http.BaseAddress = new Uri("https://api.eu.lever.co/v0/postings/"); // eu Lever instance 
                 http.Timeout = TimeSpan.FromSeconds(30);
                 http.DefaultRequestHeaders.UserAgent.ParseAdd("jobs-pulse-job-watcher/0.1");
             })

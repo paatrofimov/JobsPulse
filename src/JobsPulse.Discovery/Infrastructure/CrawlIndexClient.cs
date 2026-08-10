@@ -109,8 +109,6 @@ public sealed partial class CrawlIndexClient(
             return new CrawlIndexRecord
             {
                 Url = dto.Url,
-                Timestamp = dto.Timestamp,
-                Status = dto.Status
             };
         }
         catch (JsonException)
@@ -123,7 +121,7 @@ public sealed partial class CrawlIndexClient(
     private static string BuildUrl(CrawlIndexQuery query, int? page, bool showNumPages)
     {
         var url = $"{query.Collection.CdxApiUrl}?url={Uri.EscapeDataString(query.UrlPattern)}"
-                  + "&output=json&fl=url,timestamp,status";
+                  + "&output=json&fl=url";
 
         if (!string.IsNullOrWhiteSpace(query.StatusFilter))
             url += $"&filter={Uri.EscapeDataString($"=status:{query.StatusFilter}")}";
@@ -156,6 +154,7 @@ public sealed partial class CrawlIndexClient(
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                ctxLog.Debug("Gracefully finished with cancellation");
                 throw;
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
