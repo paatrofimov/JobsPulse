@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Options;
 using Microsoft.Extensions.Options;
@@ -48,7 +49,7 @@ public sealed partial class GreenhouseBoardResolver(
         // otherwise it is career page
         try
         {
-            using var http = httpFactory.CreateClient(GreenhouseBoardClient.HttpClientName);
+            var http = httpFactory.CreateLoggingClient(GreenhouseBoardClient.HttpClientName, log);
             using var response = await http.GetAsync(url, ct);
             if (!response.IsSuccessStatusCode)
                 return null;

@@ -1,5 +1,6 @@
 using System.Net;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.SmartRecruiters.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +30,8 @@ public static class SmartRecruitersServiceCollectionExtensions
             });
 
         services.AddTransient(sp => new SmartRecruitersPostingsClient(
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient(SmartRecruitersPostingsClient.HttpClientName),
+            sp.GetRequiredService<IHttpClientFactory>()
+                .CreateLoggingClient(SmartRecruitersPostingsClient.HttpClientName, sp.GetRequiredService<ILog>()),
             sp.GetRequiredService<IOptionsMonitor<SmartRecruitersOptions>>(),
             sp.GetRequiredService<ILog>()));
 

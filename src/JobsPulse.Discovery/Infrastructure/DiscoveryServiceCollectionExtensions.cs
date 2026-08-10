@@ -1,5 +1,6 @@
 using System.Net;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Discovery.Abstractions;
 using JobsPulse.Discovery.Options;
 using JobsPulse.Discovery.Pipeline;
@@ -33,7 +34,8 @@ public static class DiscoveryServiceCollectionExtensions
             });
 
         services.AddSingleton<ICrawlIndexClient>(sp => new CrawlIndexClient(
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient(CrawlIndexClient.HttpClientName),
+            sp.GetRequiredService<IHttpClientFactory>()
+                .CreateLoggingClient(CrawlIndexClient.HttpClientName, sp.GetRequiredService<ILog>()),
             sp.GetRequiredService<IOptionsMonitor<DiscoveryOptions>>(),
             sp.GetRequiredService<ILog>()));
 

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.Ashby.Models;
 using Vostok.Logging.Abstractions;
 
@@ -12,7 +13,7 @@ namespace JobsPulse.Sources.Ashby.Infrastructure;
 /// No auth, no paging, no filtering - the endpoint takes the job board name and nothing else.
 /// </summary>
 public sealed class AshbyJobBoardClient(
-    HttpClient http,
+    LoggingHttpClient http,
     ILog log)
 {
     public const string HttpClientName = "ashby";

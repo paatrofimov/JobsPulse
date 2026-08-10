@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sources.Lever.Options;
 using Microsoft.Extensions.Options;
@@ -51,7 +52,7 @@ public sealed partial class LeverBoardResolver(
         // otherwise it is a career page
         try
         {
-            using var http = httpFactory.CreateClient(LeverPostingsClient.HttpClientName);
+            var http = httpFactory.CreateLoggingClient(LeverPostingsClient.HttpClientName, log);
             using var response = await http.GetAsync(url, ct);
             if (!response.IsSuccessStatusCode)
                 return null;

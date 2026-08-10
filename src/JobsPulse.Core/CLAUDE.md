@@ -206,6 +206,19 @@ at once.
 
 # Infrastructure
 
+## LoggingHttpClient
+
+Every outgoing http request of every project goes through this wrapper instead of a raw `HttpClient`: the request is
+logged at Debug with its full absolute url (a relative one is resolved against the base address), and the answer with
+its status code and how long it took. A failure is logged the same way, with the elapsed time and the innermost
+exception message, and then rethrown - the wrapper decides nothing, it only makes the traffic readable.
+
+The log context is `http:{name}` of the named client (`greenhouse`, `lever`, `smartrecruiters`, `ashby`,
+`common-crawl-index`), so it is always clear which integration a line belongs to.
+
+`IHttpClientFactory.CreateLoggingClient(name, log)` is how the wrapper is built - in the `Add*Source` extensions for
+the ATS clients, and inline in the resolvers that fetch a career page.
+
 ## PollingTrigger
 
 Latching wake-up signal between `WatchService` and the polling routine. `RequestImmediateRun` is a no-op when a

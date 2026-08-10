@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.SmartRecruiters.Models;
 using JobsPulse.Sources.SmartRecruiters.Options;
 using Microsoft.Extensions.Options;
@@ -15,7 +16,7 @@ namespace JobsPulse.Sources.SmartRecruiters.Infrastructure;
 /// The list endpoint carries no description, so text costs an extra request per posting.
 /// </summary>
 public sealed class SmartRecruitersPostingsClient(
-    HttpClient http,
+    LoggingHttpClient http,
     IOptionsMonitor<SmartRecruitersOptions> options,
     ILog log)
 {

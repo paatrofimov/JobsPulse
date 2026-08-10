@@ -1,5 +1,6 @@
 using System.Net;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.Lever.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +30,8 @@ public static class LeverServiceCollectionExtensions
             });
 
         services.AddTransient(sp => new LeverPostingsClient(
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient(LeverPostingsClient.HttpClientName),
+            sp.GetRequiredService<IHttpClientFactory>()
+                .CreateLoggingClient(LeverPostingsClient.HttpClientName, sp.GetRequiredService<ILog>()),
             sp.GetRequiredService<IOptionsMonitor<LeverOptions>>(),
             sp.GetRequiredService<ILog>()));
 

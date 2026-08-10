@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Discovery.Abstractions;
 using JobsPulse.Discovery.Models;
 using JobsPulse.Discovery.Options;
@@ -14,7 +15,7 @@ using Vostok.Logging.Abstractions;
 namespace JobsPulse.Discovery.Infrastructure;
 
 public sealed partial class CrawlIndexClient(
-    HttpClient http,
+    LoggingHttpClient http,
     IOptionsMonitor<DiscoveryOptions> options,
     ILog log) : ICrawlIndexClient
 {
@@ -232,7 +233,6 @@ public sealed partial class CrawlIndexClient(
 
                 HttpResponseMessage? response = null;
                 TimeSpan? retryHint = null;
-                var started = uptime.Elapsed;
 
                 try
                 {
@@ -241,7 +241,7 @@ public sealed partial class CrawlIndexClient(
 
                     if (response.IsSuccessStatusCode || !IsTransient(response.StatusCode))
                     {
-                        OnRequestSucceeded(opts, url, attempt, uptime.Elapsed - started, (int)response.StatusCode);
+                        OnRequestSucceeded(opts);
                         return response;
                     }
 
@@ -336,12 +336,9 @@ public sealed partial class CrawlIndexClient(
         ctxLog.Warn("Crawl index looks throttled - pacing penalty raised to {Penalty}", throttlePenalty);
     }
 
-    private void OnRequestSucceeded(DiscoveryOptions opts, string url, int attempt, TimeSpan elapsed, int status)
+    /// <summary>The request itself is logged by <see cref="LoggingHttpClient"/> - only the pacing state is left here.</summary>
+    private void OnRequestSucceeded(DiscoveryOptions opts)
     {
-        ctxLog.Debug(
-            "Crawl index answered HTTP {Status} in {Elapsed} on attempt {Attempt}: {Url}",
-            status, elapsed, attempt, url);
-
         if (throttlePenalty <= TimeSpan.Zero)
             return;
 

@@ -2,13 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Models;
 using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sources.Greenhouse.Infrastructure;
 
 public sealed class GreenhouseBoardClient(
-    HttpClient http,
+    LoggingHttpClient http,
     ILog log)
 {
     public const string HttpClientName = "greenhouse";

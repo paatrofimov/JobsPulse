@@ -1,5 +1,6 @@
 using System.Net;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.Ashby.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,7 +31,8 @@ public static class AshbyServiceCollectionExtensions
             });
 
         services.AddTransient(sp => new AshbyJobBoardClient(
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient(AshbyJobBoardClient.HttpClientName),
+            sp.GetRequiredService<IHttpClientFactory>()
+                .CreateLoggingClient(AshbyJobBoardClient.HttpClientName, sp.GetRequiredService<ILog>()),
             sp.GetRequiredService<ILog>()));
 
         services.AddKeyedTransient<IVacancySource, AshbyBoardSource>(AshbyMapper.SourceId);

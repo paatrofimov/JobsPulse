@@ -1,5 +1,6 @@
 using System.Net;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,7 +31,8 @@ public static class GreenhouseServiceCollectionExtensions
             });
 
         services.AddTransient(sp => new GreenhouseBoardClient(
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient(GreenhouseBoardClient.HttpClientName),
+            sp.GetRequiredService<IHttpClientFactory>()
+                .CreateLoggingClient(GreenhouseBoardClient.HttpClientName, sp.GetRequiredService<ILog>()),
             sp.GetRequiredService<ILog>()));
 
         services.AddKeyedTransient<IVacancySource, GreenhouseBoardSource>(GreenhouseMapper.SourceId);

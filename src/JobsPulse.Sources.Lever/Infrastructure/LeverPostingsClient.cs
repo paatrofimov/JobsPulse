@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Sources.Lever.Models;
 using JobsPulse.Sources.Lever.Options;
 using Microsoft.Extensions.Options;
@@ -15,7 +16,7 @@ namespace JobsPulse.Sources.Lever.Infrastructure;
 /// filters, so a narrow watchlist does not have to download the whole board.
 /// </summary>
 public sealed class LeverPostingsClient(
-    HttpClient http,
+    LoggingHttpClient http,
     IOptionsMonitor<LeverOptions> options,
     ILog log)
 {
