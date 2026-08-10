@@ -2,7 +2,7 @@ Board discovery: mines web crawl indexes (Common Crawl) for ATS board urls and f
 registry (`board_registry` table, `IBoardRegistryStorage` in Core).
 
 Nothing here knows about a particular ATS. Everything source-specific lives in the source project behind
-`IBoardUrlParser` (`GreenhouseBoardUrlParser`, `LeverBoardUrlParser`, `SmartRecruitersBoardUrlParser`), so adding a
+`IBoardUrlParser` (`GreenhouseBoardUrlParser`, `LeverBoardUrlParser`, `SmartRecruitersBoardUrlParser`, `AshbyBoardUrlParser`), so adding a
 source means adding one parser, not touching this project.
 
 # Abstractions
