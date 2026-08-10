@@ -1,8 +1,8 @@
 {
-  "Watchlist": {
-    "Version": 1,
-    "DefaultFilter": {
-      "TitleAnyOf": [
+  "watchlist": {
+    "version": 9,
+    "defaultFilter": {
+      "titleAnyOf": [
         "backend",
         "platform",
         ".net",
@@ -14,43 +14,101 @@
         "software",
         "infrastructure"
       ],
-      "TitleNoneOf": [
+      "titleNoneOf": [
         "intern",
         "manager",
         "director",
         "recruiter"
       ],
-      "DescriptionAnyOf": [
+      "locationAnyOf": [],
+      "locationNoneOf": [],
+      "descriptionAnyOf": [
         ".net",
         "dotnet",
         "c#",
         "csharp"
       ],
-      "LocationAnyOf": [],
-      "PostedWithinDays": 120,
-      "MatchMode": "Substring"
+      "postedWithinDays": 120,
+      "matchMode": "Substring",
+      "isEmpty": false
     },
-    "Entries": [
+    "entries": [
       {
-        "Id": "greenhouse:nebius",
-        "Enabled": true,
+        "id": "greenhouse:nebius",
+        "enabled": true,
         "Source": "greenhouse",
         "Board": "nebius",
-        "CompanyName": "Nebius"
+        "companyName": "Nebius"
       },
       {
-        "Id": "greenhouse:jetbrains",
-        "Enabled": true,
+        "id": "greenhouse:jetbrains",
+        "enabled": true,
         "Source": "greenhouse",
         "Board": "jetbrains",
-        "CompanyName": "JetBrains"
+        "companyName": "JetBrains"
       },
       {
-        "Id": "lever:finom",
-        "Enabled": true,
+        "id": "lever:finom",
+        "enabled": true,
         "Source": "lever",
         "Board": "pnlfin",
-        "CompanyName": "Finom"
+        "companyName": "Finom"
+      },
+      {
+        "id": "smartrecruiters:acumatica",
+        "enabled": true,
+        "Source": "smartrecruiters",
+        "Board": "acumatica",
+        "companyName": "Acumatica"
+      },
+      {
+        "id": "greenhouse:diligent",
+        "enabled": true,
+        "Source": "greenhouse",
+        "Board": "diligent",
+        "companyName": "Diligent Services"
+      },
+      {
+        "id": "greenhouse:elastic",
+        "enabled": true,
+        "Source": "greenhouse",
+        "Board": "elastic",
+        "companyName": "Elastic"
+      },
+      {
+        "id": "greenhouse:nmi",
+        "enabled": true,
+        "Source": "greenhouse",
+        "Board": "nmi",
+        "companyName": "NMI"
+      },
+      {
+        "id": "greenhouse:celonis",
+        "enabled": true,
+        "Source": "greenhouse",
+        "Board": "celonis",
+        "companyName": "Celonis"
+      },
+      {
+        "id": "greenhouse:growe",
+        "enabled": true,
+        "Source": "greenhouse",
+        "Board": "growe",
+        "companyName": "GROWE"
+      },
+      {
+        "id": "greenhouse:caylent",
+        "enabled": true,
+        "Source": "greenhouse",
+        "Board": "caylent",
+        "companyName": "Caylent"
+      },
+      {
+        "id": "greenhouse:externaljobboards",
+        "enabled": true,
+        "Source": "greenhouse",
+        "Board": "externaljobboards",
+        "companyName": "Exadel"
       }
     ]
   }
