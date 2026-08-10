@@ -4,7 +4,7 @@ public sealed class DiscoveryOptions
 {
     public const string SectionName = "Discovery";
 
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
 
     public string IndexBaseUrl { get; set; } = "https://index.commoncrawl.org/";
 
