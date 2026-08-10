@@ -30,7 +30,7 @@ public sealed class AshbyBoardSource(
 
         var published = opts.IncludeUnlisted
             ? jobs
-            : jobs.Where(j => j.IsListed).ToList();
+            : jobs.Where(j => j.IsListed == true).ToList();
 
         if (published.Count != jobs.Count)
         {

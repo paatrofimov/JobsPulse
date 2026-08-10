@@ -33,9 +33,9 @@ public class AshbyMapper(TimeProvider clock)
         var location = dto.Location?.Trim();
 
         if (string.IsNullOrWhiteSpace(location))
-            return dto.IsRemote ? "Remote" : null;
+            return dto.IsRemote is true ? "Remote" : null;
 
-        return dto.IsRemote ? $"{location} (remote)" : location;
+        return dto.IsRemote is true ? $"{location} (remote)" : location;
     }
 
     /// <summary>The primary location plus every secondary one - a single job can be open in several places.</summary>

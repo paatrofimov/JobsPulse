@@ -44,35 +44,27 @@ public sealed partial class AshbyBoardResolver(
 
     public async Task<BoardCandidate?> ResolveByUrlAsync(string url, CancellationToken ct)
     {
-        // direct link to an Ashby job board
         var direct = AshbyJobBoardSlug.ExtractFromUrl(url);
         if (direct is not null)
             return await ProbeAsync(direct, ct);
 
-        // otherwise it is a career page
-        try
+        var http = httpFactory.CreateLoggingClient(AshbyJobBoardClient.HttpClientName, log);
+
+        using var response = await http.GetAsync(url, ct);
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        var html = await response.Content.ReadAsStringAsync(ct);
+
+        foreach (Match match in BoardUrlPattern().Matches(html))
         {
-            var http = httpFactory.CreateLoggingClient(AshbyJobBoardClient.HttpClientName, log);
-            using var response = await http.GetAsync(url, ct);
-            if (!response.IsSuccessStatusCode)
-                return null;
+            var slug = match.Groups["slug"].Value;
+            if (string.IsNullOrWhiteSpace(slug))
+                continue;
 
-            var html = await response.Content.ReadAsStringAsync(ct);
-
-            foreach (Match match in BoardUrlPattern().Matches(html))
-            {
-                var slug = match.Groups["slug"].Value;
-                if (string.IsNullOrWhiteSpace(slug))
-                    continue;
-
-                var candidate = await ProbeAsync(slug.ToLowerInvariant(), ct);
-                if (candidate is not null)
-                    return candidate with { Resolution = ResolutionKind.CareersPage };
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            ctxLog.Warn(ex, "Failed to resolve page by url {Url}", url);
+            var candidate = await ProbeAsync(slug, ct);
+            if (candidate is not null)
+                return candidate with { Resolution = ResolutionKind.CareersPage };
         }
 
         return null;
@@ -82,12 +74,17 @@ public sealed partial class AshbyBoardResolver(
     {
         var board = await client.GetJobBoardAsync(boardId, ct);
 
-        // An unknown board answers 404, so a readable answer already proves the board exists - but a board without
-        // postings is worthless for discovery anyway.
-        if (!board.Success || board.Value!.Jobs.Count == 0)
+        if (!board.Success)
             return null;
 
-        var listed = board.Value!.Jobs.Count(j => j.IsListed);
+        var value = board.Value
+                    ?? throw new InvalidOperationException(
+                        $"Ashby returned success without a response body for board '{boardId}'.");
+
+        if (value.Jobs.Count == 0)
+            return null;
+
+        var listed = value.Jobs.Count(j => j.IsListed is true);
 
         return new BoardCandidate
         {

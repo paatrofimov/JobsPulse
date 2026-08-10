@@ -14,12 +14,6 @@ public sealed record JobDto
 
     [JsonPropertyName("title")] public string? Title { get; init; }
 
-    [JsonPropertyName("department")] public string? Department { get; init; }
-
-    [JsonPropertyName("team")] public string? Team { get; init; }
-
-    [JsonPropertyName("employmentType")] public string? EmploymentType { get; init; }
-
     [JsonPropertyName("location")] public string? Location { get; init; }
 
     [JsonPropertyName("secondaryLocations")] public List<JobLocationDto>? SecondaryLocations { get; init; }
@@ -28,11 +22,9 @@ public sealed record JobDto
     [JsonPropertyName("publishedAt")] public DateTimeOffset? PublishedAt { get; init; }
 
     /// <summary>An unlisted posting exists but must not be published.</summary>
-    [JsonPropertyName("isListed")] public bool IsListed { get; init; } = true;
+    [JsonPropertyName("isListed")] public bool? IsListed { get; init; } = true;
 
-    [JsonPropertyName("isRemote")] public bool IsRemote { get; init; }
-
-    [JsonPropertyName("workplaceType")] public string? WorkplaceType { get; init; }
+    [JsonPropertyName("isRemote")] public bool? IsRemote { get; init; }
 
     [JsonPropertyName("jobUrl")] public string? JobUrl { get; init; }
 
