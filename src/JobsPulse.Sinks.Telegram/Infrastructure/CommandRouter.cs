@@ -220,8 +220,10 @@ public sealed class CommandRouter(
             }
 
             ctxLog.Info(
-                "Forced discovery finished: {Collections} indexes, {Tokens} tokens, {Added} new boards",
-                report.CollectionsProcessed, report.TokensFound, report.BoardsAdded);
+                "Forced discovery finished: {Collections} indexes, {Tokens} tokens, {Added} new boards, "
+                + "{Pending} collections left pending ({Failed} failed)",
+                report.CollectionsProcessed, report.TokensFound, report.BoardsAdded,
+                report.CollectionsPending, report.CollectionsFailed);
         }
         catch (Exception ex)
         {

@@ -45,6 +45,15 @@ public sealed class BoardDiscoveryWorker(
 
                 if (!report.Started)
                     ctxLog.Info("Discovery run is skipped — another one is in progress");
+                else
+                    // Everything after a finished bootstrap is incremental: only crawl indexes that were
+                    // never processed. A failed bootstrap keeps the flag, so the union is walked again.
+                    full = false;
+
+                if (report.CollectionsPending > 0)
+                    ctxLog.Warn(
+                        "{Pending} crawl collections are left pending ({Failed} failed) — the next run continues from them",
+                        report.CollectionsPending, report.CollectionsFailed);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -56,9 +65,6 @@ public sealed class BoardDiscoveryWorker(
                 pause = TimeSpan.FromMinutes(Math.Max(1, options.CurrentValue.PauseOnErrorMinutes));
                 ctxLog.Error(ex, "Board discovery iteration has failed");
             }
-
-            // Everything after the bootstrap is incremental: only crawl indexes that were never processed.
-            full = false;
 
             try
             {
