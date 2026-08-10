@@ -23,6 +23,7 @@
     <ProjectReference Include="..\JobsPulse.Sources.Lever\JobsPulse.Sources.Lever.csproj" />
     <ProjectReference Include="..\JobsPulse.Sinks.Telegram\JobsPulse.Sinks.Telegram.csproj" />
     <ProjectReference Include="..\JobsPulse.Discovery\JobsPulse.Discovery.csproj" />
+    <ProjectReference Include="..\JobsPulse.Sources.SmartRecruiters\JobsPulse.Sources.SmartRecruiters.csproj" />
   </ItemGroup>
 
   <ItemGroup>

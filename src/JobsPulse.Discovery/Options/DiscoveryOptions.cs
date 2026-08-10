@@ -12,11 +12,9 @@ public sealed class DiscoveryOptions
     public int BootstrapYears { get; set; } = 1;
 
     /// <summary>Delay before the first run, so the polling pipeline starts first.</summary>
-    public int StartDelayMinutes { get; set; } = 0;
+    public int StartDelayMinutes { get; set; } = 5;
 
     public int RunIntervalHours { get; set; } = 24;
-
-    public int PauseOnErrorMinutes { get; set; } = 3;
 
     public long? PauseBetweenPagesMsec { get; set; } = 1000;
 
