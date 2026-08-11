@@ -11,6 +11,7 @@ using JobsPulse.Sources.Ashby.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Infrastructure;
 using JobsPulse.Sources.Lever.Infrastructure;
 using JobsPulse.Sources.SmartRecruiters.Infrastructure;
+using JobsPulse.Sources.Workday.Infrastructure;
 using JobsPulse.Storage.Infrastructure;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
@@ -37,13 +38,15 @@ builder.Services.AddLeverSource(builder.Configuration);
 builder.Services.AddGreenhouseSource(builder.Configuration);
 builder.Services.AddSmartRecruitersSource(builder.Configuration);
 builder.Services.AddAshbySource(builder.Configuration);
+builder.Services.AddWorkdaySource(builder.Configuration);
 
 var registeredSources = new[]
 {
     LeverMapper.SourceId,
     GreenhouseMapper.SourceId,
     SmartRecruitersMapper.SourceId,
-    AshbyMapper.SourceId
+    AshbyMapper.SourceId,
+    WorkdayMapper.SourceId
 };
 builder.Services.AddSingleton<ISourceCatalog>(sp => new SourceCatalog(sp, registeredSources));
 

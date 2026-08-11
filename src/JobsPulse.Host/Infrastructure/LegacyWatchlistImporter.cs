@@ -72,6 +72,8 @@ public static class LegacyWatchlistImporter
                 entry.Source!,
                 entry.Board!,
                 string.IsNullOrWhiteSpace(entry.CompanyName) ? entry.Board! : entry.CompanyName!,
+                // The legacy file predates source-specific configuration and only ever held slug-addressed boards.
+                configuration: null,
                 ct);
 
             if (added is null)

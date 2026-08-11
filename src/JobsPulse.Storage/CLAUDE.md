@@ -31,7 +31,8 @@ runtime context always comes from `AddStorage`.
 
 EF Core migrations, generated against `JobsPulseDbContext`. `20260808131550_InititalCreate` creates both tables and
 all indexes; `20260810175506_AddWatchlists` adds `watchlist`, `watchlist_entry`, `watchlist_vacancy` and the
-`watchlist_id` / `watchlist_name` columns of `outbox`. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
+`watchlist_id` / `watchlist_name` columns of `outbox`; `20260810191842_AddBoardConfiguration` adds the nullable
+`configuration` column to `watchlist_entry` and `board_registry`. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
 
@@ -87,13 +88,16 @@ Table `board_registry` - every board discovery has ever confirmed to exist.
   count but keeps `discovered_via` / `discovered_at` - the origin of a board is history, not state.
 - `discovered_via`: `common-crawl:{collection}` or `bot` - which discovery source produced the row.
 - `is_active`: reserved for boards that stop answering; nothing flips it yet.
+- `configuration`: `jsonb`, source-specific board parameters for an ATS a single slug cannot address (Workday). The
+  upsert `COALESCE`s it, so a discovery pass that could not read one does not erase the stored one.
 
 ## PersistentWatchlist / PersistentWatchlistEntry
 
 Tables `watchlist` and `watchlist_entry` - the configuration. The filter is a single `jsonb` column: it is always read
 and written whole and never queried by field, so a column per rule would buy nothing. `name` is unique because the bot
 addresses a watchlist by name; entries are unique per `(watchlist_id, source_id, board_id)` and are deleted with their
-watchlist (cascade).
+watchlist (cascade). An entry also carries the nullable `configuration` `jsonb` - the source-specific board
+parameters the resolver produced, for an ATS whose board id is not the whole address.
 
 ## PersistentWatchlistVacancy
 
@@ -171,8 +175,9 @@ kind of idempotent upsert keyed by `(source_id, collection_id)`.
 Pure EF: the configuration is small, read whole (`Include(Entries)`) and written one row at a time. Every mutation is
 committed immediately - the bot has no other way to change the configuration, and nothing caches it, so a change is
 visible to the next polling cycle. `CreateAsync` rejects a duplicate name case-insensitively; `AddEntryAsync` refreshes
-and re-enables an existing entry instead of inserting a second one; `DisableBoardAsync` switches off every entry
-pointing at a dead board, in every watchlist at once.
+and re-enables an existing entry instead of inserting a second one (and refreshes its configuration, unless the
+caller passed none - a probe that came back empty must not erase a stored address); `DisableBoardAsync` switches off
+every entry pointing at a dead board, in every watchlist at once.
 
 ## OutboxStorage
 

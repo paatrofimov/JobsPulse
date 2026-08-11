@@ -38,7 +38,12 @@ public sealed class BoardProcessor(
         try
         {
             traverse = await source.TraverseTargetAsync(
-                new SourceTarget { SourceId = board.SourceId, BoardId = board.BoardId },
+                new SourceTarget
+                {
+                    SourceId = board.SourceId,
+                    BoardId = board.BoardId,
+                    Configuration = board.Configuration
+                },
                 timeout.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

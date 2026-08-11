@@ -3,6 +3,7 @@ using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Storage.PersistentModels;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using NpgsqlTypes;
 using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Storage.Storages;
@@ -26,15 +27,17 @@ internal class BoardRegistryStorage(
         cmd.CommandText =
             """
             INSERT INTO board_registry
-                (source_id, board_id, display_name, board_url, job_count,
+                (source_id, board_id, display_name, board_url, job_count, configuration,
                  discovered_via, discovered_at, last_validated_at, is_active)
             VALUES
-                (@source, @board, @name, @url, @jobs,
+                (@source, @board, @name, @url, @jobs, @configuration,
                  @via, @discovered_at, @validated_at, @active)
             ON CONFLICT (source_id, board_id) DO UPDATE SET
                 display_name      = EXCLUDED.display_name,
                 board_url         = EXCLUDED.board_url,
                 job_count         = EXCLUDED.job_count,
+                -- A discovery pass that could not read the configuration must not erase the stored one.
+                configuration     = COALESCE(EXCLUDED.configuration, board_registry.configuration),
                 last_validated_at = EXCLUDED.last_validated_at,
                 is_active         = EXCLUDED.is_active
             RETURNING (xmax = 0) AS inserted
@@ -51,6 +54,13 @@ internal class BoardRegistryStorage(
             cmd.Parameters.AddWithValue("name", (object?)board.DisplayName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("url", (object?)board.BoardUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("jobs", board.JobCount);
+
+            cmd.Parameters.Add(
+                new NpgsqlParameter("configuration", NpgsqlDbType.Jsonb)
+                {
+                    Value = (object?)board.Configuration ?? DBNull.Value
+                });
+
             cmd.Parameters.AddWithValue("via", board.DiscoveredVia);
             cmd.Parameters.AddWithValue("discovered_at", board.DiscoveredAt);
             cmd.Parameters.AddWithValue("validated_at", (object?)board.LastValidatedAt ?? DBNull.Value);
@@ -178,6 +188,7 @@ internal class BoardRegistryStorage(
         DisplayName = row.DisplayName,
         BoardUrl = row.BoardUrl,
         JobCount = row.JobCount,
+        Configuration = row.Configuration,
         DiscoveredVia = row.DiscoveredVia,
         DiscoveredAt = row.DiscoveredAt,
         LastValidatedAt = row.LastValidatedAt,

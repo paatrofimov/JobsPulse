@@ -114,7 +114,8 @@ public sealed class RegistryPollingService(
         {
             SourceId = board.SourceId,
             BoardId = board.BoardId,
-            CompanyName = board.DisplayName ?? board.BoardId
+            CompanyName = board.DisplayName ?? board.BoardId,
+            Configuration = board.Configuration
         };
 
         var result = await boardProcessor.ProcessAsync(work, settings, ct);

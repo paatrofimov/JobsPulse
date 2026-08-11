@@ -10,6 +10,7 @@ public static class CrawlIndexFailure
     {
         OperationCanceledException => false,
         CrawlIndexUnavailableException => true,
+        ParquetIndexUnavailableException => true,
         HttpRequestException => true,
         SocketException => true,
         IOException => true,
@@ -21,6 +22,7 @@ public static class CrawlIndexFailure
     public static string Describe(Exception ex) => ex switch
     {
         CrawlIndexUnavailableException unavailable => unavailable.Failure,
+        ParquetIndexUnavailableException unavailable => unavailable.Failure,
         HttpRequestException http => $"{http.HttpRequestError}: {InnermostMessage(http)}",
         _ => $"{ex.GetType().Name}: {InnermostMessage(ex)}"
     };

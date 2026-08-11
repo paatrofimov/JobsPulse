@@ -7,6 +7,12 @@ public sealed record BoardCandidate
 
     public required string DisplayName { get; init; }
 
+    /// <summary>
+    /// Source-specific board parameters as json, for ATS that a single slug cannot address - Workday needs
+    /// host, tenant and site. Null for every source whose <see cref="BoardId"/> is the whole address.
+    /// </summary>
+    public string? Configuration { get; init; }
+
     public int JobCount { get; init; }
     public string? BoardUrl { get; init; }
 

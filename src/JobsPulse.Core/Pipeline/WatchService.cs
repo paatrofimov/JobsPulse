@@ -82,16 +82,19 @@ public sealed class WatchService(
 
         var name = companyName?.Trim();
 
+        // A probe is what fills in the source-specific configuration, so it also runs when the name is explicit.
+        var candidate = await ProbeSafeAsync(sourceId, boardId, ct);
+
         if (string.IsNullOrWhiteSpace(name))
         {
-            var candidate = await ProbeSafeAsync(sourceId, boardId, ct);
             if (candidate is null)
                 return BoardAddResult.BoardNotFound(boardId);
 
             name = candidate.DisplayName;
         }
 
-        var entry = await watchlists.AddEntryAsync(watchlist.Id, sourceId, boardId, name!, ct);
+        var entry = await watchlists.AddEntryAsync(
+            watchlist.Id, sourceId, boardId, name!, candidate?.Configuration, ct);
         if (entry is null)
             return BoardAddResult.WatchlistNotFound();
 
@@ -111,7 +114,7 @@ public sealed class WatchService(
         CancellationToken ct)
     {
         var entry = await watchlists.AddEntryAsync(
-            watchlist.Id, candidate.SourceId, candidate.BoardId, candidate.DisplayName, ct);
+            watchlist.Id, candidate.SourceId, candidate.BoardId, candidate.DisplayName, candidate.Configuration, ct);
 
         if (entry is null)
             return null;

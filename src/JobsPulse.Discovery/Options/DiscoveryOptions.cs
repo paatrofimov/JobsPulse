@@ -6,6 +6,11 @@ public sealed class DiscoveryOptions
 
     public bool Enabled { get; set; } = false;
 
+    /// <summary>Which index readers a run may use. The cdx http api is opt-in - it throttles too hard to be a default.</summary>
+    public DiscoveryMode Mode { get; set; } = DiscoveryMode.Parquet;
+
+    public ParquetIndexOptions Parquet { get; set; } = new();
+
     public string IndexBaseUrl { get; set; } = "https://index.commoncrawl.org/";
 
     /// <summary>How many years of crawl indexes the bootstrap union covers.</summary>

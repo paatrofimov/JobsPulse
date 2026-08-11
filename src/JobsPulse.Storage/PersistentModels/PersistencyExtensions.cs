@@ -71,6 +71,7 @@ public static class PersistencyExtensions
             VacancySourceId = persistentEntry.SourceId,
             BoardId = persistentEntry.BoardId,
             CompanyName = persistentEntry.CompanyName,
+            Configuration = persistentEntry.Configuration,
             Enabled = persistentEntry.Enabled
         };
     }

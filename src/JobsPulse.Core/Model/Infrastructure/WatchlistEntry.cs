@@ -13,6 +13,9 @@ public sealed record WatchlistEntry
 
     public required string CompanyName { get; init; }
 
+    /// <summary>Source-specific board parameters as json - see <see cref="BoardCandidate.Configuration"/>.</summary>
+    public string? Configuration { get; init; }
+
     public bool Enabled { get; init; } = true;
 
     public string BoardKey => $"{VacancySourceId}/{BoardId}";

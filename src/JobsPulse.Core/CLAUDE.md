@@ -178,8 +178,11 @@ Backs the bot commands: watchlist CRUD (create, delete, enable/disable, filter, 
 PostgreSQL the moment the command returns. Resolution itself lives in the source projects (`IBoardResolver`); this
 service only orchestrates and filters.
 
-A watchlist is addressed by numeric id or by name (`ResolveAsync`). `AddBoardAsync` probes the ATS to fill the company
-name when it is not given, so a typo in a board id is rejected instead of being polled forever.
+A watchlist is addressed by numeric id or by name (`ResolveAsync`). `AddBoardAsync` probes the ATS - to fill the
+company name when it is not given, so a typo in a board id is rejected instead of being polled forever, and to pick up
+the source-specific configuration, which is why the probe runs even when the name was explicit. A board whose probe
+fails is still added when a name was given; it simply has no configuration, and a source that needs one falls back to
+parsing the board id.
 
 ### Flow:
 
@@ -213,8 +216,11 @@ logged at Debug with its full absolute url (a relative one is resolved against t
 its status code and how long it took. A failure is logged the same way, with the elapsed time and the innermost
 exception message, and then rethrown - the wrapper decides nothing, it only makes the traffic readable.
 
-The log context is `http:{name}` of the named client (`greenhouse`, `lever`, `smartrecruiters`, `ashby`,
-`common-crawl-index`), so it is always clear which integration a line belongs to.
+`GetAsync` covers every ATS whose list endpoint is a GET; `PostAsync` exists for Workday, whose careers backend takes
+its paging in a json body.
+
+The log context is `http:{name}` of the named client (`greenhouse`, `lever`, `smartrecruiters`, `ashby`, `workday`,
+`common-crawl-index`, `common-crawl-data`), so it is always clear which integration a line belongs to.
 
 `IHttpClientFactory.CreateLoggingClient(name, log)` is how the wrapper is built - in the `Add*Source` extensions for
 the ATS clients, and inline in the resolvers that fetch a career page.
@@ -286,6 +292,17 @@ Case-insensitive
 ## BoardCandidate
 
 Showed to user on search by name.
+
+## Board configuration
+
+`BoardCandidate`, `WatchlistEntry`, `RegisteredBoard`, `BoardWorkItem` and `SourceTarget` all carry a nullable
+`Configuration` - source-specific board parameters as json, stored in a `jsonb` column on `watchlist_entry` and
+`board_registry`. It is null for every ATS whose `BoardId` is the whole address, and exists because Workday needs a
+host, a tenant and a site; the resolver fills it, and the source reads it instead of parsing the board id.
+
+The board id stays the single identity string every unique index is built on - for Workday it is the canonical
+`{host}/{tenant}/{site}` rendering of the configuration, so `/boards`, the logs and outbox dedup keys stay readable
+and a board can still be added by hand.
 
 ## Watchlist / WatchlistEntry
 

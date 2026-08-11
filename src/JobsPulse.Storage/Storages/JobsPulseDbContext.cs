@@ -44,6 +44,9 @@ public class JobsPulseDbContext(
                 x.BoardId
             })
             .IsUnique();
+
+        entity.Property(x => x.Configuration)
+            .HasColumnType("jsonb");
     }
 
     private static void ConfigureCrawlIndexState(ModelBuilder modelBuilder)
@@ -167,6 +170,9 @@ public class JobsPulseDbContext(
                 x.BoardId
             })
             .IsUnique();
+
+        entity.Property(x => x.Configuration)
+            .HasColumnType("jsonb");
     }
 
     private static void ConfigureWatchlistVacancy(ModelBuilder modelBuilder)

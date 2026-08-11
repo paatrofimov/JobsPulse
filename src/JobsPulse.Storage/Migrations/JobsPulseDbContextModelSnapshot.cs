@@ -40,6 +40,10 @@ namespace JobsPulse.Storage.Migrations
                         .HasColumnType("text")
                         .HasColumnName("board_url");
 
+                    b.Property<string>("Configuration")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration");
+
                     b.Property<DateTimeOffset>("DiscoveredAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("discovered_at");
@@ -347,6 +351,10 @@ namespace JobsPulse.Storage.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("company_name");
+
+                    b.Property<string>("Configuration")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")

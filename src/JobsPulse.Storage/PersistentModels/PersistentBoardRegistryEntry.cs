@@ -9,6 +9,10 @@ public class PersistentBoardRegistryEntry
 
     public string? DisplayName { get; set; }
     public string? BoardUrl { get; set; }
+
+    /// <summary>Source-specific board parameters as json - Workday needs host, tenant and site.</summary>
+    public string? Configuration { get; set; }
+
     public int JobCount { get; set; }
 
     public required string DiscoveredVia { get; set; }

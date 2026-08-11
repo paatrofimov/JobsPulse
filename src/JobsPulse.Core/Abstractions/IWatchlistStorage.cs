@@ -30,7 +30,12 @@ public interface IWatchlistStorage
 
     /// <summary>Adds a board to a watchlist, or refreshes the company name of the existing entry.</summary>
     Task<WatchlistEntry?> AddEntryAsync(
-        long watchlistId, string sourceId, string boardId, string companyName, CancellationToken ct);
+        long watchlistId,
+        string sourceId,
+        string boardId,
+        string companyName,
+        string? configuration,
+        CancellationToken ct);
 
     Task<bool> RemoveEntryAsync(long entryId, CancellationToken ct);
 

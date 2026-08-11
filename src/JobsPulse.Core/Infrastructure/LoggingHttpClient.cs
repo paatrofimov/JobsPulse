@@ -55,6 +55,36 @@ public sealed class LoggingHttpClient(HttpClient http, ILog log, string name)
         }
     }
 
+    /// <summary>For the ATS whose list endpoint is a POST with a json body - Workday's careers backend.</summary>
+    public async Task<HttpResponseMessage> PostAsync(string url, HttpContent content, CancellationToken ct)
+    {
+        var absolute = Absolute(url);
+
+        ctxLog.Debug("POST {Url}", absolute);
+
+        var watch = Stopwatch.StartNew();
+
+        try
+        {
+            var response = await http.PostAsync(url, content, ct);
+
+            ctxLog.Debug(
+                "POST {Url} answered HTTP {Status} in {Elapsed} ms",
+                absolute, (int)response.StatusCode, watch.ElapsedMilliseconds);
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            ctxLog.Debug(
+                ex,
+                "POST {Url} has failed after {Elapsed} ms: {Error}",
+                absolute, watch.ElapsedMilliseconds, Describe(ex));
+
+            throw;
+        }
+    }
+
     private string Absolute(string url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))

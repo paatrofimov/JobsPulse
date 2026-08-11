@@ -33,11 +33,37 @@ public static class DiscoveryServiceCollectionExtensions
                 PooledConnectionLifetime = TimeSpan.FromMinutes(5)
             });
 
+        // Only the path listings go through http - the parquet files themselves are read by DuckDB in place.
+        services.AddHttpClient(CrawlIndexFileCatalog.HttpClientName, (sp, http) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<DiscoveryOptions>>().Value;
+                http.BaseAddress = new Uri(opts.Parquet.DataBaseUrl);
+                http.Timeout = TimeSpan.FromMinutes(2);
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("jobs-pulse-job-watcher/0.1");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AutomaticDecompression = DecompressionMethods.All,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+            });
+
         services.AddSingleton<ICrawlIndexClient>(sp => new CrawlIndexClient(
             sp.GetRequiredService<IHttpClientFactory>()
                 .CreateLoggingClient(CrawlIndexClient.HttpClientName, sp.GetRequiredService<ILog>()),
             sp.GetRequiredService<IOptionsMonitor<DiscoveryOptions>>(),
             sp.GetRequiredService<ILog>()));
+
+        services.AddSingleton<ICrawlIndexFileCatalog>(sp => new CrawlIndexFileCatalog(
+            sp.GetRequiredService<IHttpClientFactory>()
+                .CreateLoggingClient(CrawlIndexFileCatalog.HttpClientName, sp.GetRequiredService<ILog>()),
+            sp.GetRequiredService<IOptionsMonitor<DiscoveryOptions>>(),
+            sp.GetRequiredService<ILog>()));
+
+        services.AddSingleton<IParquetIndexClient, ParquetIndexClient>();
+
+        services.AddSingleton<BoardTokenSink>();
+        services.AddSingleton<ParquetIndexDiscoveryPass>();
+        services.AddSingleton<HttpIndexDiscoveryPass>();
 
         services.AddSingleton<IBoardDiscoveryService, BoardDiscoveryService>();
         services.AddHostedService<BoardDiscoveryWorker>();

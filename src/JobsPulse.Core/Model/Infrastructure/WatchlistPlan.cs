@@ -54,6 +54,8 @@ public sealed record WatchlistPlan
                     SourceId = entry.VacancySourceId,
                     BoardId = entry.BoardId,
                     CompanyName = existing?.CompanyName ?? entry.CompanyName,
+                    // The same board in two watchlists carries the same configuration - either entry answers.
+                    Configuration = existing?.Configuration ?? entry.Configuration,
                     Subscriptions = [.. subscriptions, subscription with { CompanyName = entry.CompanyName }],
                     IntervalMinutesOverride = Min(existing?.IntervalMinutesOverride, watchlist.IntervalMinutesOverride)
                 };

@@ -13,6 +13,9 @@ public sealed record BoardWorkItem
     /// <summary>Only for logs - the reported company name comes from the subscription.</summary>
     public required string CompanyName { get; init; }
 
+    /// <summary>Source-specific board parameters as json - see <see cref="BoardCandidate.Configuration"/>.</summary>
+    public string? Configuration { get; init; }
+
     /// <summary>Empty for registry boards: nothing watches them, so they produce no notifications.</summary>
     public IReadOnlyList<WatchlistSubscription> Subscriptions { get; init; } = [];
 

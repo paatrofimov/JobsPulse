@@ -149,6 +149,7 @@ internal class WatchlistStorage(
         string sourceId,
         string boardId,
         string companyName,
+        string? configuration,
         CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
@@ -167,6 +168,10 @@ internal class WatchlistStorage(
             existing.CompanyName = companyName;
             existing.Enabled = true;
 
+            // A re-add refreshes the configuration, but never clears a stored one with a probe that came back empty.
+            if (configuration is not null)
+                existing.Configuration = configuration;
+
             await db.SaveChangesAsync(ct);
 
             return existing.ToDomainModel();
@@ -178,6 +183,7 @@ internal class WatchlistStorage(
             SourceId = sourceId,
             BoardId = boardId,
             CompanyName = companyName,
+            Configuration = configuration,
             Enabled = true,
             CreatedAt = clock.GetUtcNow()
         };
