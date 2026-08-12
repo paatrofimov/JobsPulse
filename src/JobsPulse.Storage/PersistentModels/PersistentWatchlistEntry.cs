@@ -1,3 +1,5 @@
+using JobsPulse.Core.Model.Infrastructure;
+
 namespace JobsPulse.Storage.PersistentModels;
 
 /// <summary>Table `watchlist_entry` - one board inside one watchlist. Deleted with its watchlist.</summary>
@@ -16,6 +18,9 @@ public class PersistentWatchlistEntry
     public string? Configuration { get; set; }
 
     public bool Enabled { get; set; } = true;
+
+    /// <summary>Manual or discovery. Stored as int, so reordering the enum breaks nothing.</summary>
+    public BoardOrigin Origin { get; set; } = BoardOrigin.Manual;
 
     public DateTimeOffset CreatedAt { get; set; }
 

@@ -32,7 +32,8 @@ runtime context always comes from `AddStorage`.
 EF Core migrations, generated against `JobsPulseDbContext`. `20260808131550_InititalCreate` creates both tables and
 all indexes; `20260810175506_AddWatchlists` adds `watchlist`, `watchlist_entry`, `watchlist_vacancy` and the
 `watchlist_id` / `watchlist_name` columns of `outbox`; `20260810191842_AddBoardConfiguration` adds the nullable
-`configuration` column to `watchlist_entry` and `board_registry`. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
+`configuration` column to `watchlist_entry` and `board_registry`; `20260812091506_AddBoardOrigin` adds
+`watchlist_entry.origin` and `outbox.discovered`. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
 
@@ -73,6 +74,8 @@ Table `outbox` - transactional outbox for notifications.
 - `watchlist_id` / `watchlist_name`: which watchlist produced the notification. Denormalized and without a FK on
   purpose - a delivered message must stay readable after its watchlist is renamed or deleted. Null only for the
   synthetic items of `/show_state`.
+- `discovered`: the board was promoted from the registry rather than added by hand. Denormalized for the same reason -
+  the entry it came from may already be gone when the message is rendered. Defaults to `false`.
 - `vacancy_payload`: `jsonb` snapshot of the vacancy, serialized with `JsonSerializerOptionsFactory.Instance`.
   Deliberately not a FK to `seen_vacancy` - that row is mutable, and a notification must be delivered exactly as it
   looked when the change was detected.
@@ -97,7 +100,8 @@ Tables `watchlist` and `watchlist_entry` - the configuration. The filter is a si
 and written whole and never queried by field, so a column per rule would buy nothing. `name` is unique because the bot
 addresses a watchlist by name; entries are unique per `(watchlist_id, source_id, board_id)` and are deleted with their
 watchlist (cascade). An entry also carries the nullable `configuration` `jsonb` - the source-specific board
-parameters the resolver produced, for an ATS whose board id is not the whole address.
+parameters the resolver produced, for an ATS whose board id is not the whole address - and `origin`
+(`BoardOrigin`, `int`, `0` = manual): who added the board.
 
 ## PersistentWatchlistVacancy
 
@@ -176,8 +180,17 @@ Pure EF: the configuration is small, read whole (`Include(Entries)`) and written
 committed immediately - the bot has no other way to change the configuration, and nothing caches it, so a change is
 visible to the next polling cycle. `CreateAsync` rejects a duplicate name case-insensitively; `AddEntryAsync` refreshes
 and re-enables an existing entry instead of inserting a second one (and refreshes its configuration, unless the
-caller passed none - a probe that came back empty must not erase a stored address); `DisableBoardAsync` switches off
-every entry pointing at a dead board, in every watchlist at once.
+caller passed none - a probe that came back empty must not erase a stored address, and an explicit add also flips
+`origin` back to manual); `DisableBoardAsync` switches off every entry pointing at a dead board, in every watchlist at
+once.
+
+`AddDiscoveredEntryAsync` is the promotion path and is deliberately insert-only: any existing row for
+`(watchlist, source, board)` - enabled or disabled - makes it return null, so a board the user has dropped is never
+resurrected by the next registry sweep. A `DbUpdateException` from the unique index is treated the same way: a manual
+add that landed between the check and the insert wins.
+
+Entries come back ordered `origin` then company name, so every listing gets manual boards before discovered ones
+without sorting again.
 
 ## OutboxStorage
 

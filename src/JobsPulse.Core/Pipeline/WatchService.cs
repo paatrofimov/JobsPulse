@@ -128,10 +128,29 @@ public sealed class WatchService(
         return entry;
     }
 
-    public async Task<bool> RemoveEntryAsync(Watchlist watchlist, string entryReference, CancellationToken ct)
+    /// <summary>
+    /// Drops a board from a watchlist. A discovered board is only disabled: the row is what tells the registry sweep
+    /// the user does not want this board, so deleting it would let the next pass promote it right back.
+    /// </summary>
+    public async Task<EntryRemoveResult> RemoveEntryAsync(
+        Watchlist watchlist,
+        string entryReference,
+        CancellationToken ct)
     {
         var entry = watchlist.FindEntry(entryReference);
-        return entry is not null && await watchlists.RemoveEntryAsync(entry.Id, ct);
+        if (entry is null)
+            return EntryRemoveResult.NotFound;
+
+        if (entry.Origin == BoardOrigin.Discovery)
+        {
+            return await watchlists.SetEntryEnabledAsync(entry.Id, false, ct)
+                ? EntryRemoveResult.Disabled
+                : EntryRemoveResult.NotFound;
+        }
+
+        return await watchlists.RemoveEntryAsync(entry.Id, ct)
+            ? EntryRemoveResult.Removed
+            : EntryRemoveResult.NotFound;
     }
 
     public async Task<bool> SetEntryEnabledAsync(

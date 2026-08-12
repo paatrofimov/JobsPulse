@@ -16,6 +16,9 @@ public class PersistentOutboxItem
     public long? WatchlistId { get; set; }
     public string? WatchlistName { get; set; }
 
+    // The board was promoted from discovery. Denormalized for the same reason as watchlist_name.
+    public bool Discovered { get; set; }
+
     // can not use join instead because seen vacancies are mutable and outbox must contain immutable snapshot of sent vacancy
     public required string VacancyPayload { get; set; }
 

@@ -23,6 +23,9 @@ public sealed class CommandRouter(
     private const int BoardsPageSize = 30;
     private const int BoardsScanLimit = 1000;
 
+    /// <summary>Marks everything discovery brought in - the same glyph the notification headers use.</summary>
+    private const string DiscoveryMark = "🔎";
+
     private readonly ILog ctxLog = log.ForContext<CommandRouter>();
 
     public async Task<string> HandleAsync(string chatId, string text, CancellationToken ct)
@@ -78,11 +81,13 @@ public sealed class CommandRouter(
         foreach (var watchlist in watchlists)
         {
             var status = watchlist.Enabled ? "active" : "paused";
-            var enabledEntries = watchlist.Entries.Count(e => e.Enabled);
+            var enabled = watchlist.Entries.Where(e => e.Enabled).ToList();
+            var discovered = enabled.Count(e => e.Origin == BoardOrigin.Discovery);
 
             sb.Append($"• <b>{MessageFormatter.Escape(watchlist.Name)}</b> <code>#{watchlist.Id}</code> — {status}, "
-                      + $"boards: <b>{enabledEntries}</b> of {watchlist.Entries.Count}, "
-                      + $"matching: <b>{matches.GetValueOrDefault(watchlist.Id)}</b><br>");
+                      + $"boards: <b>{enabled.Count}</b> of {watchlist.Entries.Count}"
+                      + (discovered > 0 ? $" ({DiscoveryMark} {discovered})" : string.Empty)
+                      + $", matching: <b>{matches.GetValueOrDefault(watchlist.Id)}</b><br>");
         }
 
         return sb.Append("</p><p>/watchlist &lt;name&gt; — details.</p>").ToString();
@@ -109,8 +114,25 @@ public sealed class CommandRouter(
                              + $"{MessageFormatter.Escape(watchlist.Name)} greenhouse nebius</code></p>").ToString();
         }
 
-        sb.Append("<p>");
-        foreach (var entry in watchlist.Entries)
+        // Entries arrive manual-first from the storage, so the two origins are rendered as two sections.
+        RenderEntries(sb, "Added by hand", watchlist.Entries.Where(e => e.Origin == BoardOrigin.Manual));
+        RenderEntries(
+            sb,
+            $"{DiscoveryMark} Found by discovery",
+            watchlist.Entries.Where(e => e.Origin == BoardOrigin.Discovery));
+
+        return sb.Append("<p>/board_remove &lt;watchlist&gt; &lt;entryId&gt; — to drop a board.</p>").ToString();
+    }
+
+    private static void RenderEntries(StringBuilder sb, string title, IEnumerable<WatchlistEntry> entries)
+    {
+        var list = entries.ToList();
+        if (list.Count == 0)
+            return;
+
+        sb.Append($"<p>{title}:<br>");
+
+        foreach (var entry in list)
         {
             var status = entry.Enabled ? string.Empty : " — disabled";
 
@@ -118,7 +140,7 @@ public sealed class CommandRouter(
                       + $"<code>{MessageFormatter.Escape(entry.BoardKey)}</code>{status}<br>");
         }
 
-        return sb.Append("</p><p>/board_remove &lt;watchlist&gt; &lt;entryId&gt; — to drop a board.</p>").ToString();
+        sb.Append("</p>");
     }
 
     private async Task<string> HandleWatchlistAddAsync(string argument, CancellationToken ct)
@@ -242,11 +264,19 @@ public sealed class CommandRouter(
             return $"<p>Specify the entry id: <code>/board_remove {watchlist.Id} 12</code><br>"
                    + "/watchlist &lt;name&gt; — to see the ids.</p>";
 
-        var removed = await watch.RemoveEntryAsync(watchlist, tail, ct);
+        var result = await watch.RemoveEntryAsync(watchlist, tail, ct);
 
-        return removed
-            ? $"<p>Removed from <b>{MessageFormatter.Escape(watchlist.Name)}</b>.</p>"
-            : $"<p>«{MessageFormatter.Escape(tail)}» is not in <b>{MessageFormatter.Escape(watchlist.Name)}</b>.</p>";
+        return result switch
+        {
+            EntryRemoveResult.Removed =>
+                $"<p>Removed from <b>{MessageFormatter.Escape(watchlist.Name)}</b>.</p>",
+            EntryRemoveResult.Disabled =>
+                $"<p>Disabled in <b>{MessageFormatter.Escape(watchlist.Name)}</b>. The board was found by "
+                + "discovery, so the entry is kept switched off — that is what stops the registry sweep from "
+                + "adding it again.</p>",
+            _ =>
+                $"<p>«{MessageFormatter.Escape(tail)}» is not in <b>{MessageFormatter.Escape(watchlist.Name)}</b>.</p>"
+        };
     }
 
     private async Task<string> HandleWatchAsync(string chatId, string argument, CancellationToken ct)
@@ -447,10 +477,12 @@ public sealed class CommandRouter(
         IReadOnlyList<SeenVacancySnapshot> rows,
         CancellationToken ct)
     {
+        // A board watched by hand in one watchlist and promoted in another counts as manual - hence the ordering.
         var companies = (await watch.ListAsync(ct))
             .SelectMany(w => w.Entries)
+            .OrderBy(e => e.Origin)
             .GroupBy(e => e.BoardKey, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First().CompanyName, StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         return rows
             .Select(row =>
@@ -458,13 +490,16 @@ public sealed class CommandRouter(
                 var vacancy = row.Vacancy;
                 var kind = row.IsOpen ? VacancyChangeKind.New : VacancyChangeKind.Closed;
                 var board = $"{vacancy.SourceId}/{vacancy.BoardId}";
+                var entry = companies.GetValueOrDefault(board);
 
                 // A dump belongs to no watchlist - it is state, not a notification.
                 return new OutboxItem
                 {
                     DedupKey = vacancy.ToDedupKey(kind, vacancy.ContentHash, watchlistId: null),
                     ChangeKind = kind,
-                    CompanyName = companies.GetValueOrDefault(board, board),
+                    CompanyName = entry?.CompanyName ?? board,
+                    // A board in no watchlist at all is in the state only because the registry sweep put it there.
+                    Discovered = entry is null || entry.Origin == BoardOrigin.Discovery,
                     Vacancy = vacancy
                 };
             })

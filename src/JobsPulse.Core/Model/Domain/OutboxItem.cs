@@ -17,5 +17,11 @@ public sealed record OutboxItem
 
     public string? WatchlistName { get; init; }
 
+    /// <summary>
+    /// The board came from discovery, not from a manual add. Denormalized for the same reason as
+    /// <see cref="WatchlistName"/> - a delivered message must stay readable after the entry is gone.
+    /// </summary>
+    public bool Discovered { get; init; }
+
     public int Attempts { get; init; }
 }

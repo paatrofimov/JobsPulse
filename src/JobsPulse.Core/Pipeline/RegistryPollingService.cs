@@ -10,13 +10,16 @@ namespace JobsPulse.Core.Pipeline;
 /// Secondary polling cycle over the discovered board registry. The watchlist cycle stays the priority feed -
 /// this one walks the registry round-robin, a slice per cycle, with its own throttling.
 ///
-/// Registry boards belong to no watchlist, so they never notify: the cycle only keeps the global vacancy state warm
-/// (which is what makes /boards useful) and deactivates boards that stopped answering.
+/// A registry board belongs to no watchlist, so the sweep itself never notifies: it keeps the global vacancy state
+/// warm (which is what makes /boards useful) and deactivates boards that stopped answering. What it does produce is
+/// promotions - a board whose vacancies pass the filter of some watchlist is handed to
+/// <see cref="DiscoveredBoardPromoter"/>, added there and reported at once.
 /// </summary>
 public sealed class RegistryPollingService(
     IBoardRegistryStorage registry,
     IWatchlistStorage watchlists,
     BoardProcessor boardProcessor,
+    DiscoveredBoardPromoter promoter,
     IOptionsMonitor<RegistryPollingOptions> options,
     ILog log)
 {
@@ -44,7 +47,8 @@ public sealed class RegistryPollingService(
     private async Task<CycleReport> RunCycleCoreAsync(CancellationToken ct)
     {
         var opts = options.CurrentValue;
-        var plan = WatchlistPlan.Build(await watchlists.GetEnabledAsync(ct));
+        var enabled = await watchlists.GetEnabledAsync(ct);
+        var plan = WatchlistPlan.Build(enabled);
 
         // Without a single enabled watchlist nothing is relevant, so there is nothing to store either.
         if (!plan.HasWatchlists)
@@ -87,7 +91,7 @@ public sealed class RegistryPollingService(
             await gate.WaitAsync(ct);
             try
             {
-                return await ProcessBoardAsync(board, settings, opts, ct);
+                return (Board: board, Result: await ProcessBoardAsync(board, settings, opts, ct));
             }
             finally
             {
@@ -95,21 +99,89 @@ public sealed class RegistryPollingService(
             }
         }));
 
-        var report = CycleReport.Aggregate(results);
+        // Promotion is database work only, so it runs after the fetch pass: one writer, and the cap is exact.
+        var promoted = await PromoteAsync(results, SelectPromotionCandidates(enabled, opts), opts, ct);
+
+        var report = CycleReport.Aggregate([.. results.Select(r => r.Result.Report)]);
         ctxLog.Info(
-            "Registry cycle finished: boards {Boards}, fetched {Fetched}, stored {Stored}, errors {Failed}",
-            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Failed);
+            "Registry cycle finished: boards {Boards}, fetched {Fetched}, stored {Stored}, errors {Failed}, "
+            + "promotions {Promoted}",
+            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Failed, promoted);
 
         return report;
     }
 
-    private async Task<BoardReport> ProcessBoardAsync(
+    /// <summary>
+    /// A promotion candidate is an enabled watchlist with a non-empty filter. A watchlist matching everything would
+    /// absorb the entire registry, so it is deliberately never filled automatically.
+    /// </summary>
+    private IReadOnlyList<Watchlist> SelectPromotionCandidates(
+        IReadOnlyList<Watchlist> enabled,
+        RegistryPollingOptions opts)
+    {
+        if (!opts.AutoAdd || opts.DryRun)
+            return [];
+
+        var candidates = DiscoveredBoardPromoter.SelectCandidates(enabled);
+
+        var skipped = enabled.Count - candidates.Count;
+        if (skipped > 0)
+        {
+            ctxLog.Info(
+                "{Skipped} of {Total} enabled watchlists are not filled from discovery — "
+                + "their filter matches everything",
+                skipped, enabled.Count);
+        }
+
+        return candidates;
+    }
+
+    /// <summary>Adds every board that matched a candidate watchlist, up to the per-cycle cap.</summary>
+    private async Task<int> PromoteAsync(
+        IReadOnlyList<(RegisteredBoard Board, BoardProcessResult Result)> results,
+        IReadOnlyList<Watchlist> candidates,
+        RegistryPollingOptions opts,
+        CancellationToken ct)
+    {
+        if (candidates.Count == 0)
+            return 0;
+
+        var promoted = 0;
+
+        for (var i = 0; i < results.Count; i++)
+        {
+            if (promoted >= opts.MaxAutoAddedBoardsPerCycle)
+            {
+                // A cap that silently swallows work reads as «nothing matched» - say what was left unexamined.
+                // The cursor has already moved past these boards, so they come back only after a full walk.
+                ctxLog.Warn(
+                    "Promotion cap of {Cap} boards per cycle is reached — {Left} boards of this slice are not "
+                    + "examined for promotion until the registry walk comes round to them again",
+                    opts.MaxAutoAddedBoardsPerCycle, results.Count - i);
+
+                break;
+            }
+
+            var (board, result) = results[i];
+
+            if (result.BoardMissing || result.Relevant.Count == 0)
+                continue;
+
+            var promotions = await promoter.TryPromoteAsync(board, result.Relevant, candidates, ct);
+            if (promotions.Count > 0)
+                promoted++;
+        }
+
+        return promoted;
+    }
+
+    private async Task<BoardProcessResult> ProcessBoardAsync(
         RegisteredBoard board,
         BoardProcessSettings settings,
         RegistryPollingOptions opts,
         CancellationToken ct)
     {
-        // No subscriptions: the board is not watched, so the run produces state only.
+        // No subscriptions: the board is not watched yet, so the run produces state only.
         var work = new BoardWorkItem
         {
             SourceId = board.SourceId,
@@ -129,7 +201,7 @@ public sealed class RegistryPollingService(
         if (opts.DelayBetweenBoardsMs > 0)
             await Task.Delay(opts.DelayBetweenBoardsMs, ct);
 
-        return result.Report;
+        return result;
     }
 
     private List<RegisteredBoard> TakeSlice(IReadOnlyList<RegisteredBoard> boards, int size)

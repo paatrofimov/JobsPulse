@@ -37,6 +37,18 @@ public interface IWatchlistStorage
         string? configuration,
         CancellationToken ct);
 
+    /// <summary>
+    /// Adds a board discovery has promoted. Insert-only: an existing entry - enabled or disabled - is left
+    /// untouched and null is returned, so a board the user has dropped is never resurrected by the next sweep.
+    /// </summary>
+    Task<WatchlistEntry?> AddDiscoveredEntryAsync(
+        long watchlistId,
+        string sourceId,
+        string boardId,
+        string companyName,
+        string? configuration,
+        CancellationToken ct);
+
     Task<bool> RemoveEntryAsync(long entryId, CancellationToken ct);
 
     Task<bool> SetEntryEnabledAsync(long entryId, bool enabled, CancellationToken ct);

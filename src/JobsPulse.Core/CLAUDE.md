@@ -48,7 +48,8 @@ agree on what relevant means and every stored row carries the same filter-set ha
 One board traversal: fetch, detect, commit state and notifications. Shared by `PollingOrchestrator` (watchlist feed)
 and `RegistryPollingService` (registry feed) - they differ only in which boards they feed here, whether anything is
 subscribed at all, and what they do with a dead board, which is why `BoardMissing` is returned instead of being
-handled inside.
+handled inside. `BoardProcessResult.Relevant` carries the vacancies that passed the storage filters, which is how the
+registry cycle tests a board against the individual watchlist filters without fetching it twice.
 
 ### Flow:
 
@@ -94,17 +95,42 @@ only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and 
 
 ## RegistryPollingService
 
-Secondary cycle over `board_registry`. Never touches the watchlists: boards that are already watched are filtered
-out, so the priority cycle stays the only writer for them. Registry boards belong to no watchlist, so the cycle has
-no subscriptions and produces no notifications - it only keeps the global vacancy state warm (which is what makes the
-`/boards` ranking meaningful) and deactivates boards that stopped answering. With no enabled watchlist nothing is
-relevant, and the cycle is skipped entirely.
+Secondary cycle over `board_registry`. Boards that are already watched are filtered out, so the priority cycle stays
+the only writer for them. A registry board has no subscriptions, so the sweep itself produces no notifications - it
+keeps the global vacancy state warm (which is what makes the `/boards` ranking meaningful) and deactivates boards
+that stopped answering. With no enabled watchlist nothing is relevant, and the cycle is skipped entirely.
+
+What the sweep does produce is **promotions**: after the fetch pass every board is handed to
+`DiscoveredBoardPromoter` together with its relevant vacancies. Promotion runs after the concurrent fetch pass, one
+board at a time - it is database work only, so a single writer costs nothing and makes
+`MaxAutoAddedBoardsPerCycle` exact. Reaching the cap is logged with how many boards of the slice were left for the
+next cycle, because a silent cap reads as «nothing matched».
+
+Candidates are enabled watchlists with a **non-empty** filter (`DiscoveredBoardPromoter.SelectCandidates`). A
+watchlist matching everything would absorb the whole registry, so it is never filled automatically and the skip is
+logged. `AutoAdd = false` and `DryRun` switch promotion off entirely.
 
 The registry is walked round-robin - `BoardsPerCycle` boards per cycle from an in-memory cursor (after a restart
 the walk simply starts over). Concurrency, the per-board pause and the cycle interval are separate options, so the
 background traffic does not starve the watchlist polling or the discovery crawler. Cycles never overlap
 (`TryRunCycleAsync` with a zero-timeout gate); a board answering 404 is deactivated in the registry
 (`is_active = false`) instead of being deleted.
+
+## DiscoveredBoardPromoter
+
+Turns a board of the discovery registry into a watchlist entry. Per candidate watchlist: apply its filter to the
+board's relevant vacancies, and if anything matches, `AddDiscoveredEntryAsync` the board and report it.
+
+The match rows and the `New` notifications are written here, in the same commit as the promotion, on purpose: leaving
+them to the next watchlist cycle would produce an ordinary `New` wave and the reader would never learn that a new
+board appeared. The notifications carry `Discovered = true`, which is what turns them into one
+`🔎 New board · Company · Watchlist` block. Because the match rows exist by then, the next poll of that board reports
+nothing more.
+
+`AddDiscoveredEntryAsync` is insert-only, so a board the user has dropped is never promoted again - see
+`IWatchlistStorage` and `EntryRemoveResult`. The vacancies themselves are not upserted: the sweep has just committed
+them. After a promotion `IPollingTrigger.RequestImmediateRun` wakes the watchlist loop - a fresh entry has no run
+stamp and is due at once.
 
 ## FilterMaintenanceService
 
@@ -178,6 +204,11 @@ Backs the bot commands: watchlist CRUD (create, delete, enable/disable, filter, 
 PostgreSQL the moment the command returns. Resolution itself lives in the source projects (`IBoardResolver`); this
 service only orchestrates and filters.
 
+`RemoveEntryAsync` returns an `EntryRemoveResult`: a manual entry is deleted, a discovered one is only **disabled**.
+The disabled row is the memory of «the user does not want this board» - deleting it would let the next registry sweep
+promote it right back. A later explicit `/board_add` of the same board flips its origin to manual, which is the
+documented way to adopt a promoted board.
+
 A watchlist is addressed by numeric id or by name (`ResolveAsync`). `AddBoardAsync` probes the ATS - to fill the
 company name when it is not given, so a typo in a board id is rejected instead of being polled forever, and to pick up
 the source-specific configuration, which is why the probe runs even when the name was explicit. A board whose probe
@@ -247,6 +278,10 @@ configuration.
 The watchlist configuration: enabled watchlists with entries and filters for the pipeline, plus the CRUD the bot
 needs. The only source of truth - there is no in-memory copy and no config-file fallback.
 
+`AddEntryAsync` and `AddDiscoveredEntryAsync` differ on exactly one point and it matters: the manual one refreshes and
+re-enables an existing entry (and marks it manual), the discovery one refuses to touch an existing row at all -
+enabled or disabled - and returns null. That is what keeps a dropped board dropped.
+
 ## IVacancySink
 
 Sink implementations must implement formatting and sending.
@@ -307,6 +342,15 @@ and a board can still be added by hand.
 ## Watchlist / WatchlistEntry
 
 The configuration aggregate: a watchlist with its filter and its entries. An entry is one board inside one watchlist.
+
+## BoardOrigin
+
+Who put a board into a watchlist: `Manual` (the bot) or `Discovery` (promoted from the registry by
+`DiscoveredBoardPromoter`). Carried by `WatchlistEntry.Origin` and, denormalized, by `OutboxItem.Discovered` - a
+delivered message must stay readable after the entry is gone, the same reasoning as `OutboxItem.WatchlistName`.
+
+Storage returns entries ordered origin-first, so every listing shows manual boards before discovered ones without
+sorting again.
 
 ## WatchlistSubscription / BoardWorkItem
 

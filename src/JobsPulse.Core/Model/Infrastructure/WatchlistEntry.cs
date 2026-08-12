@@ -18,5 +18,8 @@ public sealed record WatchlistEntry
 
     public bool Enabled { get; init; } = true;
 
+    /// <summary>Who added the board - a discovered one is marked in every listing and never re-added once dropped.</summary>
+    public BoardOrigin Origin { get; init; } = BoardOrigin.Manual;
+
     public string BoardKey => $"{VacancySourceId}/{BoardId}";
 }

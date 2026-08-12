@@ -34,6 +34,7 @@ public sealed class ParquetIndexDiscoveryPass(
         DiscoveryOptions opts,
         CancellationToken ct)
     {
+        // todo (patrofimov) add workday board url parser
         var targets = BoardIndexTargets.From(boardUrlParsers);
         if (targets.Count == 0)
         {

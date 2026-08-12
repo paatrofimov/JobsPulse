@@ -29,5 +29,14 @@ public sealed class RegistryPollingOptions
     /// <summary>Upper bound of the registry slice held in memory per cycle.</summary>
     [Range(1, 100000)] public int MaxRegistryBoards { get; set; } = 20000;
 
+    /// <summary>
+    /// Add a registry board to a watchlist when its vacancies pass that watchlist's filter. Only watchlists with a
+    /// non-empty filter are ever filled - one matching everything would absorb the whole registry.
+    /// </summary>
+    public bool AutoAdd { get; set; } = true;
+
+    /// <summary>Safety valve: how many boards one cycle may add. The rest wait for the next cycle.</summary>
+    [Range(1, 1000)] public int MaxAutoAddedBoardsPerCycle { get; set; } = 5;
+
     public bool DryRun { get; set; }
 }

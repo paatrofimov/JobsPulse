@@ -168,6 +168,9 @@ internal class WatchlistStorage(
             existing.CompanyName = companyName;
             existing.Enabled = true;
 
+            // An explicit add adopts the board: a promoted one stops being marked as discovered.
+            existing.Origin = BoardOrigin.Manual;
+
             // A re-add refreshes the configuration, but never clears a stored one with a probe that came back empty.
             if (configuration is not null)
                 existing.Configuration = configuration;
@@ -190,6 +193,62 @@ internal class WatchlistStorage(
 
         db.WatchlistEntries.Add(row);
         await db.SaveChangesAsync(ct);
+
+        return row.ToDomainModel();
+    }
+
+    public async Task<WatchlistEntry?> AddDiscoveredEntryAsync(
+        long watchlistId,
+        string sourceId,
+        string boardId,
+        string companyName,
+        string? configuration,
+        CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var watchlistExists = await db.Watchlists.AnyAsync(x => x.Id == watchlistId, ct);
+        if (!watchlistExists)
+            return null;
+
+        // Any existing row wins, disabled included: dropping a promoted board must keep it dropped.
+        var taken = await db.WatchlistEntries
+            .AnyAsync(x => x.WatchlistId == watchlistId && x.SourceId == sourceId && x.BoardId == boardId, ct);
+
+        if (taken)
+            return null;
+
+        var row = new PersistentWatchlistEntry
+        {
+            WatchlistId = watchlistId,
+            SourceId = sourceId,
+            BoardId = boardId,
+            CompanyName = companyName,
+            Configuration = configuration,
+            Enabled = true,
+            Origin = BoardOrigin.Discovery,
+            CreatedAt = clock.GetUtcNow()
+        };
+
+        db.WatchlistEntries.Add(row);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            // A manual add landed between the check and the insert - the unique index decides, not this method.
+            ctxLog.Warn(
+                ex, "Discovered board {Source}/{Board} is already in watchlist {Watchlist}",
+                sourceId, boardId, watchlistId);
+
+            return null;
+        }
+
+        ctxLog.Info(
+            "Discovered board {Source}/{Board} ({Company}) added to watchlist {Watchlist}",
+            sourceId, boardId, companyName, watchlistId);
 
         return row.ToDomainModel();
     }

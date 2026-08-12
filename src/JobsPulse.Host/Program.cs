@@ -60,6 +60,7 @@ builder.Services.AddSingleton<ChangeDetector>();
 builder.Services.AddSingleton<BoardProcessor>();
 builder.Services.AddSingleton<FilterMaintenanceService>();
 builder.Services.AddSingleton<PollingOrchestrator>();
+builder.Services.AddSingleton<DiscoveredBoardPromoter>();
 builder.Services.AddSingleton<RegistryPollingService>();
 builder.Services.AddSingleton<WatchService>();
 

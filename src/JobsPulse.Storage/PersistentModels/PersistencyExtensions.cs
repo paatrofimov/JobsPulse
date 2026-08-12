@@ -36,6 +36,7 @@ public static class PersistencyExtensions
             CompanyName = persistentItem.CompanyName,
             WatchlistId = persistentItem.WatchlistId,
             WatchlistName = persistentItem.WatchlistName,
+            Discovered = persistentItem.Discovered,
             Attempts = persistentItem.Attempts,
             Vacancy = JsonSerializer.Deserialize<Vacancy>(
                           persistentItem.VacancyPayload, JsonSerializerOptionsFactory.Instance
@@ -53,10 +54,12 @@ public static class PersistencyExtensions
             Enabled = persistentWatchlist.Enabled,
             Filter = persistentWatchlist.Filter.ToFilterSpec(),
             IntervalMinutesOverride = persistentWatchlist.IntervalMinutesOverride,
+            // Manual boards first, discovered ones after them - every listing inherits this order.
             Entries =
             [
                 .. persistentWatchlist.Entries
-                    .OrderBy(e => e.CompanyName, StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(e => e.Origin)
+                    .ThenBy(e => e.CompanyName, StringComparer.OrdinalIgnoreCase)
                     .Select(e => e.ToDomainModel())
             ]
         };
@@ -72,7 +75,8 @@ public static class PersistencyExtensions
             BoardId = persistentEntry.BoardId,
             CompanyName = persistentEntry.CompanyName,
             Configuration = persistentEntry.Configuration,
-            Enabled = persistentEntry.Enabled
+            Enabled = persistentEntry.Enabled,
+            Origin = persistentEntry.Origin
         };
     }
 

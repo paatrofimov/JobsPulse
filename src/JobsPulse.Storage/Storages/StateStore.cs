@@ -489,6 +489,7 @@ internal class StateStore(
                 company_name,
                 watchlist_id,
                 watchlist_name,
+                discovered,
                 vacancy_payload,
                 status,
                 attempts,
@@ -501,6 +502,7 @@ internal class StateStore(
                 @company,
                 @watchlist,
                 @watchlist_name,
+                @discovered,
                 @payload,
                 @status,
                 0,
@@ -520,6 +522,7 @@ internal class StateStore(
             cmd.Parameters.AddWithValue("company", item.CompanyName);
             cmd.Parameters.AddWithValue("watchlist", (object?)item.WatchlistId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("watchlist_name", (object?)item.WatchlistName ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("discovered", item.Discovered);
 
             cmd.Parameters.Add(
                 new NpgsqlParameter("payload", NpgsqlDbType.Jsonb)

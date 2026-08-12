@@ -19,11 +19,13 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         var messages = new List<InputRichMessage>();
         var sb = new StringBuilder();
 
-        // One block per (watchlist, company, kind): the same vacancy may arrive for several watchlists at once,
-        // and the reader has to see which watchlist every notification belongs to.
+        // One block per (watchlist, company, kind, origin): the same vacancy may arrive for several watchlists at
+        // once, and the reader has to see which watchlist every notification belongs to. Manually added companies
+        // come first, the ones discovery brought in after them.
         foreach (var group in batch
-                     .GroupBy(x => (x.WatchlistName, x.CompanyName, Kind: x.ChangeKind))
+                     .GroupBy(x => (x.WatchlistName, x.CompanyName, Kind: x.ChangeKind, x.Discovered))
                      .OrderBy(g => g.Key.WatchlistName, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(g => g.Key.Discovered)
                      .ThenByDescending(g => g.Max(PublishedAt) ?? DateTimeOffset.MinValue)
                      .ThenBy(g => g.Key.Kind))
         {
@@ -32,6 +34,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
                 group.Key.WatchlistName,
                 group.Key.CompanyName,
                 group.Key.Kind,
+                group.Key.Discovered,
                 items);
 
             if (sb.Length + block.Length > SafeLimit && sb.Length > 0)
@@ -46,6 +49,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
                              group.Key.WatchlistName,
                              group.Key.CompanyName,
                              group.Key.Kind,
+                             group.Key.Discovered,
                              items))
                 {
                     messages.Add(new InputRichMessage
@@ -76,12 +80,13 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         string? watchlist,
         string company,
         VacancyChangeKind kind,
+        bool discovered,
         IReadOnlyList<OutboxItem> items)
     {
         var sb = new StringBuilder();
 
         sb.Append("<h6>")
-            .Append(Header(kind))
+            .Append(Header(kind, discovered))
             .Append(" · ")
             .Append(Escape(company));
 
@@ -139,6 +144,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         string? watchlist,
         string company,
         VacancyChangeKind kind,
+        bool discovered,
         IReadOnlyList<OutboxItem> items)
     {
         const int perMessage = 20;
@@ -149,6 +155,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
                 watchlist,
                 company,
                 kind,
+                discovered,
                 items.Skip(i).Take(perMessage).ToArray());
         }
     }
@@ -177,11 +184,18 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     private static string RenderOffices(IReadOnlyList<string> offices) =>
         offices.Select(Escape).JoinStrings(" · ");
 
-    private static string Header(VacancyChangeKind kind) => kind switch
+    /// <summary>
+    /// A promoted board announces itself: its first batch is the only place the reader learns that discovery -
+    /// not a manual add - brought this company in. Later batches keep the 🔎 so the two never look alike.
+    /// </summary>
+    private static string Header(VacancyChangeKind kind, bool discovered) => (kind, discovered) switch
     {
-        VacancyChangeKind.New => "🆕",
-        VacancyChangeKind.Updated => "✏️",
-        VacancyChangeKind.Closed => "❌",
+        (VacancyChangeKind.New, true) => "🔎 New board",
+        (VacancyChangeKind.New, false) => "🆕",
+        (VacancyChangeKind.Updated, true) => "🔎 ✏️",
+        (VacancyChangeKind.Updated, false) => "✏️",
+        (VacancyChangeKind.Closed, true) => "🔎 ❌",
+        (VacancyChangeKind.Closed, false) => "❌",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 

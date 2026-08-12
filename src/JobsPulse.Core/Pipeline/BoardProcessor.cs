@@ -115,7 +115,7 @@ public sealed class BoardProcessor(
             Changes: notifications.Count,
             Failed: false);
 
-        return new BoardProcessResult(report, false);
+        return new BoardProcessResult(report, false, detected.VacanciesUpserts);
     }
 
     private static IReadOnlyList<OutboxItem> BuildNotifications(IReadOnlyList<VacancyChange> changes)
