@@ -10,6 +10,13 @@ public sealed record Watchlist
 
     public required string Name { get; init; }
 
+    /// <summary>
+    /// Telegram user id of the owner - the only one allowed to change this watchlist. Null for a watchlist that
+    /// predates ownership (the legacy import): it belongs to nobody, is shown as a system one and is read-only for
+    /// everybody except an admin.
+    /// </summary>
+    public long? OwnerUserId { get; init; }
+
     public bool Enabled { get; init; } = true;
 
     /// <summary>Applied to every entry of this watchlist - there is no per-entry filter.</summary>

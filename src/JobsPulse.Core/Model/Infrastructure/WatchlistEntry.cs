@@ -21,5 +21,13 @@ public sealed record WatchlistEntry
     /// <summary>Who added the board - a discovered one is marked in every listing and never re-added once dropped.</summary>
     public BoardOrigin Origin { get; init; } = BoardOrigin.Manual;
 
+    /// <summary>
+    /// When the user marked the company as worked through (a CV went out). Null means «not approached yet». A stamp
+    /// rather than a flag, because the date is what the user wants to see when coming back to the list later.
+    /// </summary>
+    public DateTimeOffset? WorkedAt { get; init; }
+
+    public bool IsWorked => WorkedAt is not null;
+
     public string BoardKey => $"{VacancySourceId}/{BoardId}";
 }

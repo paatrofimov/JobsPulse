@@ -1,4 +1,6 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Sinks.Telegram.Pipeline;
+using JobsPulse.Sinks.Telegram.Pipeline.Screens;
 using JobsPulse.Sinks.Telegram.Routines;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,9 +19,28 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<TelegramClientFacade>();
 
         services.AddSingleton<IVacancySink, TelegramSink>();
+        services.AddSingleton<MessageFormatter>();
+
+        // User interface: sessions, ownership and one screen per class.
+        services.AddSingleton<UserSessionStore>();
+        services.AddSingleton<WatchlistAccess>();
+        services.AddSingleton<MainMenuScreen>();
+        services.AddSingleton<WatchlistsScreen>();
+        services.AddSingleton<WatchlistScreen>();
+        services.AddSingleton<FilterScreen>();
+        services.AddSingleton<CompaniesScreen>();
+        services.AddSingleton<DisabledCompaniesScreen>();
+        services.AddSingleton<AddCompanyScreen>();
+        services.AddSingleton<VacanciesScreen>();
+        services.AddSingleton<LanguageScreen>();
+        services.AddSingleton<AdminScreen>();
+        services.AddSingleton<ScreenRouter>();
+        services.AddSingleton<BotUpdateHandler>();
+
+        // Admin surface: raw ids and json, gated on Telegram:AdminChatIds.
         services.AddSingleton<PendingSelectionStore>();
         services.AddSingleton<CommandRouter>();
-        services.AddSingleton<MessageFormatter>();
+
         services.AddHostedService<TelegramBotListener>();
 
         return services;

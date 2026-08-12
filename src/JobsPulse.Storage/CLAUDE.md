@@ -4,8 +4,9 @@ Implements `IStateStore` and `IOutboxStorage` from `JobsPulse.Core.Abstractions`
 storage layer as persistent models - conversion happens in `PersistencyExtensions`.
 
 Tables: `seen_vacancy` (current state of a board), `watchlist_vacancy` (which watchlist a vacancy matches),
-`outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `board_registry`
-(accumulative list of boards that exist) and `crawl_index_state` (which crawl indexes were already mined).
+`outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `bot_user` (the
+people using the bot), `board_registry` (accumulative list of boards that exist) and `crawl_index_state` (which crawl
+indexes were already mined).
 The watchlist configuration lives here now - there is no JSON watchlist any more.
 
 # Infrastructure
@@ -19,8 +20,8 @@ The watchlist configuration lives here now - there is no JSON watchlist any more
   routines, and a `DbContext` is not thread-safe. Every method creates and disposes its own context.
 - `UseSnakeCaseNamingConvention()` (EFCore.NamingConventions) - C# `PostId` maps to `post_id` automatically, so
   hand-written SQL in `StateStore` matches the EF model without explicit column mappings.
-- `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage` and `IWatchlistStorage` as singletons; implementations
-  are `internal`.
+- `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IWatchlistStorage` and `IBotUserStorage` as singletons;
+  implementations are `internal`.
 
 ## DesignTimeDbContextFactory
 
@@ -33,7 +34,10 @@ EF Core migrations, generated against `JobsPulseDbContext`. `20260808131550_Init
 all indexes; `20260810175506_AddWatchlists` adds `watchlist`, `watchlist_entry`, `watchlist_vacancy` and the
 `watchlist_id` / `watchlist_name` columns of `outbox`; `20260810191842_AddBoardConfiguration` adds the nullable
 `configuration` column to `watchlist_entry` and `board_registry`; `20260812091506_AddBoardOrigin` adds
-`watchlist_entry.origin` and `outbox.discovered`. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
+`watchlist_entry.origin` and `outbox.discovered`; `AddBotUsersAndOwnership` adds the `bot_user` table,
+`watchlist.owner_user_id` (indexed - «my watchlists» is the most frequent read of the bot) and
+`watchlist_entry.worked_at`. Nothing backfills the owner: a migration cannot know who it is, so pre-existing
+watchlists stay system ones. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
 
@@ -100,8 +104,13 @@ Tables `watchlist` and `watchlist_entry` - the configuration. The filter is a si
 and written whole and never queried by field, so a column per rule would buy nothing. `name` is unique because the bot
 addresses a watchlist by name; entries are unique per `(watchlist_id, source_id, board_id)` and are deleted with their
 watchlist (cascade). An entry also carries the nullable `configuration` `jsonb` - the source-specific board
-parameters the resolver produced, for an ATS whose board id is not the whole address - and `origin`
-(`BoardOrigin`, `int`, `0` = manual): who added the board.
+parameters the resolver produced, for an ATS whose board id is not the whole address - plus `origin`
+(`BoardOrigin`, `int`, `0` = manual): who added the board, and `worked_at`: when the user marked the company as worked
+through, null while no CV has gone out.
+
+`watchlist.owner_user_id` is the telegram user id of the owner, without a FK to `bot_user`: the owner of a watchlist
+must stay recorded even if the user row is ever cleaned up, the same reasoning as the denormalized `outbox` columns.
+Null means a system watchlist - visible to everybody, editable by an admin only.
 
 ## PersistentWatchlistVacancy
 
@@ -112,6 +121,12 @@ Table `watchlist_vacancy` - the match layer, one row per `(watchlist, vacancy)`,
 Derived state on purpose: a row is deleted the moment the vacancy stops matching that watchlist, and the history of
 what was sent stays in `outbox`. `content_hash` is the content last reported to this watchlist - the basis of the
 `Updated` change - which is why it cannot live in `seen_vacancy`, where one row is shared by all watchlists.
+
+## PersistentBotUser
+
+Table `bot_user` - one row per person talking to the bot, unique on `telegram_user_id` (the identity a watchlist owner
+is stored as; a chat id is not stable enough for that). `chat_id`, `display_name` and `last_seen_at` are refreshed on
+every incoming update; `language` is a setting and is only ever written by the user.
 
 ## PersistentCrawlIndexState
 
@@ -191,6 +206,12 @@ add that landed between the check and the insert wins.
 
 Entries come back ordered `origin` then company name, so every listing gets manual boards before discovered ones
 without sorting again.
+
+## BotUserStorage
+
+Pure EF, and deliberately the cheapest thing here: every incoming telegram update touches it. One lookup by the unique
+`telegram_user_id`, then a write. A concurrent insert of the same brand new user is caught as a `DbUpdateException` and
+resolved by re-reading - the unique index decides, not the method.
 
 ## OutboxStorage
 

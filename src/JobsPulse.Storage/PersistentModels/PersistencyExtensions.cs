@@ -45,12 +45,26 @@ public static class PersistencyExtensions
         };
     }
 
+    public static BotUser ToDomainModel(this PersistentBotUser persistentUser)
+    {
+        return new BotUser
+        {
+            TelegramUserId = persistentUser.TelegramUserId,
+            ChatId = persistentUser.ChatId,
+            DisplayName = persistentUser.DisplayName,
+            Language = persistentUser.Language,
+            CreatedAt = persistentUser.CreatedAt,
+            LastSeenAt = persistentUser.LastSeenAt
+        };
+    }
+
     public static Watchlist ToDomainModel(this PersistentWatchlist persistentWatchlist)
     {
         return new Watchlist
         {
             Id = persistentWatchlist.Id,
             Name = persistentWatchlist.Name,
+            OwnerUserId = persistentWatchlist.OwnerUserId,
             Enabled = persistentWatchlist.Enabled,
             Filter = persistentWatchlist.Filter.ToFilterSpec(),
             IntervalMinutesOverride = persistentWatchlist.IntervalMinutesOverride,
@@ -76,7 +90,8 @@ public static class PersistencyExtensions
             CompanyName = persistentEntry.CompanyName,
             Configuration = persistentEntry.Configuration,
             Enabled = persistentEntry.Enabled,
-            Origin = persistentEntry.Origin
+            Origin = persistentEntry.Origin,
+            WorkedAt = persistentEntry.WorkedAt
         };
     }
 

@@ -19,6 +19,10 @@ public sealed class WatchService(
 
     public Task<IReadOnlyList<Watchlist>> ListAsync(CancellationToken ct) => watchlists.GetAllAsync(ct);
 
+    /// <summary>Watchlists of one owner - «my watchlists» in the bot.</summary>
+    public async Task<IReadOnlyList<Watchlist>> ListByOwnerAsync(long ownerUserId, CancellationToken ct) =>
+        [.. (await watchlists.GetAllAsync(ct)).Where(w => w.OwnerUserId == ownerUserId)];
+
     /// <summary>A watchlist is addressed either by its numeric id or by its name.</summary>
     public async Task<Watchlist?> ResolveAsync(string reference, CancellationToken ct)
     {
@@ -31,13 +35,23 @@ public sealed class WatchService(
             : await watchlists.FindByNameAsync(reference, ct);
     }
 
-    public async Task<Watchlist?> CreateAsync(string name, CancellationToken ct)
+    /// <summary>A null owner creates a system watchlist - nobody can edit it from the bot except an admin.</summary>
+    public async Task<Watchlist?> CreateAsync(string name, long? ownerUserId, CancellationToken ct)
     {
-        var created = await watchlists.CreateAsync(name.Trim(), FilterSpec.MatchAll, ct);
+        var created = await watchlists.CreateAsync(name.Trim(), FilterSpec.MatchAll, ownerUserId, ct);
         if (created is not null)
-            ctxLog.Info("Watchlist created: {Watchlist} (id {Id})", created.Name, created.Id);
+            ctxLog.Info("Watchlist created: {Watchlist} (id {Id}, owner {Owner})", created.Name, created.Id, ownerUserId);
 
         return created;
+    }
+
+    public async Task<bool> RenameAsync(Watchlist watchlist, string name, CancellationToken ct)
+    {
+        var renamed = await watchlists.RenameAsync(watchlist.Id, name.Trim(), ct);
+        if (renamed)
+            ctxLog.Info("Watchlist {Id} renamed from {Old} to {New}", watchlist.Id, watchlist.Name, name.Trim());
+
+        return renamed;
     }
 
     public async Task<bool> RemoveAsync(Watchlist watchlist, CancellationToken ct)
@@ -160,8 +174,21 @@ public sealed class WatchService(
         CancellationToken ct)
     {
         var entry = watchlist.FindEntry(entryReference);
-        return entry is not null && await watchlists.SetEntryEnabledAsync(entry.Id, enabled, ct);
+        if (entry is null)
+            return false;
+
+        var updated = await watchlists.SetEntryEnabledAsync(entry.Id, enabled, ct);
+
+        // A re-enabled board has no run stamp of its own, so it is due at once.
+        if (updated && enabled)
+            pollingTrigger.RequestImmediateRun();
+
+        return updated;
     }
+
+    /// <summary>Marks a company as worked through (a CV went out) or clears the mark.</summary>
+    public Task<bool> SetEntryWorkedAsync(long entryId, bool worked, CancellationToken ct) =>
+        watchlists.SetEntryWorkedAsync(entryId, worked, ct);
 
     /// <summary>Company name or career page url to board candidates, excluding what the watchlist already has.</summary>
     public async Task<LookupResult> LookupAsync(Watchlist watchlist, string query, CancellationToken ct)

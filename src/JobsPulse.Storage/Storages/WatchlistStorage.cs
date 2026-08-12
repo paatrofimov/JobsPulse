@@ -57,7 +57,11 @@ internal class WatchlistStorage(
         return row?.ToDomainModel();
     }
 
-    public async Task<Watchlist?> CreateAsync(string name, FilterSpec filter, CancellationToken ct)
+    public async Task<Watchlist?> CreateAsync(
+        string name,
+        FilterSpec filter,
+        long? ownerUserId,
+        CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
 
@@ -77,6 +81,7 @@ internal class WatchlistStorage(
         var row = new PersistentWatchlist
         {
             Name = normalized,
+            OwnerUserId = ownerUserId,
             Enabled = true,
             Filter = filter.ToJson(),
             CreatedAt = now,
@@ -89,6 +94,31 @@ internal class WatchlistStorage(
         ctxLog.Info("Watchlist '{Watchlist}' created with id {Id}", row.Name, row.Id);
 
         return row.ToDomainModel();
+    }
+
+    public async Task<bool> RenameAsync(long watchlistId, string name, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var normalized = name.Trim();
+        if (normalized.Length == 0)
+            return false;
+
+        // The name is the second identity of a watchlist, so a collision is a rejection, not an overwrite.
+        var taken = await db.Watchlists
+            .AsNoTracking()
+            .AnyAsync(x => x.Id != watchlistId && x.Name.ToLower() == normalized.ToLower(), ct);
+
+        if (taken)
+            return false;
+
+        var affected = await db.Watchlists
+            .Where(x => x.Id == watchlistId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Name, normalized)
+                .SetProperty(x => x.UpdatedAt, clock.GetUtcNow()), ct);
+
+        return affected > 0;
     }
 
     public async Task<bool> DeleteAsync(long watchlistId, CancellationToken ct)
@@ -271,6 +301,19 @@ internal class WatchlistStorage(
         var affected = await db.WatchlistEntries
             .Where(x => x.Id == entryId)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Enabled, enabled), ct);
+
+        return affected > 0;
+    }
+
+    public async Task<bool> SetEntryWorkedAsync(long entryId, bool worked, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var workedAt = worked ? clock.GetUtcNow() : (DateTimeOffset?)null;
+
+        var affected = await db.WatchlistEntries
+            .Where(x => x.Id == entryId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WorkedAt, workedAt), ct);
 
         return affected > 0;
     }

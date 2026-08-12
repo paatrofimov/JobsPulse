@@ -1,5 +1,6 @@
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sinks.Telegram.Options;
+using JobsPulse.Sinks.Telegram.Pipeline;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Telegram.Bot.Types;
@@ -9,15 +10,15 @@ namespace JobsPulse.Sinks.Telegram.Routines;
 
 public sealed class TelegramBotListener(
     TelegramClientFacade client,
-    CommandRouter router,
+    BotUpdateHandler handler,
     IOptions<TelegramOptions> options,
     ILog log) : BackgroundService
 {
     private const int LongPollSeconds = 30;
 
-    private readonly ILog ctxLog = log.ForContext<TelegramSink>();
+    private readonly ILog ctxLog = log.ForContext<TelegramBotListener>();
 
-    private int _offset;
+    private int offset;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -25,46 +26,43 @@ public sealed class TelegramBotListener(
 
         if (!opts.EnableCommands)
         {
-            ctxLog.Info(
-                "Bot commands are disabled (EnableCommands=false)");
+            ctxLog.Info("Bot commands are disabled (EnableCommands=false)");
             return;
         }
 
         if (opts.AdminChatIds.Count == 0)
+            ctxLog.Warn("AdminChatIds is empty — the admin section is unreachable");
+
+        ctxLog.Info(
+            opts.AllowedUserIds.Count == 0
+                ? "Bot is open to every telegram user — watchlists are owned per user"
+                : "Bot is restricted to {Count} allowed users",
+            opts.AllowedUserIds.Count);
+
+        // The client menu is published per language, so a Russian client shows Russian descriptions.
+        foreach (var (_, code, commands) in BotCommandCatalog.All())
         {
-            ctxLog.Warn(
-                "AdminChatIds list is empty — commands will not be applied");
+            var menu = await client.SetCommandsAsync(commands, stoppingToken, code);
+            if (!menu.Success)
+                ctxLog.Warn("Failed to publish the '{Code}' command menu: {Error}", code, menu.Error);
         }
 
-        var menu = await client.SetCommandsAsync(BotCommandCatalog.All, stoppingToken);
-        if (!menu.Success)
-            ctxLog.Warn("Failed to publish bot commands menu: {Error}", menu.Error);
-
-        ctxLog.Info("Listening commands");
+        ctxLog.Info("Listening for updates");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var updates = await client.GetUpdatesAsync(
-                    _offset,
-                    LongPollSeconds,
-                    stoppingToken);
+                var updates = await client.GetUpdatesAsync(offset, LongPollSeconds, stoppingToken);
 
                 foreach (var update in updates)
                 {
-                    _offset = update.Id + 1;
+                    offset = update.Id + 1;
 
-                    await HandleAsync(
-                        update,
-                        opts,
-                        stoppingToken);
-
-                    ctxLog.Debug($"Moved offset to {_offset}");
+                    await HandleSafeAsync(update, stoppingToken);
                 }
             }
-            catch (OperationCanceledException)
-                when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
@@ -72,59 +70,24 @@ public sealed class TelegramBotListener(
             {
                 ctxLog.Error(ex, "Error in Telegram getUpdates loop");
 
-                await Task.Delay(
-                    TimeSpan.FromSeconds(10),
-                    stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
             }
         }
     }
 
-    private async Task HandleAsync(
-        Update update,
-        TelegramOptions opts,
-        CancellationToken ct)
+    /// <summary>
+    /// One broken update must not stop the loop or replay forever: the offset has already moved on, so a failure is
+    /// logged and the next update is taken.
+    /// </summary>
+    private async Task HandleSafeAsync(Update update, CancellationToken ct)
     {
-        var message = update.Message;
-
-        if (string.IsNullOrWhiteSpace(message?.Text))
-            return;
-
-        var chatId = message.Chat.Id.ToString();
-
-        if (!opts.AdminChatIds.Contains(
-                chatId,
-                StringComparer.Ordinal))
-        {
-            ctxLog.Warn(
-                "Command from unauthorized chat {ChatId} ignored",
-                chatId);
-
-            return;
-        }
-
-        string reply;
-
         try
         {
-            reply = await router.HandleAsync(
-                chatId,
-                message.Text,
-                ct);
+            await handler.HandleAsync(update, ct);
         }
-        catch (Exception ex)
-            when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            ctxLog.Error(
-                ex,
-                "Command '{Text}' failed",
-                message.Text);
-
-            reply = "Something wrong, see logs";
+            ctxLog.Error(ex, "Update {Update} has failed", update.Id);
         }
-
-        await client.SendRichMessageAsync(
-            chatId,
-            new InputRichMessage { Html = reply },
-            ct);
     }
 }

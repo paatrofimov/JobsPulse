@@ -53,7 +53,9 @@ public static class LegacyWatchlistImporter
             return;
         }
 
-        var created = await watchlists.CreateAsync(ImportedName, legacy.DefaultFilter ?? new FilterSpec(), ct);
+        // The legacy file predates users, so the imported watchlist belongs to nobody - a system one.
+        var created = await watchlists.CreateAsync(
+            ImportedName, legacy.DefaultFilter ?? new FilterSpec(), ownerUserId: null, ct);
         if (created is null)
         {
             ctxLog.Error("Watchlist '{Watchlist}' could not be created — legacy import is skipped", ImportedName);

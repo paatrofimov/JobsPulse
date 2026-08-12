@@ -1,9 +1,10 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
+using JobsPulse.Sinks.Telegram.Infrastructure.Localization;
 using Microsoft.Extensions.Options;
 using Telegram.Bot.Types;
 
@@ -14,7 +15,8 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     private const int SafeLimit = 30_000;
 
     public IReadOnlyList<InputRichMessage> Format(
-        IReadOnlyList<OutboxItem> batch)
+        IReadOnlyList<OutboxItem> batch,
+        BotLanguage language = BotLanguage.English)
     {
         var messages = new List<InputRichMessage>();
         var sb = new StringBuilder();
@@ -35,7 +37,8 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
                 group.Key.CompanyName,
                 group.Key.Kind,
                 group.Key.Discovered,
-                items);
+                items,
+                language);
 
             if (sb.Length + block.Length > SafeLimit && sb.Length > 0)
             {
@@ -50,7 +53,8 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
                              group.Key.CompanyName,
                              group.Key.Kind,
                              group.Key.Discovered,
-                             items))
+                             items,
+                             language))
                 {
                     messages.Add(new InputRichMessage
                     {
@@ -81,12 +85,13 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         string company,
         VacancyChangeKind kind,
         bool discovered,
-        IReadOnlyList<OutboxItem> items)
+        IReadOnlyList<OutboxItem> items,
+        BotLanguage language)
     {
         var sb = new StringBuilder();
 
         sb.Append("<h6>")
-            .Append(Header(kind, discovered))
+            .Append(Header(kind, discovered, language))
             .Append(" · ")
             .Append(Escape(company));
 
@@ -99,20 +104,20 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         foreach (var item in items)
         {
             sb.Append("<p>")
-                .Append(RenderVacancy(item))
+                .Append(RenderVacancy(item, language))
                 .Append("</p>");
         }
 
         return sb.ToString();
     }
 
-    private string RenderVacancy(OutboxItem item)
+    private string RenderVacancy(OutboxItem item, BotLanguage language)
     {
         var fresh = IsFresh(item);
 
         var title = RenderTitleLink(item);
-        var geography = RenderGeography(item);
-        var dates = RenderDate(PublishedAt(item)) ?? RenderDate(item.Vacancy.FirstSeenAt);
+        var geography = RenderGeography(item, language);
+        var dates = RenderDate(PublishedAt(item), language) ?? RenderDate(item.Vacancy.FirstSeenAt, language);
 
         var line = $"{title}<br> {geography} · {dates}";
 
@@ -145,7 +150,8 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         string company,
         VacancyChangeKind kind,
         bool discovered,
-        IReadOnlyList<OutboxItem> items)
+        IReadOnlyList<OutboxItem> items,
+        BotLanguage language)
     {
         const int perMessage = 20;
 
@@ -156,21 +162,26 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
                 company,
                 kind,
                 discovered,
-                items.Skip(i).Take(perMessage).ToArray());
+                items.Skip(i).Take(perMessage).ToArray(),
+                language);
         }
     }
 
-    private string? RenderDate(DateTimeOffset? date)
+    /// <summary>
+    /// Month names come from the text table, not from a culture: the solution builds with
+    /// <c>InvariantGlobalization=true</c>, under which every culture formats them in English.
+    /// </summary>
+    private string? RenderDate(DateTimeOffset? date, BotLanguage language)
     {
         if (date is null)
             return null;
 
-        return date.Value.Year == clock.GetUtcNow().Year
-            ? date.Value.ToString("MMMM dd")
-            : date.Value.ToString("yyyy MMMM dd");
+        var withYear = date.Value.Year != clock.GetUtcNow().Year;
+
+        return BotTexts.FormatDate(date.Value, withYear, language);
     }
 
-    private static string RenderGeography(OutboxItem item)
+    private static string RenderGeography(OutboxItem item, BotLanguage language)
     {
         if (item.Vacancy.Location is not null)
             return Escape(item.Vacancy.Location);
@@ -178,7 +189,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         if (item.Vacancy.Offices.Count > 0)
             return RenderOffices(item.Vacancy.Offices);
 
-        return "Unknown Location";
+        return BotTexts.Get(TextKey.VacancyUnknownLocation, language);
     }
 
     private static string RenderOffices(IReadOnlyList<string> offices) =>
@@ -188,16 +199,17 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     /// A promoted board announces itself: its first batch is the only place the reader learns that discovery -
     /// not a manual add - brought this company in. Later batches keep the 🔎 so the two never look alike.
     /// </summary>
-    private static string Header(VacancyChangeKind kind, bool discovered) => (kind, discovered) switch
-    {
-        (VacancyChangeKind.New, true) => "🔎 New board",
-        (VacancyChangeKind.New, false) => "🆕",
-        (VacancyChangeKind.Updated, true) => "🔎 ✏️",
-        (VacancyChangeKind.Updated, false) => "✏️",
-        (VacancyChangeKind.Closed, true) => "🔎 ❌",
-        (VacancyChangeKind.Closed, false) => "❌",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
-    };
+    private static string Header(VacancyChangeKind kind, bool discovered, BotLanguage language) =>
+        (kind, discovered) switch
+        {
+            (VacancyChangeKind.New, true) => $"🔎 {BotTexts.Get(TextKey.NotificationNewBoard, language)}",
+            (VacancyChangeKind.New, false) => $"🆕 {BotTexts.Get(TextKey.NotificationNew, language)}",
+            (VacancyChangeKind.Updated, true) => $"🔎 ✏️ {BotTexts.Get(TextKey.NotificationUpdated, language)}",
+            (VacancyChangeKind.Updated, false) => $"✏️ {BotTexts.Get(TextKey.NotificationUpdated, language)}",
+            (VacancyChangeKind.Closed, true) => $"🔎 ❌ {BotTexts.Get(TextKey.NotificationClosed, language)}",
+            (VacancyChangeKind.Closed, false) => $"❌ {BotTexts.Get(TextKey.NotificationClosed, language)}",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+        };
 
     public static string Escape(string? text) =>
         WebUtility.HtmlEncode(text ?? string.Empty);

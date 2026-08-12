@@ -1,0 +1,49 @@
+namespace JobsPulse.Sinks.Telegram.Models;
+
+/// <summary>
+/// What a button does. Serialized by its short code, never by name: telegram caps callback data at 64 bytes and it
+/// still has to carry an id and a page number.
+/// </summary>
+public enum CallbackAction
+{
+    None,
+
+    Menu,
+    Help,
+    MyWatchlists,
+    AllWatchlists,
+    Language,
+    SetLanguage,
+    Admin,
+
+    WatchlistNew,
+    WatchlistOpen,
+    WatchlistRename,
+    WatchlistTogglePaused,
+    WatchlistDeleteAsk,
+    WatchlistDelete,
+
+    FilterOpen,
+    FilterKeywords,
+    FilterExcluded,
+    FilterLocations,
+    FilterFreshnessAsk,
+    FilterFreshnessSet,
+    FilterClear,
+
+    CompaniesOpen,
+    CompanyOpen,
+    CompanyToggleWorked,
+    CompanyToggleEnabled,
+    CompanyRemove,
+    CompanyAdd,
+    CompanyPick,
+
+    DisabledCompanies,
+
+    /// <summary>Re-enables a company and returns to the disabled list, not to the watchlist it belongs to.</summary>
+    CompanyRestore,
+
+    VacanciesPick,
+    VacanciesOpen
+}

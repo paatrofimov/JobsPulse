@@ -7,6 +7,9 @@ public class PersistentWatchlist
 
     public required string Name { get; set; }
 
+    /// <summary>Telegram user id of the owner. Null for a watchlist created before ownership existed.</summary>
+    public long? OwnerUserId { get; set; }
+
     public bool Enabled { get; set; } = true;
 
     /// <summary>`FilterSpec` as jsonb - the filter is read and written whole, never queried by field.</summary>

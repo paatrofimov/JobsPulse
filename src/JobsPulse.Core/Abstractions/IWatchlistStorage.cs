@@ -17,8 +17,11 @@ public interface IWatchlistStorage
 
     Task<Watchlist?> FindByNameAsync(string name, CancellationToken ct);
 
-    /// <summary>Returns null when the name is already taken.</summary>
-    Task<Watchlist?> CreateAsync(string name, FilterSpec filter, CancellationToken ct);
+    /// <summary>Returns null when the name is already taken. A null owner creates a system watchlist.</summary>
+    Task<Watchlist?> CreateAsync(string name, FilterSpec filter, long? ownerUserId, CancellationToken ct);
+
+    /// <summary>Returns false when the watchlist is gone or the new name is already taken.</summary>
+    Task<bool> RenameAsync(long watchlistId, string name, CancellationToken ct);
 
     Task<bool> DeleteAsync(long watchlistId, CancellationToken ct);
 
@@ -52,6 +55,9 @@ public interface IWatchlistStorage
     Task<bool> RemoveEntryAsync(long entryId, CancellationToken ct);
 
     Task<bool> SetEntryEnabledAsync(long entryId, bool enabled, CancellationToken ct);
+
+    /// <summary>Marks a company as worked through (a CV went out) or clears the mark.</summary>
+    Task<bool> SetEntryWorkedAsync(long entryId, bool worked, CancellationToken ct);
 
     /// <summary>Disables every entry pointing at a board - used when the board itself is gone.</summary>
     Task<int> DisableBoardAsync(string sourceId, string boardId, CancellationToken ct);

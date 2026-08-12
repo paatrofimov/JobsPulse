@@ -14,9 +14,11 @@ public class JobsPulseDbContext(
     public DbSet<PersistentWatchlist> Watchlists => Set<PersistentWatchlist>();
     public DbSet<PersistentWatchlistEntry> WatchlistEntries => Set<PersistentWatchlistEntry>();
     public DbSet<PersistentWatchlistVacancy> WatchlistVacancies => Set<PersistentWatchlistVacancy>();
+    public DbSet<PersistentBotUser> BotUsers => Set<PersistentBotUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        ConfigureBotUser(modelBuilder);
         ConfigureSeenVacancy(modelBuilder);
         ConfigureOutbox(modelBuilder);
         ConfigureBoardRegistry(modelBuilder);
@@ -24,6 +26,22 @@ public class JobsPulseDbContext(
         ConfigureWatchlist(modelBuilder);
         ConfigureWatchlistEntry(modelBuilder);
         ConfigureWatchlistVacancy(modelBuilder);
+    }
+
+    private static void ConfigureBotUser(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentBotUser>();
+
+        entity.ToTable("bot_user");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // The telegram user id is the identity a watchlist owner is stored as.
+        entity.HasIndex(x => x.TelegramUserId)
+            .IsUnique();
     }
 
     private static void ConfigureBoardRegistry(ModelBuilder modelBuilder)
@@ -141,6 +159,9 @@ public class JobsPulseDbContext(
         // A watchlist is addressed by name from the bot, so the name is the second identity.
         entity.HasIndex(x => x.Name)
             .IsUnique();
+
+        // «My watchlists» is the most frequent read of the bot.
+        entity.HasIndex(x => x.OwnerUserId);
 
         entity.Property(x => x.Filter)
             .HasColumnType("jsonb");

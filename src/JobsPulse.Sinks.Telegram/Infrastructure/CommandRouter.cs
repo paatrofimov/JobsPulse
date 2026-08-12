@@ -10,6 +10,11 @@ using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
+/// <summary>
+/// The administrator surface: raw ids, filter json, the board registry and the pipeline itself. Reached only from a
+/// chat listed in <c>Telegram:AdminChatIds</c> - <see cref="Pipeline.BotUpdateHandler"/> refuses everybody else. The
+/// ordinary user interface is buttons and screens and never comes here.
+/// </summary>
 public sealed class CommandRouter(
     WatchService watch,
     PollingOrchestrator orchestrator,
@@ -17,6 +22,7 @@ public sealed class CommandRouter(
     IBoardRegistryStorage boardRegistry,
     IBoardDiscoveryService discovery,
     IVacancySink sink,
+    IBotUserStorage users,
     PendingSelectionStore pending,
     ILog log)
 {
@@ -47,24 +53,23 @@ public sealed class CommandRouter(
 
         return command switch
         {
-            BotCommandCatalog.Watchlists or "list" => await RenderWatchlistsAsync(ct),
-            BotCommandCatalog.Watchlist => await RenderWatchlistAsync(argument, ct),
-            BotCommandCatalog.WatchlistAdd => await HandleWatchlistAddAsync(argument, ct),
-            BotCommandCatalog.WatchlistRemove => await HandleWatchlistRemoveAsync(argument, ct),
-            BotCommandCatalog.WatchlistEnable => await HandleWatchlistEnabledAsync(argument, true, ct),
-            BotCommandCatalog.WatchlistDisable => await HandleWatchlistEnabledAsync(argument, false, ct),
-            BotCommandCatalog.Filter => await HandleFilterAsync(argument, ct),
-            BotCommandCatalog.BoardAdd => await HandleBoardAddAsync(argument, ct),
-            BotCommandCatalog.BoardRemove or "unwatch" => await HandleBoardRemoveAsync(argument, ct),
-            BotCommandCatalog.Watch or "add" => await HandleWatchAsync(chatId, argument, ct),
-            BotCommandCatalog.ForceCycle => await HandleForceCycleAsync(ct),
-            BotCommandCatalog.ShowState => await HandleShowStateAsync(ct),
-            BotCommandCatalog.DropData => await HandleDropDataAsync(ct),
-            BotCommandCatalog.Boards => await HandleBoardsAsync(argument, ct),
-            BotCommandCatalog.RegistryRemove => await HandleRegistryRemoveAsync(argument, ct),
-            BotCommandCatalog.Discover => await HandleDiscoverAsync(),
-            BotCommandCatalog.Help or "start" => BotCommandCatalog.RenderHelp(),
-            _ => "<p>Unknown command. /help — commands list.</p>"
+            AdminCommandCatalog.Watchlists or "list" => await RenderWatchlistsAsync(ct),
+            AdminCommandCatalog.Watchlist => await RenderWatchlistAsync(argument, ct),
+            AdminCommandCatalog.WatchlistAdd => await HandleWatchlistAddAsync(argument, ct),
+            AdminCommandCatalog.WatchlistRemove => await HandleWatchlistRemoveAsync(argument, ct),
+            AdminCommandCatalog.WatchlistEnable => await HandleWatchlistEnabledAsync(argument, true, ct),
+            AdminCommandCatalog.WatchlistDisable => await HandleWatchlistEnabledAsync(argument, false, ct),
+            AdminCommandCatalog.Filter => await HandleFilterAsync(argument, ct),
+            AdminCommandCatalog.BoardAdd => await HandleBoardAddAsync(argument, ct),
+            AdminCommandCatalog.BoardRemove or "unwatch" => await HandleBoardRemoveAsync(argument, ct),
+            AdminCommandCatalog.Watch or "add" => await HandleWatchAsync(chatId, argument, ct),
+            AdminCommandCatalog.ForceCycle => await HandleForceCycleAsync(ct),
+            AdminCommandCatalog.ShowState => await HandleShowStateAsync(ct),
+            AdminCommandCatalog.DropData => await HandleDropDataAsync(ct),
+            AdminCommandCatalog.Boards => await HandleBoardsAsync(argument, ct),
+            AdminCommandCatalog.RegistryRemove => await HandleRegistryRemoveAsync(argument, ct),
+            AdminCommandCatalog.Discover => await HandleDiscoverAsync(),
+            _ => "<p>Unknown admin command. /admin — the list.</p>"
         };
     }
 
@@ -76,6 +81,9 @@ public sealed class CommandRouter(
 
         var matches = await stateStore.CountMatchesByWatchlistAsync(ct);
 
+        var owners = await users.GetManyAsync(
+            [.. watchlists.Where(w => w.OwnerUserId is not null).Select(w => w.OwnerUserId!.Value).Distinct()], ct);
+
         var sb = new StringBuilder("<h6>Watchlists</h6><p>");
 
         foreach (var watchlist in watchlists)
@@ -84,7 +92,12 @@ public sealed class CommandRouter(
             var enabled = watchlist.Entries.Where(e => e.Enabled).ToList();
             var discovered = enabled.Count(e => e.Origin == BoardOrigin.Discovery);
 
+            var owner = watchlist.OwnerUserId is { } ownerId
+                ? owners.GetValueOrDefault(ownerId)?.DisplayName ?? ownerId.ToString()
+                : "system";
+
             sb.Append($"• <b>{MessageFormatter.Escape(watchlist.Name)}</b> <code>#{watchlist.Id}</code> — {status}, "
+                      + $"owner: {MessageFormatter.Escape(owner)}, "
                       + $"boards: <b>{enabled.Count}</b> of {watchlist.Entries.Count}"
                       + (discovered > 0 ? $" ({DiscoveryMark} {discovered})" : string.Empty)
                       + $", matching: <b>{matches.GetValueOrDefault(watchlist.Id)}</b><br>");
@@ -148,7 +161,8 @@ public sealed class CommandRouter(
         if (string.IsNullOrWhiteSpace(argument))
             return "<p>Specify a name: <code>/watchlist_add .NET Europe</code></p>";
 
-        var created = await watch.CreateAsync(Unquote(argument), ct);
+        // An admin-created watchlist has no owner: it is a system one, visible to everybody as an example.
+        var created = await watch.CreateAsync(Unquote(argument), ownerUserId: null, ct);
 
         return created is null
             ? $"<p>Watchlist «{MessageFormatter.Escape(argument)}» already exists.</p>"

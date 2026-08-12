@@ -13,6 +13,16 @@ public interface IStateStore
 
     Task<IReadOnlyList<SeenVacancySnapshot>> LoadAllAsync(CancellationToken ct);
 
+    /// <summary>
+    /// Open vacancies currently matching one watchlist, newest first - the paged feed the bot shows when a user
+    /// opens a watchlist. <see cref="CountMatchesByWatchlistAsync"/> only gives the totals.
+    /// </summary>
+    Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
+        long watchlistId,
+        int limit,
+        int offset,
+        CancellationToken ct);
+
     Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct);
 
     /// <summary>Open vacancies stored under a filter hash that is no longer in use.</summary>

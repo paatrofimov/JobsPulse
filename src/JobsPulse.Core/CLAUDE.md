@@ -1,7 +1,9 @@
 ﻿# Watchlists
 
 The watchlist is the processing boundary. A watchlist is a named set of boards plus one filter, stored in PostgreSQL
-(`watchlist`, `watchlist_entry`); there can be many of them and they are independent. The config file carries
+(`watchlist`, `watchlist_entry`); there can be many of them and they are independent. Each one belongs to the bot user
+who created it (`OwnerUserId`, null for the legacy import - a system watchlist), which is what makes «my lists» and
+«somebody else's lists as examples» possible, and what decides where its notifications are delivered. The config file carries
 infrastructure settings only - nothing about what is watched, and no runtime change ever touches a file.
 
 One board may belong to several watchlists, so vacancy state is split in two levels:
@@ -199,8 +201,10 @@ Applies filter to a list of vacancies.
 
 ## WatchService
 
-Backs the bot commands: watchlist CRUD (create, delete, enable/disable, filter, interval), entry CRUD
-(add/remove/enable/disable) and board lookup. Everything goes through `IWatchlistStorage`, so a change is in
+Backs the bot: watchlist CRUD (create with an owner, rename, delete, enable/disable, filter, interval), entry CRUD
+(add/remove/enable/disable, mark worked through) and board lookup. `ListByOwnerAsync` is «my watchlists».
+Authorization is not here - the bot is the only writer and `WatchlistAccess` in the sink project is the single
+chokepoint that decides who may edit what. Everything goes through `IWatchlistStorage`, so a change is in
 PostgreSQL the moment the command returns. Resolution itself lives in the source projects (`IBoardResolver`); this
 service only orchestrates and filters.
 
@@ -269,9 +273,18 @@ whichever comes first.
 
 Responsible for atomic updates of seen vacancies, of the watchlist match layer and for enqueueing outbox
 notifications - all in one transaction, so a notification can never exist without the state that produced it.
+`LoadMatchedVacanciesAsync` is the paged feed the bot shows when a user opens a watchlist - the match layer joined to
+its open `seen_vacancy` rows, newest first (`CountMatchesByWatchlistAsync` only gives the totals).
 `LoadAllAsync` and `PurgeAllAsync` are admin operations exposed through bot commands, not used by the pipeline;
 `PurgeAllAsync` wipes derived state (vacancies, matches, outbox, registry) and keeps the watchlists, which are
 configuration.
+
+## IBotUserStorage
+
+The people using the bot (`bot_user`): the telegram user id a watchlist owner is stored as, the chat to deliver to, the
+display name shown as the owner, and the interface language. `UpsertOnContactAsync` runs on every incoming update and
+refreshes the chat id, the name and the last-seen stamp - but never the language, which is a setting only the user
+changes. `GetManyAsync` resolves the owners of a whole listing in one query.
 
 ## IWatchlistStorage
 
@@ -342,6 +355,17 @@ and a board can still be added by hand.
 ## Watchlist / WatchlistEntry
 
 The configuration aggregate: a watchlist with its filter and its entries. An entry is one board inside one watchlist.
+
+## BotUser / BotLanguage
+
+One person talking to the bot. The telegram user id is the identity - it owns watchlists and survives a chat being
+recreated, which a chat id does not. `BotLanguage` (`English` / `Russian`) is stored per user, so it applies to the
+notifications that arrive hours after the switch, not just to the current screen.
+
+## WatchlistEntry.WorkedAt
+
+When the user marked a company as worked through - a CV went out. A nullable stamp rather than a flag, because the date
+is what they want to see when coming back to the list later. `IsWorked` is the shorthand.
 
 ## BoardOrigin
 

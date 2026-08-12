@@ -94,6 +94,42 @@ internal class StateStore(
             .ToList();
     }
 
+    public async Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
+        long watchlistId,
+        int limit,
+        int offset,
+        CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        // The match layer holds the keys only, so the payload comes from the open seen_vacancy rows behind them.
+        var rows = await db.WatchlistVacancies
+            .AsNoTracking()
+            .Where(m => m.WatchlistId == watchlistId)
+            .Join(
+                db.SeenVacancies.AsNoTracking().Where(v => v.ClosedAt == null),
+                m => new
+                {
+                    m.SourceId,
+                    m.BoardId,
+                    m.PostId
+                },
+                v => new
+                {
+                    v.SourceId,
+                    v.BoardId,
+                    v.PostId
+                },
+                (_, v) => v)
+            .OrderByDescending(v => v.FirstPublishedAt ?? v.UpdatedAt)
+            .ThenBy(v => v.Title)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        return [.. rows.Select(x => x.ToDomainModel())];
+    }
+
     public async Task<IReadOnlyList<SeenVacancySnapshot>> LoadStaleFilterAsync(
         IReadOnlyList<string> knownFilterHashes,
         int limit,

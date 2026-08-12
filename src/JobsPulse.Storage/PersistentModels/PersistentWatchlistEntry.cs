@@ -22,6 +22,9 @@ public class PersistentWatchlistEntry
     /// <summary>Manual or discovery. Stored as int, so reordering the enum breaks nothing.</summary>
     public BoardOrigin Origin { get; set; } = BoardOrigin.Manual;
 
+    /// <summary>When the user marked the company as worked through. Null means «not approached yet».</summary>
+    public DateTimeOffset? WorkedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public PersistentWatchlist? Watchlist { get; set; }
