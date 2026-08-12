@@ -8,8 +8,10 @@ Differences from the other sources that shape this project:
   the reason `BoardCandidate` / `WatchlistEntry` / `RegisteredBoard` / `BoardWorkItem` / `SourceTarget` carry a
   `Configuration` json, and the board id is the canonical rendering `{host}/{tenant}/{site}` of it.
 - **no resolution by name.** A company name predicts neither the cluster nor which site is public, so
-  `ResolveByNameAsync` returns nothing and boards are added by url. For the same reason there is no
-  `IBoardUrlParser`: a crawled url carries no confirmed tenant, so Workday stays out of the crawl index sweep.
+  `ResolveByNameAsync` returns nothing and boards are added by url.
+- **a crawled url carries a tenant hint, not a tenant.** Workday still takes part in the crawl index sweep
+  (`WorkdayBoardUrlParser`), because the hint is adjudicated where every other source is validated - the probe. See
+  `WorkdayBoardResolver.ProbeAsync`.
 - **the page size is capped at 20** - the list endpoint answers HTTP 400 above that.
 - **`total` is only trustworthy on the first page**, and some tenants cap it (NVIDIA reports 2000) and then *wrap
   back to the first page* instead of answering an empty one. Paging therefore also stops on a page that brings no
@@ -119,5 +121,22 @@ then probe the backend. When the page cannot confirm (500 - unknown tenant, or a
 tried and the backend adjudicates; that candidate is reported as `Guessed` rather than `DirectSlug`. Every candidate
 carries the serialized configuration, so the entry written to the watchlist is addressable.
 
-`ProbeAsync` takes the canonical board id, and is also the validation step for a manual `/board_add`. `JobCount` is
-the reported total, `DisplayName` the tenant - what the company is called inside Workday.
+`ProbeAsync` takes the canonical board id, and is the validation step for both a manual `/board_add` and a token mined
+from a crawl index. The tenant in that id may be a guess, so a refused pair is confirmed against the careers page and
+probed once more; the candidate then carries the confirmed board id, which is what the caller stores. The second probe
+is skipped when the page reports the pair that has just been refused - it would only cost a request. `JobCount` is the
+reported total, `DisplayName` the tenant - what the company is called inside Workday.
+
+## WorkdayBoardUrlParser
+
+`IBoardUrlParser` for crawl index mining. Two whole-domain patterns (`*.myworkdayjobs.com/*`,
+`*.myworkdaysite.com/recruiting/*`) rather than exact hosts, because every tenant has its own; the discovery pipeline
+supports that mode for this source's sake.
+
+The token is `{host}/{tenant}/{site}` built from `WorkdayBoardUrl.Parse`, with the *hint* as the tenant - exact for a
+`myworkdaysite.com` url, the subdomain for a `myworkdayjobs.com` one. A url of a cluster host with no tenant label
+(`wd3.myworkdayjobs.com/...`) is rejected outright: there is nothing there to guess from.
+
+The `myworkdaysite.com` form spends three path segments (`/recruiting/{tenant}/{site}`), so
+`Discovery:Parquet:UrlPathSegments` below 3 silently drops those boards - the columnar reader cuts the path before this
+parser ever sees it.

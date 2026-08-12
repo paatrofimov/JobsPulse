@@ -91,7 +91,12 @@ public sealed class WorkdayBoardResolver(
             : fallback with { Resolution = ResolutionKind.Guessed };
     }
 
-    /// <summary><paramref name="boardId"/> is the canonical '{host}/{tenant}/{site}'.</summary>
+    /// <summary>
+    /// <paramref name="boardId"/> is the canonical '{host}/{tenant}/{site}'. The tenant in it may be a guess - a board
+    /// token mined from a crawl index carries the subdomain, which is usually the tenant but not always - so a rejected
+    /// pair is confirmed against the careers page and probed again. The candidate then carries the *confirmed* board
+    /// id, which is what reaches the registry.
+    /// </summary>
     public async Task<BoardCandidate?> ProbeAsync(string boardId, CancellationToken ct)
     {
         var config = WorkdayBoardConfig.FromBoardId(boardId);
@@ -101,7 +106,34 @@ public sealed class WorkdayBoardResolver(
             return null;
         }
 
-        return await ProbeConfigAsync(config, ct);
+        if (await ProbeConfigAsync(config, ct) is { } candidate)
+            return candidate;
+
+        var confirmed = await careersSite.GetSitePairAsync(config.BoardUrl, ct);
+        if (!confirmed.Success)
+            return null;
+
+        var pair = confirmed.Value!;
+
+        // The pair the page reports is the one the frontend itself calls the backend with. Re-probing it is only worth
+        // a request when it differs from what has just been refused.
+        if (string.Equals(pair.Tenant, config.Tenant, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pair.Site, config.Site, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        ctxLog.Debug(
+            "Workday board {Board} was refused; the careers page reports '{Tenant}/{Site}' — probing that instead",
+            config.BoardId, pair.Tenant, pair.Site);
+
+        return await ProbeConfigAsync(
+            config with
+            {
+                Tenant = pair.Tenant,
+                Site = pair.Site
+            },
+            ct);
     }
 
     private async Task<BoardCandidate?> ProbeConfigAsync(WorkdayBoardConfig config, CancellationToken ct)

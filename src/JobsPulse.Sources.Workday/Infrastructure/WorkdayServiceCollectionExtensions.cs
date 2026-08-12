@@ -46,7 +46,9 @@ public static class WorkdayServiceCollectionExtensions
 
         services.AddSingleton<WorkdayMapper>();
 
-        // No IBoardUrlParser: a crawled url carries no confirmed tenant, so Workday stays out of the crawl sweep.
+        // A crawled url carries a tenant hint rather than a confirmed tenant; the resolver adjudicates it during
+        // validation, which is why Workday can take part in the crawl sweep at all.
+        services.AddSingleton<IBoardUrlParser, WorkdayBoardUrlParser>();
 
         return services;
     }

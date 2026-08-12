@@ -2,8 +2,14 @@ Board discovery: mines web crawl indexes (Common Crawl) for ATS board urls and f
 registry (`board_registry` table, `IBoardRegistryStorage` in Core).
 
 Nothing here knows about a particular ATS. Everything source-specific lives in the source project behind
-`IBoardUrlParser` (`GreenhouseBoardUrlParser`, `LeverBoardUrlParser`, `SmartRecruitersBoardUrlParser`, `AshbyBoardUrlParser`), so adding a
-source means adding one parser, not touching this project.
+`IBoardUrlParser` (`GreenhouseBoardUrlParser`, `LeverBoardUrlParser`, `SmartRecruitersBoardUrlParser`,
+`AshbyBoardUrlParser`, `WorkdayBoardUrlParser`), so adding a source means adding one parser, not touching this project.
+
+A pattern may name a whole domain (`*.myworkdayjobs.com/*`) instead of a known host. That is what Workday needs - every
+tenant gets its own careers host - and it costs a suffix match where the other sources get equality, in both index
+readers. A token whose board id the crawl could only guess (Workday's tenant) is not a special case either: validation
+already probes every token against the ATS, and the candidate it returns is what the registry stores, so a corrected
+address lands there instead of the guessed one.
 
 # Modes
 
@@ -55,6 +61,10 @@ The columnar reader. Two calls, both throwing `ParquetIndexUnavailableException`
 Implementation over the CDX API. Requests are `output=json&fl=url&filter==status:200` - only successful captures,
 only the field that matters. Unparsable lines are skipped, not fatal.
 
+A `*.domain/path/*` pattern is trimmed to `*.domain` before it is sent: the cdx api reads a leading `*.` as a whole
+domain, but only when nothing follows the host. The path filter is lost, so every capture of the domain is streamed and
+the parser is what rejects them - which it does anyway.
+
 The index front-end throttles hard: it answers 503/429 and simply drops connections under load
 (`SocketException 10054`), so failing is the normal path and the client is built around it.
 
@@ -101,14 +111,27 @@ Hence two queries instead of one. `Probe` narrows the file set on a cheap column
 on the few files that are left, cuts the posting id off the path (`UrlPathSegments` leading segments) and returns
 `DISTINCT`, so a board with 5000 job pages comes back as one row. Every ATS is one `OR` group of the same query.
 
+A whole-domain target is `url_host_name LIKE '%.domain'` instead of equality. The leading `%` rules out any row group
+skip, which is exactly why it is per-pattern and not the general case - but for an ATS whose host is per tenant there is
+no host to ask for by name, so the alternative is not asking at all.
+
 Measured on `CC-MAIN-2025-30`: 300 files → 137 after the tld probe (2m40s) → 4 after the host probe (3m30s) → 36k
 distinct urls in 48s, which is ~7 minutes against the ~2 hours a single wide query over all 300 files costs.
 
 ## BoardIndexTargets
 
 Translates the cdx url patterns a source already declares (`boards-api.greenhouse.io/v1/boards/*`) into columnar
-index targets - tld, exact host, path prefix. All three are plain equality, so no public suffix or surt
+index targets - tld, host, path prefix. Tld and path are plain equality, so no public suffix or surt
 canonicalization assumption can silently drop a board, and adding an ATS still means adding one `IBoardUrlParser`.
+
+A leading `*.` (`*.myworkdayjobs.com/*`) is a host *mode*, not a path wildcard: the target is marked `HostIsSuffix` and
+matches every subdomain of the domain. Only an ATS that gives each tenant its own host needs it - the predicate cannot
+prune on a `LIKE '%.domain'`, so it is deliberately not the default.
+
+## HostParserIndex
+
+Which ATS a host belongs to, asked once per url out of millions: a dictionary for the exact hosts and a walk over the
+few whole-domain targets. Kept apart from the passes because both readers need the same answer.
 
 ## CrawlIndexFailure
 
@@ -168,6 +191,10 @@ The last stage of both passes: unknown tokens are probed against the ATS itself 
 throttled by `ValidationConcurrency`, and the survivors are upserted in `UpsertBatchSize` batches. A probe failure
 just drops the token. `DiscoveredVia` records which reader found the board - `common-crawl-parquet:{crawl}` or
 `common-crawl:{crawl}`.
+
+The row is built from the **candidate**, not from the token: the board id and the `Configuration` are the ones the probe
+confirmed, so an ATS whose token carries a guess (Workday's tenant) is registered at its real address and with the
+configuration that makes it addressable at all.
 
 ## Failures and progress
 

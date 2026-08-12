@@ -1,5 +1,5 @@
 # JobsPulse
-
+~~~~
 **A Telegram bot that watches the careers pages of the companies you care about and messages you the moment a matching
 vacancy appears.**
 

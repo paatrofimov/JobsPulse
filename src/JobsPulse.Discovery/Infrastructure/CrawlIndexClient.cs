@@ -196,7 +196,7 @@ public sealed partial class CrawlIndexClient(
 
     private static string BuildUrl(CrawlIndexQuery query, int? page, bool showNumPages)
     {
-        var url = $"{query.Collection.CdxApiUrl}?url={Uri.EscapeDataString(query.UrlPattern)}"
+        var url = $"{query.Collection.CdxApiUrl}?url={Uri.EscapeDataString(CdxPattern(query.UrlPattern))}"
                   + "&output=json&fl=url";
 
         if (!string.IsNullOrWhiteSpace(query.StatusFilter))
@@ -208,6 +208,21 @@ public sealed partial class CrawlIndexClient(
             return url + "&showNumPages=true";
 
         return page is null ? url : url + $"&page={page}";
+    }
+
+    /// <summary>
+    /// '*.myworkdayjobs.com/*' asks for a whole domain, and the cdx api reads a leading '*.' as exactly that - but
+    /// only when nothing follows the host, so the path part is dropped. Every capture of the domain is then streamed
+    /// and the parser is what filters, which it does anyway.
+    /// </summary>
+    private static string CdxPattern(string pattern)
+    {
+        if (!pattern.StartsWith("*.", StringComparison.Ordinal))
+            return pattern;
+
+        var slash = pattern.IndexOf('/');
+
+        return slash < 0 ? pattern : pattern[..slash];
     }
 
     /// <summary>

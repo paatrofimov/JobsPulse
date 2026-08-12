@@ -34,7 +34,6 @@ public sealed class ParquetIndexDiscoveryPass(
         DiscoveryOptions opts,
         CancellationToken ct)
     {
-        // todo (patrofimov) add workday board url parser
         var targets = BoardIndexTargets.From(boardUrlParsers);
         if (targets.Count == 0)
         {
@@ -48,7 +47,7 @@ public sealed class ParquetIndexDiscoveryPass(
 
         ctxLog.Info(
             "Columnar index targets: {Targets}",
-            string.Join(", ", targets.Select(t => $"{t.SourceId}:{t.Host}{t.PathPrefix}")));
+            string.Join(", ", targets.Select(t => $"{t.SourceId}:{t.HostLabel}{t.PathPrefix}")));
 
         var state = await LoadStateAsync(full, ct);
 
@@ -165,7 +164,18 @@ public sealed class ParquetIndexDiscoveryPass(
         // predicate and drag more files through the probes.
         var targets = allTargets.Where(t => fresh.ContainsKey(t.SourceId)).ToList();
         var tlds = targets.Select(t => t.Tld).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var hosts = targets.Select(t => t.Host).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        var hosts = targets
+            .Where(t => !t.HostIsSuffix)
+            .Select(t => t.Host)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var hostSuffixes = targets
+            .Where(t => t.HostIsSuffix)
+            .Select(t => t.Host)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         var listed = await ListFilesAsync(collection, parquetOpts, ct);
         if (listed.Count == 0)
@@ -182,7 +192,14 @@ public sealed class ParquetIndexDiscoveryPass(
         {
             var (narrowed, hostFailures) = await ProbeAsync(
                 $"host probe of {collection.Id}", collection, candidates,
-                new ParquetFileProbe { Files = [], Tlds = tlds, Hosts = hosts, FetchStatus = parquetOpts.FetchStatus },
+                new ParquetFileProbe
+                {
+                    Files = [],
+                    Tlds = tlds,
+                    Hosts = hosts,
+                    HostSuffixes = hostSuffixes,
+                    FetchStatus = parquetOpts.FetchStatus
+                },
                 parquetOpts, ct);
 
             candidates = narrowed;
@@ -200,14 +217,15 @@ public sealed class ParquetIndexDiscoveryPass(
 
         ctxLog.Info(
             "Collection {Collection}: {Selected} of {Listed} parquet files hold {Hosts}",
-            collection.Id, candidates.Count, listed.Count, string.Join(", ", hosts));
+            collection.Id, candidates.Count, listed.Count,
+            string.Join(", ", targets.Select(t => t.HostLabel).Distinct(StringComparer.OrdinalIgnoreCase)));
 
         if (candidates.Count == 0)
             return Result(0, fresh, listed.Count, 0, 0, failed: false, capReached: false);
 
         // Stage 3: the paths themselves, on the few files that are left.
         var collector = new TokenCollector(
-            targets.ToDictionary(t => t.Host, t => state[t.SourceId].Parser, StringComparer.OrdinalIgnoreCase),
+            new HostParserIndex(targets, sourceId => state[sourceId].Parser),
             state,
             fresh,
             opts);
@@ -470,7 +488,7 @@ public sealed class ParquetIndexDiscoveryPass(
     /// one parser is asked per url instead of all of them.
     /// </summary>
     private sealed class TokenCollector(
-        IReadOnlyDictionary<string, IBoardUrlParser> parserByHost,
+        HostParserIndex parserByHost,
         IReadOnlyDictionary<string, SourceState> state,
         IReadOnlyDictionary<string, HashSet<string>> fresh,
         DiscoveryOptions opts)
@@ -483,7 +501,7 @@ public sealed class ParquetIndexDiscoveryPass(
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 return;
 
-            if (!parserByHost.TryGetValue(uri.Host, out var parser))
+            if (!parserByHost.TryGet(uri.Host, out var parser))
                 return;
 
             if (!parser.TryParseBoardId(url, out var boardId))

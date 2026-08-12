@@ -13,5 +13,11 @@ public sealed record ParquetFileProbe
     /// <summary>Null - the tld alone is asked about, which is the cheap first step.</summary>
     public IReadOnlyList<string>? Hosts { get; init; }
 
+    /// <summary>
+    /// Domains whose every subdomain is a board host - see <see cref="BoardIndexTarget.HostIsSuffix"/>. Asked with a
+    /// suffix match instead of equality, so they are listed separately from <see cref="Hosts"/>.
+    /// </summary>
+    public IReadOnlyList<string>? HostSuffixes { get; init; }
+
     public int FetchStatus { get; init; } = 200;
 }

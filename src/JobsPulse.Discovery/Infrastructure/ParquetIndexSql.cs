@@ -30,10 +30,29 @@ public static class ParquetIndexSql
         AppendList(sql, probe.Tlds);
         sql.Append(')');
 
-        if (probe.Hosts is { Count: > 0 })
+        // Exact hosts and whole-domain ones are one predicate: a file matching either of them has to be read.
+        var hosts = probe.Hosts ?? [];
+        var suffixes = probe.HostSuffixes ?? [];
+
+        if (hosts.Count > 0 || suffixes.Count > 0)
         {
-            sql.Append(" AND url_host_name IN (");
-            AppendList(sql, probe.Hosts);
+            sql.Append(" AND (");
+
+            if (hosts.Count > 0)
+            {
+                sql.Append("url_host_name IN (");
+                AppendList(sql, hosts);
+                sql.Append(')');
+            }
+
+            for (var i = 0; i < suffixes.Count; i++)
+            {
+                if (i > 0 || hosts.Count > 0)
+                    sql.Append(" OR ");
+
+                AppendHostSuffix(sql, suffixes[i]);
+            }
+
             sql.Append(')');
         }
 
@@ -69,7 +88,12 @@ public static class ParquetIndexSql
             if (i > 0)
                 sql.Append(" OR ");
 
-            sql.Append("(url_host_name = ").Append(Literal(target.Host));
+            sql.Append('(');
+
+            if (target.HostIsSuffix)
+                AppendHostSuffix(sql, target.Host);
+            else
+                sql.Append("url_host_name = ").Append(Literal(target.Host));
 
             if (target.PathPrefix != "/")
                 sql.Append(" AND url_path LIKE ").Append(Literal(target.PathPrefix + "%"));
@@ -81,6 +105,13 @@ public static class ParquetIndexSql
 
         return sql.ToString();
     }
+
+    /// <summary>
+    /// Every subdomain of one domain. The leading '%' rules out a row group skip, but there is no alternative: an ATS
+    /// that gives each tenant its own host has no host to be asked for by name.
+    /// </summary>
+    private static void AppendHostSuffix(StringBuilder sql, string suffix) =>
+        sql.Append("url_host_name LIKE ").Append(Literal("%." + suffix));
 
     private static void AppendList(StringBuilder sql, IReadOnlyList<string> values)
     {

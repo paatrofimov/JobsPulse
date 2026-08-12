@@ -69,8 +69,11 @@ public sealed class BoardTokenSink(
                 .Select(c => new RegisteredBoard
                 {
                     SourceId = c!.SourceId,
+                    // The probe decides the board id: for an ATS whose token carries a guess (Workday's tenant) the
+                    // confirmed address is what must be stored, not what the index suggested.
                     BoardId = c.BoardId,
                     DisplayName = c.DisplayName,
+                    Configuration = c.Configuration,
                     JobCount = c.JobCount,
                     BoardUrl = c.BoardUrl,
                     DiscoveredVia = discoveredVia,
