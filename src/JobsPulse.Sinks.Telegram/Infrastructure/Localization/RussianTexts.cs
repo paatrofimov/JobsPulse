@@ -37,7 +37,7 @@ internal static class RussianTexts
         [TextKey.AllWatchlistsHint] =
             "Чужие списки показаны как примеры — заглянуть внутрь можно, но менять получится только свои.",
         [TextKey.WatchlistOwnerYou] = "вы",
-        [TextKey.WatchlistOwnerSystem] = "система",
+        [TextKey.WatchlistOwnerSystem] = "системный",
         [TextKey.WatchlistOwnerOther] = "другой пользователь",
         [TextKey.WatchlistCreate] = "➕ Новый список",
         [TextKey.WatchlistCreatePrompt] =
@@ -134,6 +134,7 @@ internal static class RussianTexts
         [TextKey.VacanciesEmpty] =
             "Пока ничего не найдено. Либо у компаний нет подходящих вакансий, либо первый круг ещё идёт.",
         [TextKey.VacanciesCount] = "Подходящих открытых вакансий: {0}.",
+        [TextKey.VacanciesShownOf] = "Показаны {0} вакансий из {1} — самые свежие.",
         [TextKey.VacancyUnknownLocation] = "Локация неизвестна",
 
         [TextKey.LanguageTitle] = "Выберите язык",

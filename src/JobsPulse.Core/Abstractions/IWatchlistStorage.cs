@@ -20,6 +20,13 @@ public interface IWatchlistStorage
     /// <summary>Returns null when the name is already taken. A null owner creates a system watchlist.</summary>
     Task<Watchlist?> CreateAsync(string name, FilterSpec filter, long? ownerUserId, CancellationToken ct);
 
+    /// <summary>
+    /// Gives every ownerless (system) watchlist to one user and returns how many were taken over. The legacy import
+    /// and the admin commands create watchlists with no owner, and nobody but an admin can edit those - claiming them
+    /// is what turns them into ordinary, fully editable lists.
+    /// </summary>
+    Task<int> ClaimOwnerlessAsync(long ownerUserId, CancellationToken ct);
+
     /// <summary>Returns false when the watchlist is gone or the new name is already taken.</summary>
     Task<bool> RenameAsync(long watchlistId, string name, CancellationToken ct);
 

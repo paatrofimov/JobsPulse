@@ -96,6 +96,22 @@ internal class WatchlistStorage(
         return row.ToDomainModel();
     }
 
+    public async Task<int> ClaimOwnerlessAsync(long ownerUserId, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var affected = await db.Watchlists
+            .Where(x => x.OwnerUserId == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.OwnerUserId, ownerUserId)
+                .SetProperty(x => x.UpdatedAt, clock.GetUtcNow()), ct);
+
+        if (affected > 0)
+            ctxLog.Info("{Count} system watchlists are now owned by user {Owner}", affected, ownerUserId);
+
+        return affected;
+    }
+
     public async Task<bool> RenameAsync(long watchlistId, string name, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);

@@ -45,6 +45,10 @@ public sealed class WatchService(
         return created;
     }
 
+    /// <summary>Hands every system (ownerless) watchlist to one user - see <see cref="IWatchlistStorage"/>.</summary>
+    public Task<int> ClaimSystemWatchlistsAsync(long ownerUserId, CancellationToken ct) =>
+        watchlists.ClaimOwnerlessAsync(ownerUserId, ct);
+
     public async Task<bool> RenameAsync(Watchlist watchlist, string name, CancellationToken ct)
     {
         var renamed = await watchlists.RenameAsync(watchlist.Id, name.Trim(), ct);

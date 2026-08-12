@@ -134,6 +134,7 @@ internal static class EnglishTexts
         [TextKey.VacanciesEmpty] =
             "Nothing found yet. Either the companies have no matching openings, or the first round is still running.",
         [TextKey.VacanciesCount] = "{0} open vacancies match this watchlist.",
+        [TextKey.VacanciesShownOf] = "Showing the {0} freshest vacancies out of {1}.",
         [TextKey.VacancyUnknownLocation] = "Unknown location",
 
         [TextKey.LanguageTitle] = "Choose a language",

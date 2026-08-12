@@ -34,7 +34,7 @@ public sealed class CommandRouter(
 
     private readonly ILog ctxLog = log.ForContext<CommandRouter>();
 
-    public async Task<string> HandleAsync(string chatId, string text, CancellationToken ct)
+    public async Task<string> HandleAsync(long userId, string chatId, string text, CancellationToken ct)
     {
         text = text.Trim();
 
@@ -55,7 +55,7 @@ public sealed class CommandRouter(
         {
             AdminCommandCatalog.Watchlists or "list" => await RenderWatchlistsAsync(ct),
             AdminCommandCatalog.Watchlist => await RenderWatchlistAsync(argument, ct),
-            AdminCommandCatalog.WatchlistAdd => await HandleWatchlistAddAsync(argument, ct),
+            AdminCommandCatalog.WatchlistAdd => await HandleWatchlistAddAsync(userId, argument, ct),
             AdminCommandCatalog.WatchlistRemove => await HandleWatchlistRemoveAsync(argument, ct),
             AdminCommandCatalog.WatchlistEnable => await HandleWatchlistEnabledAsync(argument, true, ct),
             AdminCommandCatalog.WatchlistDisable => await HandleWatchlistEnabledAsync(argument, false, ct),
@@ -156,13 +156,14 @@ public sealed class CommandRouter(
         sb.Append("</p>");
     }
 
-    private async Task<string> HandleWatchlistAddAsync(string argument, CancellationToken ct)
+    private async Task<string> HandleWatchlistAddAsync(long userId, string argument, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(argument))
             return "<p>Specify a name: <code>/watchlist_add .NET Europe</code></p>";
 
-        // An admin-created watchlist has no owner: it is a system one, visible to everybody as an example.
-        var created = await watch.CreateAsync(Unquote(argument), ownerUserId: null, ct);
+        // The admin owns what they create here, so the list is editable from the interface as well - an ownerless
+        // watchlist would only be reachable through these commands.
+        var created = await watch.CreateAsync(Unquote(argument), userId, ct);
 
         return created is null
             ? $"<p>Watchlist «{MessageFormatter.Escape(argument)}» already exists.</p>"

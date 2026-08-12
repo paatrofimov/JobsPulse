@@ -110,7 +110,8 @@ through, null while no CV has gone out.
 
 `watchlist.owner_user_id` is the telegram user id of the owner, without a FK to `bot_user`: the owner of a watchlist
 must stay recorded even if the user row is ever cleaned up, the same reasoning as the denormalized `outbox` columns.
-Null means a system watchlist - visible to everybody, editable by an admin only.
+Null means a system watchlist - visible to everybody, editable by an admin only. The bot claims those rows for the
+administrator on first contact, so in a live database the column is filled everywhere.
 
 ## PersistentWatchlistVacancy
 
@@ -197,7 +198,8 @@ visible to the next polling cycle. `CreateAsync` rejects a duplicate name case-i
 and re-enables an existing entry instead of inserting a second one (and refreshes its configuration, unless the
 caller passed none - a probe that came back empty must not erase a stored address, and an explicit add also flips
 `origin` back to manual); `DisableBoardAsync` switches off every entry pointing at a dead board, in every watchlist at
-once.
+once; `ClaimOwnerlessAsync` is a single `ExecuteUpdate` over `owner_user_id IS NULL` - what a migration could not do,
+because it does not know the telegram user id of the owner.
 
 `AddDiscoveredEntryAsync` is the promotion path and is deliberately insert-only: any existing row for
 `(watchlist, source, board)` - enabled or disabled - makes it return null, so a board the user has dropped is never

@@ -5,7 +5,10 @@ ids, filter json, the registry, the pipeline - lives in the admin section behind
 # Users and ownership
 
 Any telegram user may talk to the bot; `Telegram:AllowedUserIds` (empty by default) is there to lock that down.
-`Telegram:AdminChatIds` is *not* an access list any more - it only unlocks the admin section.
+`Telegram:AdminUsernames` (`patrofimov`) is *not* an access list - it only unlocks the admin section.
+`Telegram:AdminChatIds` is the fallback for an administrator who has no username; both are checked by
+`TelegramOptions.IsAdmin`. A username rather than a chat id, because that is the identity a person knows about
+themselves.
 
 Every person is a row in `bot_user` (`IBotUserStorage`), upserted on every incoming update, and a watchlist carries the
 owner's telegram user id. That gives the three access levels the interface is built on:
@@ -13,7 +16,9 @@ owner's telegram user id. That gives the three access levels the interface is bu
 - own watchlist - editable;
 - somebody else's - visible as an example, no editing buttons at all (an action that would be refused is never
   offered);
-- system watchlist (`owner_user_id IS NULL`, from the legacy import) - editable by an admin only.
+- system watchlist (`owner_user_id IS NULL`) - editable by an admin only. Nothing produces one any more:
+  `SystemWatchlistClaimer` hands the legacy ones to the administrator, and `/watchlist_add` records them as owned. The
+  level is kept because a database can still hold such a row.
 
 `WatchlistAccess` is the single chokepoint that decides this. Screens never compare owner ids themselves, so a new
 screen cannot forget the check.
@@ -32,8 +37,8 @@ client shows Russian descriptions.
 
 ## BotUpdateHandler
 
-The single entry point. Resolves the user (and hence the language and admin flag) into a `BotContext`, then decides
-what the update is:
+The single entry point. Resolves the user (and hence the language and admin flag) into a `BotContext` - which is also
+where `SystemWatchlistClaimer` runs - then decides what the update is:
 
 - a **callback** - render the screen and *edit the message in place*, so the bot stays one screen instead of a growing
   wall of replies. The callback query is answered first: the edit may take a moment and a stuck spinner looks broken.
@@ -71,8 +76,10 @@ itself.
   Without it a switched-off company is effectively lost inside some watchlist page.
 - `AddCompanyScreen` - a name or a careers-page link, resolved by `WatchService.LookupAsync`; the candidates become
   buttons. The ATS and the board id are never asked for.
-- `VacanciesScreen` - vacancies opened *by watchlist name*: pick a list, page through what matched it. The browsable
-  counterpart of the push notifications.
+- `VacanciesScreen` - vacancies opened *by watchlist name*: pick a list, then read what matched it **grouped by
+  company**, the same shape the notifications have. The feed is loaded whole (capped at 500, freshest first) and
+  `VacancyPageBuilder` packs it into as few screens as the telegram message limit allows, so a normal watchlist is one
+  page. The browsable counterpart of the push notifications.
 - `LanguageScreen` - Russian / English, stored on the user so it also applies to notifications hours later.
 - `AdminScreen` - the door to the operator commands, and a refusal for everybody else.
 
@@ -113,6 +120,24 @@ of an «add company» search. A step lasts seconds and losing it on a restart co
 The ownership chokepoint - see above. Also resolves a company entry together with the watchlist holding it, which is
 what the disabled-companies screen and every per-company action need.
 
+## SystemWatchlistClaimer
+
+Gives every ownerless watchlist - the legacy import - to the administrator the first time they talk to the bot. A
+migration cannot do it: the telegram user id of a person is only learned from an incoming update. The claim is one
+indexed `UPDATE`, but it sits on the path of every message, so it runs once per process per user; a failure un-marks
+the user and is logged instead of breaking the update.
+
+## VacancyPageBuilder
+
+The grouped vacancy feed of one watchlist: a block per company (glyph, name, count) with its vacancies newest first,
+manual companies before discovered ones - the same ordering `MessageFormatter` uses, so a browsed list and a pushed one
+read alike.
+
+Pages are packed by size rather than by a fixed count: blocks are appended while the *visible* length stays under
+`PageBudget`, so a screen carries every vacancy that still fits. Visible length is measured with the markup and the
+link targets stripped, because that is what telegram counts against its 4096 limit, and an `href` is by far the longest
+part of a rendered vacancy. A company longer than one screen is continued under a repeated header.
+
 ## BotFormatter
 
 Rendering shared by the screens: the company status glyph, the owner label and the filter in words. One place, so
@@ -150,9 +175,10 @@ that was just rendered.
 
 ## CommandRouter
 
-The **administrator** surface, unchanged in substance and reachable only from `Telegram:AdminChatIds`: raw ids, filter
+The **administrator** surface, unchanged in substance and reachable only from `Telegram:AdminUsernames`: raw ids, filter
 json, the board registry and the pipeline. `AdminCommandCatalog` lists it; it is kept out of the telegram command menu
-on purpose. A watchlist created here has no owner - it is a system one.
+on purpose. A watchlist created here is owned by the admin who created it, so it is editable from the interface too -
+an ownerless one would be reachable through these commands only.
 
 - /watchlists → every watchlist with its owner, board counts and matches
 - /watchlist &lt;ref&gt; → one watchlist: filter, boards and their entry ids

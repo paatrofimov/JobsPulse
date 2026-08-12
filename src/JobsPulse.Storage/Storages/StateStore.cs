@@ -97,7 +97,6 @@ internal class StateStore(
     public async Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
         long watchlistId,
         int limit,
-        int offset,
         CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
@@ -123,7 +122,6 @@ internal class StateStore(
                 (_, v) => v)
             .OrderByDescending(v => v.FirstPublishedAt ?? v.UpdatedAt)
             .ThenBy(v => v.Title)
-            .Skip(offset)
             .Take(limit)
             .ToListAsync(ct);
 

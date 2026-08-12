@@ -19,6 +19,7 @@ public sealed class BotUpdateHandler(
     UserSessionStore sessions,
     ScreenRouter screens,
     CommandRouter adminCommands,
+    SystemWatchlistClaimer claimer,
     TelegramClientFacade client,
     IOptionsMonitor<TelegramOptions> options,
     ILog log)
@@ -110,7 +111,7 @@ public sealed class BotUpdateHandler(
                 return;
             }
 
-            var reply = await adminCommands.HandleAsync(ctx.ChatId, text, ct);
+            var reply = await adminCommands.HandleAsync(ctx.UserId, ctx.ChatId, text, ct);
 
             await SendAsync(ctx, new ScreenView(reply), ct);
             return;
@@ -182,12 +183,16 @@ public sealed class BotUpdateHandler(
             BotTexts.FromTelegramCode(from.LanguageCode),
             ct);
 
-        return new BotContext
+        var ctx = new BotContext
         {
             User = user,
             ChatId = chatId,
-            IsAdmin = opts.AdminChatIds.Contains(chatId, StringComparer.Ordinal)
+            IsAdmin = opts.IsAdmin(from.Username, chatId)
         };
+
+        await claimer.ClaimAsync(ctx, ct);
+
+        return ctx;
     }
 
     private async Task SendAsync(BotContext ctx, ScreenView view, CancellationToken ct)

@@ -10,7 +10,10 @@ public sealed record BotContext
     /// <summary>The chat this update arrived in - not necessarily the one stored on the user.</summary>
     public required string ChatId { get; init; }
 
-    /// <summary>The chat is in <c>Telegram:AdminChatIds</c>, so the admin section is reachable.</summary>
+    /// <summary>
+    /// The user is named in <c>Telegram:AdminUsernames</c> (or their chat in <c>Telegram:AdminChatIds</c>), so the
+    /// admin section is reachable.
+    /// </summary>
     public required bool IsAdmin { get; init; }
 
     public long UserId => User.TelegramUserId;

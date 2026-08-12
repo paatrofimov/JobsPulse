@@ -201,7 +201,8 @@ Applies filter to a list of vacancies.
 
 ## WatchService
 
-Backs the bot: watchlist CRUD (create with an owner, rename, delete, enable/disable, filter, interval), entry CRUD
+Backs the bot: watchlist CRUD (create with an owner, claim the ownerless ones, rename, delete, enable/disable, filter,
+interval), entry CRUD
 (add/remove/enable/disable, mark worked through) and board lookup. `ListByOwnerAsync` is «my watchlists».
 Authorization is not here - the bot is the only writer and `WatchlistAccess` in the sink project is the single
 chokepoint that decides who may edit what. Everything goes through `IWatchlistStorage`, so a change is in
@@ -273,8 +274,10 @@ whichever comes first.
 
 Responsible for atomic updates of seen vacancies, of the watchlist match layer and for enqueueing outbox
 notifications - all in one transaction, so a notification can never exist without the state that produced it.
-`LoadMatchedVacanciesAsync` is the paged feed the bot shows when a user opens a watchlist - the match layer joined to
-its open `seen_vacancy` rows, newest first (`CountMatchesByWatchlistAsync` only gives the totals).
+`LoadMatchedVacanciesAsync` is the feed the bot shows when a user opens a watchlist - the match layer joined to its open
+`seen_vacancy` rows, newest first, capped at a limit. It is not database-paged on purpose: the bot groups the feed by
+company and pages it by message size, which needs the whole set; the cap is what keeps a match-everything watchlist from
+loading everything (`CountMatchesByWatchlistAsync` only gives the totals).
 `LoadAllAsync` and `PurgeAllAsync` are admin operations exposed through bot commands, not used by the pipeline;
 `PurgeAllAsync` wipes derived state (vacancies, matches, outbox, registry) and keeps the watchlists, which are
 configuration.
@@ -290,6 +293,10 @@ changes. `GetManyAsync` resolves the owners of a whole listing in one query.
 
 The watchlist configuration: enabled watchlists with entries and filters for the pipeline, plus the CRUD the bot
 needs. The only source of truth - there is no in-memory copy and no config-file fallback.
+
+`ClaimOwnerlessAsync` hands every `owner_user_id IS NULL` watchlist to one user - the way a system watchlist from the
+legacy import becomes an ordinary, fully editable one. The bot calls it for the administrator, because only an incoming
+update reveals the telegram user id a migration would have needed.
 
 `AddEntryAsync` and `AddDiscoveredEntryAsync` differ on exactly one point and it matters: the manual one refreshes and
 re-enables an existing entry (and marks it manual), the discovery one refuses to touch an existing row at all -

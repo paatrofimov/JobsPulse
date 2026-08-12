@@ -24,6 +24,8 @@ public static class TelegramServiceCollectionExtensions
         // User interface: sessions, ownership and one screen per class.
         services.AddSingleton<UserSessionStore>();
         services.AddSingleton<WatchlistAccess>();
+        services.AddSingleton<SystemWatchlistClaimer>();
+        services.AddSingleton<VacancyPageBuilder>();
         services.AddSingleton<MainMenuScreen>();
         services.AddSingleton<WatchlistsScreen>();
         services.AddSingleton<WatchlistScreen>();
@@ -37,7 +39,7 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<ScreenRouter>();
         services.AddSingleton<BotUpdateHandler>();
 
-        // Admin surface: raw ids and json, gated on Telegram:AdminChatIds.
+        // Admin surface: raw ids and json, gated on Telegram:AdminUsernames.
         services.AddSingleton<PendingSelectionStore>();
         services.AddSingleton<CommandRouter>();
 

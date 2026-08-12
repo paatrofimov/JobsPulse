@@ -14,13 +14,14 @@ public interface IStateStore
     Task<IReadOnlyList<SeenVacancySnapshot>> LoadAllAsync(CancellationToken ct);
 
     /// <summary>
-    /// Open vacancies currently matching one watchlist, newest first - the paged feed the bot shows when a user
-    /// opens a watchlist. <see cref="CountMatchesByWatchlistAsync"/> only gives the totals.
+    /// Open vacancies currently matching one watchlist, newest first, capped at <paramref name="limit"/>. The bot
+    /// groups them by company and pages them itself, so it needs the whole set rather than a database page; the cap
+    /// is what keeps a match-everything watchlist from loading its entire feed.
+    /// <see cref="CountMatchesByWatchlistAsync"/> only gives the totals.
     /// </summary>
     Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
         long watchlistId,
         int limit,
-        int offset,
         CancellationToken ct);
 
     Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct);

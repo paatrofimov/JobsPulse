@@ -120,6 +120,7 @@ public enum TextKey
     VacanciesPickWatchlist,
     VacanciesEmpty,
     VacanciesCount,
+    VacanciesShownOf,
     VacancyUnknownLocation,
 
     // Language
