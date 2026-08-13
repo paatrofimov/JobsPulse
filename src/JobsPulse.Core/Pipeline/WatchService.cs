@@ -249,7 +249,17 @@ public sealed class WatchService(
             .Take(5)
             .ToList();
 
-        return fresh.Count == 0 ? LookupResult.NotFound(query) : LookupResult.Found(query, fresh);
+        if (fresh.Count > 0)
+            return LookupResult.Found(query, fresh);
+
+        // Everything the query resolved to is already watched. The check at the top of this method cannot see it: it
+        // matches the text as typed, and one board has many urls - so without this a second link to a board already in
+        // the list reads as «nothing found».
+        var watched = candidates
+            .Select(c => watchlist.FindEntry(c.SourceId, c.BoardId))
+            .FirstOrDefault(e => e is not null);
+
+        return watched is not null ? LookupResult.AlreadyWatched(watched) : LookupResult.NotFound(query);
     }
 
     private async Task<BoardCandidate?> ProbeSafeAsync(string sourceId, string boardId, CancellationToken ct)

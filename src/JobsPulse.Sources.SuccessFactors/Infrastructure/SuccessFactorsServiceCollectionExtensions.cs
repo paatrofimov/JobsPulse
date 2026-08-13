@@ -49,6 +49,10 @@ public static class SuccessFactorsServiceCollectionExtensions
             Client(sp),
             sp.GetRequiredService<ILog>()));
 
+        services.AddTransient(sp => new SuccessFactorsCareersPageClient(
+            Client(sp),
+            sp.GetRequiredService<ILog>()));
+
         services.AddSingleton<SuccessFactorsMapper>();
 
         services.AddTransient<ISuccessFactorsListStrategy, CsbFeedStrategy>();

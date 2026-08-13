@@ -1,6 +1,8 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sources.SuccessFactors.Models;
+using JobsPulse.Sources.SuccessFactors.Options;
+using Microsoft.Extensions.Options;
 using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sources.SuccessFactors.Infrastructure;
@@ -19,6 +21,8 @@ public sealed class SuccessFactorsBoardResolver(
     SuccessFactorsSitemapClient sitemap,
     SuccessFactorsFeedClient feed,
     SuccessFactorsCareerPortalClient portal,
+    SuccessFactorsCareersPageClient careersPage,
+    IOptionsMonitor<SuccessFactorsOptions> options,
     ILog log) : IBoardResolver
 {
     private readonly ILog ctxLog = log.ForContext<SuccessFactorsBoardResolver>();
@@ -30,16 +34,36 @@ public sealed class SuccessFactorsBoardResolver(
     public Task<IReadOnlyList<BoardCandidate>> ResolveByNameAsync(string companyName, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<BoardCandidate>>([]);
 
+    /// <summary>
+    /// The url the person has, in whatever form they have it. A board url resolves on its own; anything else - a
+    /// company's own careers page, which is what a person usually finds first - is read for the board it links to and,
+    /// failing that, turned into career subdomain guesses on the domain they named.
+    /// </summary>
     public async Task<BoardCandidate?> ResolveByUrlAsync(string url, CancellationToken ct)
     {
         var parts = SuccessFactorsBoardUrl.Parse(url);
 
-        if (parts is null)
-            return null;
+        if (parts?.Variant == SuccessFactorsSiteVariant.LegacyCareerPortal)
+        {
+            // The portal answers for the tenant or the tenant is not there - nothing on a data center host is a page
+            // worth mining, so this is the whole answer.
+            return await FromTenantAsync(parts.RcmHost!, parts.TenantHint!, ResolutionKind.CareersPage, ct);
+        }
 
-        return parts.Variant == SuccessFactorsSiteVariant.LegacyCareerPortal
-            ? await FromTenantAsync(parts.RcmHost!, parts.TenantHint!, ResolutionKind.CareersPage, ct)
-            : await FromDomainAsync(parts.Domain!, tenant: null, rcmHost: null, ResolutionKind.CareersPage, ct);
+        var probed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (parts?.Domain is { Length: > 0 } domain)
+        {
+            probed.Add(domain);
+
+            if (await FromDomainAsync(domain, tenant: null, rcmHost: null, ResolutionKind.CareersPage, ct) is
+                { } direct)
+            {
+                return direct;
+            }
+        }
+
+        return await FromCareersPageAsync(url, probed, ct);
     }
 
     /// <summary>
@@ -56,6 +80,97 @@ public sealed class SuccessFactorsBoardResolver(
         return config.HasDomain
             ? await FromDomainAsync(config.Domain!, config.Tenant, config.RcmHost, ResolutionKind.DirectSlug, ct)
             : await FromTenantAsync(config.RcmHost!, config.Tenant!, ResolutionKind.Guessed, ct);
+    }
+
+    /// <summary>
+    /// A url that is not a board: the page is read for the boards it links to, and if it names none - or cannot be read
+    /// at all, which is what a bot challenge looks like - the career subdomains of the domain it is on are tried.
+    ///
+    /// Guessing is confined to this path deliberately. `ResolveByNameAsync` still refuses to guess, because a company
+    /// name predicts no domain and guessing one would mean probing the open internet; here the user has just named the
+    /// domain, so 'kmd.net' to 'jobs.kmd.net' is a handful of requests against a site they pointed at.
+    /// </summary>
+    private async Task<BoardCandidate?> FromCareersPageAsync(
+        string url,
+        HashSet<string> probed,
+        CancellationToken ct)
+    {
+        var opts = options.CurrentValue;
+
+        if (!opts.EnableCareersPageLookup)
+            return null;
+
+        if (!Uri.TryCreate(url.Contains("://", StringComparison.Ordinal) ? url : "https://" + url,
+                UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        var host = uri.Host.ToLowerInvariant();
+
+        if (host.Length == 0 || SuccessFactorsBoardConfig.IsRcmHost(host))
+            return null;
+
+        foreach (var hint in await careersPage.FindBoardsAsync(url, opts.MaxCareersPageHints, ct))
+        {
+            if (hint.HasDomain)
+            {
+                if (!probed.Add(hint.Domain!))
+                    continue;
+
+                if (await FromDomainAsync(hint.Domain!, hint.Tenant, hint.RcmHost, ResolutionKind.CareersPage, ct) is
+                    { } fromLink)
+                {
+                    return fromLink;
+                }
+
+                continue;
+            }
+
+            if (await FromTenantAsync(hint.RcmHost!, hint.Tenant!, ResolutionKind.CareersPage, ct) is { } fromTenant)
+                return fromTenant;
+        }
+
+        foreach (var guess in GuessedDomainsOf(host, opts.CareerSubdomains))
+        {
+            if (!probed.Add(guess))
+                continue;
+
+            if (await FromDomainAsync(guess, tenant: null, rcmHost: null, ResolutionKind.Guessed, ct) is { } candidate)
+            {
+                ctxLog.Debug("Careers page {Url} resolved to the guessed board {Board}", url, guess);
+
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// '{name}.{registrable domain}' for every configured name: 'www.kmd.net' gives 'jobs.kmd.net', 'careers.kmd.net'
+    /// and so on. The 'www' label and any other subdomain are dropped first - the career site is a sibling of the
+    /// corporate site, not a child of it.
+    /// </summary>
+    private static IEnumerable<string> GuessedDomainsOf(string host, IReadOnlyList<string> subdomains)
+    {
+        var labels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
+
+        if (labels.Length < 2)
+            return [];
+
+        // The registrable domain is two labels ('kmd.net'), or three under a second-level suffix ('foo.co.uk').
+        var twoLabelSuffix =
+            labels.Length >= 3 &&
+            labels[^1].Length == 2 &&
+            labels[^2] is "co" or "com" or "org" or "net" or "ac" or "gov" or "edu";
+
+        var take = Math.Min(twoLabelSuffix ? 3 : 2, labels.Length);
+        var registrable = string.Join('.', labels[^take..]);
+
+        return subdomains
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => $"{s.Trim().ToLowerInvariant()}.{registrable}");
     }
 
     /// <summary>
@@ -96,6 +211,10 @@ public sealed class SuccessFactorsBoardResolver(
     /// Confirms that a domain really publishes a board. The sitemap answers it for the price of the job urls alone,
     /// which is what keeps validating a crawl of thousands of tenants affordable; only when it cannot is the feed
     /// asked, and that one also carries the name the site calls itself.
+    ///
+    /// A sitemap holding no job url proves nothing - almost every site on the web serves a '/sitemap.xml' - so it is
+    /// treated exactly like a sitemap that could not be read, and the feed decides. That is what keeps a domain mined
+    /// off a careers page, or guessed from one, from being registered as a board that will never publish anything.
     /// </summary>
     private async Task<BoardCandidate?> FromDomainAsync(
         string domain,
@@ -117,7 +236,7 @@ public sealed class SuccessFactorsBoardResolver(
         var jobCount = 0;
         string? title = null;
 
-        if (summary.Success)
+        if (summary.Success && summary.Value!.JobCount > 0)
         {
             jobCount = summary.Value!.JobCount;
             title = summary.Value!.Title;

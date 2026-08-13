@@ -235,6 +235,9 @@ parsing the board id.
   whole lookup; `OperationCanceledException` still propagates.
 - Candidates already in the watchlist are dropped, the rest are ordered `DirectSlug` first, then by `JobCount`,
   and capped at 5 - the list is rendered as a choice in a chat message.
+- If every candidate was dropped as already watched, the answer is `AlreadyWatched` and not `NotFound`. The check at
+  the top of the method matches the text as typed, and one board has many urls (a careers page, a legacy portal url, a
+  link to a single vacancy), so without this a second link to a board already in the list reads as «nothing found».
 
 ### AddAsync
 

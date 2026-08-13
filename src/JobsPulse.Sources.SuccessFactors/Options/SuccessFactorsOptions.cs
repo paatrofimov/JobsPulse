@@ -40,4 +40,21 @@ public sealed class SuccessFactorsOptions
     public int MaxPages { get; set; } = 400;
 
     public int RequestTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>
+    /// Whether a url that is not a board itself - a company's own careers page, 'www.kmd.net/career' - is read for the
+    /// board it points at and, failing that, turned into career subdomain guesses. Only the interactive «add a company
+    /// by link» path does this: it costs a handful of requests against one domain the user has just named, and it is
+    /// the difference between that link working and the user having to find the ATS themselves.
+    /// </summary>
+    public bool EnableCareersPageLookup { get; set; } = true;
+
+    /// <summary>How many of the boards a careers page points at are probed. They are ordered, so this is a budget.</summary>
+    public int MaxCareersPageHints { get; set; } = 4;
+
+    /// <summary>
+    /// Names a career site is published under on a company domain - 'kmd.net' gives 'jobs.kmd.net'. Guessed only for a
+    /// domain the user has named, never for the open internet, which is why this stays a short list.
+    /// </summary>
+    public string[] CareerSubdomains { get; set; } = ["jobs", "careers", "career", "karriere"];
 }
