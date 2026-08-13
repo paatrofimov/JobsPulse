@@ -265,6 +265,26 @@ The log context is `http:{name}` of the named client (`greenhouse`, `lever`, `sm
 `IHttpClientFactory.CreateLoggingClient(name, log)` is how the wrapper is built - in the `Add*Source` extensions for
 the ATS clients, and inline in the resolvers that fetch a career page.
 
+## TraversalProgressTracker
+
+The counters behind `ITraversalProgressTracker`: what the two cycles are doing right now and how much of their dataset
+they have walked, per source. The cycles already counted all of this, but only into the log, so «how far has the walk
+got» was not answerable from outside - the admin screen reads it from here instead.
+
+One `lock` over a dictionary of a few integers per source: `UnitFinished` is called from every concurrent board task
+of a cycle, and a lock is nothing next to the fetch that just finished. A board of a source the plan never mentioned
+is added on the fly - config may have drifted.
+
+In-memory and process-wide, exactly like the scheduling state it mirrors: after a restart nothing is covered yet.
+
+- `PollingOrchestrator` reports the whole watchlist board set as its dataset, the boards holding a run stamp
+  (`lastRunByBoard`) as the covered part and the due boards as the plan of the cycle. Coverage is sent again after the
+  stamps are written, so it is the post-cycle truth, and an empty or not-due cycle still closes the progress -
+  otherwise the screen would read «still running» forever.
+- `RegistryPollingService` reports the active, unwatched registry as its dataset and the slice as the plan. Its
+  `walkedBySource` counter is cleared when the round-robin cursor wraps, so the percentage means «how much of the
+  registry *this* walk has covered» rather than a number that only ever grows.
+
 ## PollingTrigger
 
 Latching wake-up signal between `WatchService` and the polling routine. `RequestImmediateRun` is a no-op when a
@@ -328,11 +348,20 @@ out of a captured url. Implemented in the source projects, consumed by `JobsPuls
 
 The accumulative registry of boards known to exist (`board_registry`) plus the processed crawl indexes
 (`crawl_index_state`). Independent from the watchlists: the registry is what exists, a watchlist is what we watch.
+`CountBySourceAsync` and `CountProcessedCrawlsBySourceAsync` are the two aggregate reads the admin progress block is
+built from.
 
 ## IBoardDiscoveryService
 
 Fills the registry. Implemented in `JobsPulse.Discovery`; Core only holds the contract so the bot does not depend
-on the discovery project.
+on the discovery project. `GetProgressAsync` answers how much of the crawl dataset is mined - published indexes against
+the ones recorded per source - and never throws: an index that does not answer is reported as «total unknown», because
+the number is nice to have and not worth failing a screen over.
+
+## ITraversalProgressTracker
+
+Live progress of the two polling cycles - see `TraversalProgressTracker` for why it exists and what «covered» means
+for each of them.
 
 # Model Infrastructure
 
@@ -390,6 +419,18 @@ delivered message must stay readable after the entry is gone, the same reasoning
 
 Storage returns entries ordered origin-first, so every listing shows manual boards before discovered ones without
 sorting again.
+
+## TraversalKind / TraversalSourceUnits / TraversalProgress
+
+The vocabulary of the progress tracker. `TraversalKind` is which dataset is walked (`Watchlist`, `Registry`);
+`TraversalSourceUnits` is one source of a cycle - what it planned and how big its dataset is - and serves as both the
+plan a cycle announces and the coverage it reports back; `TraversalProgress` (with `TraversalSourceProgress`) is the
+snapshot a reader gets, totals and percentages included. `Percent` treats an empty dataset as complete: nothing to do
+is done, not zero.
+
+## DiscoveryProgress
+
+How much of the crawl dataset is mined - see `IBoardDiscoveryService.GetProgressAsync`.
 
 ## WatchlistSubscription / BoardWorkItem
 

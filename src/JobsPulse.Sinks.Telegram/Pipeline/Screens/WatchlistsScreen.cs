@@ -102,11 +102,17 @@ public sealed class WatchlistsScreen(WatchService watch, IBotUserStorage users, 
         return new ScreenView(sb.ToString(), keyboard);
     }
 
-    internal static List<T> Paged<T>(IReadOnlyList<T> items, int page, out int totalPages)
+    internal static List<T> Paged<T>(IReadOnlyList<T> items, int page, out int totalPages) =>
+        Paged(items, page, KeyboardBuilder.PageSize, out totalPages);
+
+    /// <summary>
+    /// A list whose rows are text rather than buttons is not bound by the keyboard size - it takes its own page size.
+    /// </summary>
+    internal static List<T> Paged<T>(IReadOnlyList<T> items, int page, int pageSize, out int totalPages)
     {
-        totalPages = Math.Max(1, (int)Math.Ceiling(items.Count / (double)KeyboardBuilder.PageSize));
+        totalPages = Math.Max(1, (int)Math.Ceiling(items.Count / (double)pageSize));
         page = Math.Clamp(page, 0, totalPages - 1);
 
-        return [.. items.Skip(page * KeyboardBuilder.PageSize).Take(KeyboardBuilder.PageSize)];
+        return [.. items.Skip(page * pageSize).Take(pageSize)];
     }
 }

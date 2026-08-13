@@ -16,6 +16,7 @@ namespace JobsPulse.Discovery.Pipeline;
 /// </summary>
 public sealed class BoardDiscoveryService(
     ICrawlIndexClient index,
+    IBoardRegistryStorage registry,
     ParquetIndexDiscoveryPass parquetPass,
     HttpIndexDiscoveryPass httpPass,
     IOptionsMonitor<DiscoveryOptions> options,
@@ -39,6 +40,31 @@ public sealed class BoardDiscoveryService(
         {
             runGate.Release();
         }
+    }
+
+    public async Task<DiscoveryProgress> GetProgressAsync(CancellationToken ct)
+    {
+        // A run in progress holds the gate - the same trick the run itself uses to refuse a second one.
+        var running = runGate.CurrentCount == 0;
+        var processed = await registry.CountProcessedCrawlsBySourceAsync(ct);
+
+        var total = 0;
+        try
+        {
+            // Cached for `CollectionsCacheMinutes`, so this is normally free; the index is allowed to be down.
+            total = (await index.GetCollectionsAsync(ct)).Count;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ctxLog.Warn("Crawl collection list is unavailable — discovery progress is reported without a total: {Error}", ex.Message);
+        }
+
+        return new DiscoveryProgress
+        {
+            IsRunning = running,
+            CollectionsTotal = total,
+            ProcessedBySource = processed
+        };
     }
 
     private async Task<BoardDiscoveryReport> RunCoreAsync(bool full, CancellationToken ct)

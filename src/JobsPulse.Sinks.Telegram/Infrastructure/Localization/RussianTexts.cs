@@ -114,6 +114,11 @@ internal static class RussianTexts
             + "следующем проходе.",
         [TextKey.CompanyWorkedOn] = "резюме отправлено {0}",
         [TextKey.CompanyFoundByDiscovery] = "найдена автоматически",
+        [TextKey.CompanyChange] = "🔧 Изменить компанию",
+        [TextKey.CompanyFindPrompt] =
+            "Пришлите название компании, которую нужно изменить. Достаточно части названия.",
+        [TextKey.CompanyFindNotFound] = "В этом списке нет компании «{0}». Попробуйте другое название.",
+        [TextKey.CompanyFindMany] = "Под «{0}» подходит несколько компаний — выберите одну.",
 
         [TextKey.DisabledTitle] = "Отключённые компании",
         [TextKey.DisabledEmpty] = "Отключённых нет — слежу за всеми вашими компаниями.",

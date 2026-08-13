@@ -61,6 +61,9 @@ builder.Services.AddStorage(builder.Configuration, connectionStringName: "Postgr
 builder.Services.AddSingleton<IPollingTrigger, PollingTrigger>();
 builder.Services.Configure<RegistryPollingOptions>(builder.Configuration.GetSection(RegistryPollingOptions.SectionName));
 
+// Progress of both cycles, read by the admin screen. In-memory, so it is measured from the start of the process.
+builder.Services.AddSingleton<ITraversalProgressTracker, TraversalProgressTracker>();
+
 builder.Services.AddSingleton<VacancyMatcher>();
 builder.Services.AddSingleton<ChangeDetector>();
 builder.Services.AddSingleton<BoardProcessor>();

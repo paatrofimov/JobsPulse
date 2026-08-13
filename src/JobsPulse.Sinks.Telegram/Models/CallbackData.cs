@@ -44,6 +44,7 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
         [CallbackAction.CompanyRemove] = "cr",
         [CallbackAction.CompanyAdd] = "ca",
         [CallbackAction.CompanyPick] = "cp",
+        [CallbackAction.CompanyFind] = "cf",
 
         [CallbackAction.DisabledCompanies] = "dc",
         [CallbackAction.CompanyRestore] = "cs",

@@ -13,6 +13,7 @@ namespace JobsPulse.Core.Pipeline;
 public sealed class PollingOrchestrator(
     IWatchlistStorage watchlists,
     BoardProcessor boardProcessor,
+    ITraversalProgressTracker progress,
     IOptionsMonitor<WatchlistPollingOptions> options,
     TimeProvider clock,
     ILog log)
@@ -63,6 +64,10 @@ public sealed class PollingOrchestrator(
         if (plan.Boards.Count == 0)
         {
             ctxLog.Debug("No boards to traverse — no enabled watchlist has entries");
+
+            // An empty cycle still closes the progress: a watchlist emptied by hand must not read as «still running».
+            progress.CycleFinished(TraversalKind.Watchlist, []);
+
             return CycleReport.Empty;
         }
 
@@ -74,8 +79,12 @@ public sealed class PollingOrchestrator(
         if (due.Count == 0)
         {
             ctxLog.Debug("No boards are due for traversal (watchlist boards total: {Total})", plan.Boards.Count);
+            progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, []));
+
             return CycleReport.Empty;
         }
+
+        progress.CycleStarted(TraversalKind.Watchlist, Coverage(plan.Boards, due));
 
         ctxLog.Info(
             "Start cycle: {Due} out of {Total} boards to traverse, {Filters} watchlist filters",
@@ -105,6 +114,9 @@ public sealed class PollingOrchestrator(
         foreach (var board in due)
             lastRunByBoard[board.BoardKey] = now;
 
+        // Coverage is reported after the stamps are written, so it is the post-cycle truth.
+        progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, []));
+
         var report = CycleReport.Aggregate(results);
         ctxLog.Info(
             "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, watchlist matches {Matched}, changes {Changes}, errors {Failed}",
@@ -120,6 +132,9 @@ public sealed class PollingOrchestrator(
     {
         var result = await boardProcessor.ProcessAsync(board, settings, ct);
 
+        progress.UnitFinished(
+            TraversalKind.Watchlist, board.SourceId, result.BoardMissing || result.Report.Failed);
+
         if (result.BoardMissing)
         {
             // The board is dead for everybody, not just for one watchlist.
@@ -131,6 +146,32 @@ public sealed class PollingOrchestrator(
         }
 
         return result.Report;
+    }
+
+    /// <summary>
+    /// The per-source progress units of the cycle: the whole watchlist board set as the dataset, the boards that
+    /// already carry a run stamp as its covered part, and the due ones as the plan of this cycle.
+    /// </summary>
+    private List<TraversalSourceUnits> Coverage(
+        IReadOnlyList<BoardWorkItem> boards,
+        IReadOnlyList<BoardWorkItem> due)
+    {
+        var planned = due
+            .GroupBy(b => b.SourceId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        return
+        [
+            .. boards
+                .GroupBy(b => b.SourceId, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new TraversalSourceUnits
+                {
+                    SourceId = g.Key,
+                    Planned = planned.GetValueOrDefault(g.Key),
+                    DatasetTotal = g.Count(),
+                    DatasetCovered = g.Count(b => lastRunByBoard.ContainsKey(b.BoardKey))
+                })
+        ];
     }
 
     private bool IsDue(BoardWorkItem board, WatchlistPollingOptions opts, DateTimeOffset now)

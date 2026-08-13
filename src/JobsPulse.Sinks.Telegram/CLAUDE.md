@@ -69,9 +69,13 @@ itself.
   companies, vacancies, pause and delete, with a confirmation step before the delete.
 - `FilterScreen` - the filter one rule at a time: title keywords, excluded words, locations, freshness. Answers are
   comma separated, `-` clears a rule. No json ever reaches a user.
-- `CompaniesScreen` - the companies of a watchlist. The list itself answers «which are watched, which are off, which
-  are done»: a glyph per row (▶️ / ⏸ / ✅), a legend, the CV date and the discovery mark. Per company: mark worked
-  through, disable, remove.
+- `CompaniesScreen` - the companies of a watchlist, **grouped by the source they are watched through**. The list itself
+  answers «which are watched, which are off, which are done»: a glyph per row (▶️ / ⏸ / ✅), a legend, the CV date and
+  the discovery mark. The rows are text and not buttons, which is what raises the page from 8 companies to 30: a
+  button per company capped the page at the keyboard size and filled the screen with labels that only repeated the
+  list. One `🔧 Change a company` button asks for a name instead (`PendingInputKind.CompanyName` →
+  `CompanyList.Find`): an exact name opens the per-company screen - mark worked through, disable, remove - several
+  matches become buttons, a miss leaves the step armed, because a miss is usually a typo.
 - `DisabledCompaniesScreen` - every disabled company of the user across all their watchlists, one tap to restore.
   Without it a switched-off company is effectively lost inside some watchlist page.
 - `AddCompanyScreen` - a name or a careers-page link, resolved by `WatchService.LookupAsync`; the candidates become
@@ -81,7 +85,9 @@ itself.
   `VacancyPageBuilder` packs it into as few screens as the telegram message limit allows, so a normal watchlist is one
   page. The browsable counterpart of the push notifications.
 - `LanguageScreen` - Russian / English, stored on the user so it also applies to notifications hours later.
-- `AdminScreen` - the door to the operator commands, and a refusal for everybody else.
+- `AdminScreen` - the door to the operator commands, and a refusal for everybody else. It opens with the traversal
+  progress block (`ProgressReporter`) and a `🔄 Refresh` button, because that is the one thing an operator wants
+  without typing anything; the commands stay a typed list.
 
 Every screen ends its keyboard with a navigation row (`⬅ Back` / `🏠 Menu`) built by `KeyboardBuilder.Build`, so there
 is always a way out. A refused edit still lands on a usable screen with a toast, never on a dead end.
@@ -138,6 +144,27 @@ Pages are packed by size rather than by a fixed count: blocks are appended while
 link targets stripped, because that is what telegram counts against its 4096 limit, and an `href` is by far the longest
 part of a rendered vacancy. A company longer than one screen is continued under a repeated header.
 
+## ProgressReporter / ProgressFormatter
+
+The admin answer to «how far has the walk got». `ProgressReporter` gathers the three sources of truth - the in-memory
+`ITraversalProgressTracker`, `IBoardDiscoveryService.GetProgressAsync` and the registry row counts - and
+`ProgressFormatter` renders them: per traversal, the state of the current cycle (`done of planned`, errors) and the
+dataset coverage (`covered of total`, percent), per source and in total, plus the mined share of the crawl indexes. A
+source that exists only in the registry is named as «not swept yet» rather than left out - a missing row reads as
+nothing to do.
+
+One reporter for two entry points (the admin screen and `/progress`), so they can never show different numbers.
+`ProgressFormatter` itself is static and does no IO, which is what makes it testable; both are English only, like the
+rest of the operator surface.
+
+## CompanyList
+
+Ordering, source grouping and name lookup of a company list, kept out of the screen so all three can be read and
+tested on their own. Ordering is source, then active before disabled, then manual before discovered, then name -
+grouping only slices that order, so a group longer than a page continues under a repeated header. `Find` lets an exact
+name win over a containing one, otherwise a company whose name is a prefix of another («Nebius» in «Nebius AI») could
+not be addressed by typing it in full.
+
 ## BotFormatter
 
 Rendering shared by the screens: the company status glyph, the owner label and the filter in words. One place, so
@@ -188,6 +215,7 @@ an ownerless one would be reachable through these commands only.
   (a discovered entry is disabled, not deleted - that row is what stops the sweep re-adding it)
 - /watch &lt;ref&gt; &lt;company|url&gt; → resolve a board, answer with a number to pick
 - /force_cycle, /show_state, /drop_data, /boards [source], /registry_remove, /discover
+- /progress → traversal progress of boards, sources and crawl indexes (the same block the admin screen opens with)
 
 ## PendingSelectionStore
 

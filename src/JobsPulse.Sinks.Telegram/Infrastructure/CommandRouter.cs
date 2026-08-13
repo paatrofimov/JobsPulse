@@ -24,6 +24,7 @@ public sealed class CommandRouter(
     IVacancySink sink,
     IBotUserStorage users,
     PendingSelectionStore pending,
+    ProgressReporter progressReporter,
     ILog log)
 {
     private const int BoardsPageSize = 30;
@@ -69,6 +70,7 @@ public sealed class CommandRouter(
             AdminCommandCatalog.Boards => await HandleBoardsAsync(argument, ct),
             AdminCommandCatalog.RegistryRemove => await HandleRegistryRemoveAsync(argument, ct),
             AdminCommandCatalog.Discover => await HandleDiscoverAsync(),
+            AdminCommandCatalog.Progress => await progressReporter.RenderAsync(ct),
             _ => "<p>Unknown admin command. /admin — the list.</p>"
         };
     }

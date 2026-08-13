@@ -153,6 +153,23 @@ internal class BoardRegistryStorage(
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<string, int>> CountProcessedCrawlsBySourceAsync(CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var counts = await db.CrawlIndexState
+            .AsNoTracking()
+            .GroupBy(x => x.SourceId)
+            .Select(g => new
+            {
+                Source = g.Key,
+                Count = g.Count()
+            })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(x => x.Source, x => x.Count, StringComparer.OrdinalIgnoreCase);
+    }
+
     public async Task MarkCrawlProcessedAsync(CrawlIndexProgress progress, CancellationToken ct)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);

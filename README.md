@@ -77,7 +77,9 @@ watchlist when it matches that watchlist's filter — insert-only, so a board yo
 **The bot is the whole UI.** One screen per class, each returning a `ScreenView` (HTML + inline keyboard); a button press
 edits the message in place instead of appending to the chat. `WatchlistAccess` is the single ownership chokepoint —
 your list is editable, somebody else's is a read-only example. Everything raw (board ids, filter JSON, the registry,
-`/force_cycle`) lives behind the admin section, gated on `Telegram:AdminUsernames`.
+`/force_cycle`) lives behind the admin section, gated on `Telegram:AdminUsernames` — which also opens with the
+traversal progress: how many boards of each source have been walked, and how much of the crawl index dataset is mined
+(`/progress`).
 
 ### Projects
 

@@ -26,6 +26,7 @@ public static class AdminCommandCatalog
     public const string Boards = "boards";
     public const string RegistryRemove = "registry_remove";
     public const string Discover = "discover";
+    public const string Progress = "progress";
 
     public static readonly IReadOnlyList<BotCommand> All =
     [
@@ -44,13 +45,14 @@ public static class AdminCommandCatalog
         new() { Command = DropData, Description = "wipe stored vacancies, matches, outbox and registry" },
         new() { Command = Boards, Description = "discovered boards registry: /boards [source]" },
         new() { Command = RegistryRemove, Description = "drop a registry row: /registry_remove <source> <board>" },
-        new() { Command = Discover, Description = "re-walk crawl indexes and refill the registry" }
+        new() { Command = Discover, Description = "re-walk crawl indexes and refill the registry" },
+        new() { Command = Progress, Description = "traversal progress of boards, sources and crawl indexes" }
     ];
 
     public static bool IsAdminCommand(string command) =>
         command is Admin
             or Watchlists or Watchlist or WatchlistAdd or WatchlistRemove or WatchlistEnable or WatchlistDisable
             or Filter or BoardAdd or BoardRemove or Watch or ForceCycle or ShowState or DropData or Boards
-            or RegistryRemove or Discover
+            or RegistryRemove or Discover or Progress
             or "list" or "add" or "unwatch";
 }

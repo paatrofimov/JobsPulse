@@ -10,4 +10,10 @@ public interface IBoardDiscoveryService
     /// Returns <see cref="BoardDiscoveryReport.Busy"/> when a run is already in progress.
     /// </summary>
     Task<BoardDiscoveryReport> RunAsync(bool full, CancellationToken ct);
+
+    /// <summary>
+    /// How far the crawl dataset has been mined. Read by the admin screen, so it never throws: an index that does
+    /// not answer is reported as «total unknown» rather than as a failure.
+    /// </summary>
+    Task<DiscoveryProgress> GetProgressAsync(CancellationToken ct);
 }

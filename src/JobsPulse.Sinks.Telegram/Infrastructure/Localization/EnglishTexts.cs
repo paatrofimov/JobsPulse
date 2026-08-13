@@ -114,6 +114,11 @@ internal static class EnglishTexts
             + "on the next sweep.",
         [TextKey.CompanyWorkedOn] = "CV sent {0}",
         [TextKey.CompanyFoundByDiscovery] = "found automatically",
+        [TextKey.CompanyChange] = "🔧 Change a company",
+        [TextKey.CompanyFindPrompt] =
+            "Send the name of the company you want to change. Part of the name is enough.",
+        [TextKey.CompanyFindNotFound] = "No company «{0}» in this list. Try another name.",
+        [TextKey.CompanyFindMany] = "Several companies match «{0}» — pick one.",
 
         [TextKey.DisabledTitle] = "Disabled companies",
         [TextKey.DisabledEmpty] = "Nothing is disabled — every company of yours is being watched.",

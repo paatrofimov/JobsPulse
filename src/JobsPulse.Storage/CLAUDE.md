@@ -190,6 +190,9 @@ Reads via EF, writes via raw Npgsql: the upsert needs `ON CONFLICT ... RETURNING
 new board from a refreshed one, which is what the discovery report counts. `MarkCrawlProcessedAsync` is the same
 kind of idempotent upsert keyed by `(source_id, collection_id)`.
 
+`CountBySourceAsync` and `CountProcessedCrawlsBySourceAsync` are single grouped counts - the aggregates the admin
+progress block reads instead of listing the registry it only wants the size of.
+
 ## WatchlistStorage
 
 Pure EF: the configuration is small, read whole (`Include(Entries)`) and written one row at a time. Every mutation is

@@ -39,6 +39,9 @@ public enum CallbackAction
     CompanyAdd,
     CompanyPick,
 
+    /// <summary>Asks for a company name instead of putting a button on every row of a long list.</summary>
+    CompanyFind,
+
     DisabledCompanies,
 
     /// <summary>Re-enables a company and returns to the disabled list, not to the watchlist it belongs to.</summary>

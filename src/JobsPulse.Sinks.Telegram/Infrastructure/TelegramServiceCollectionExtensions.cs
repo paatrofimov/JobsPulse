@@ -26,6 +26,7 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<WatchlistAccess>();
         services.AddSingleton<SystemWatchlistClaimer>();
         services.AddSingleton<VacancyPageBuilder>();
+        services.AddSingleton<ProgressReporter>();
         services.AddSingleton<MainMenuScreen>();
         services.AddSingleton<WatchlistsScreen>();
         services.AddSingleton<WatchlistScreen>();

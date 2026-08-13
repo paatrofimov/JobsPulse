@@ -100,6 +100,10 @@ public enum TextKey
     CompanyDisabledInsteadOfRemoved,
     CompanyWorkedOn,
     CompanyFoundByDiscovery,
+    CompanyChange,
+    CompanyFindPrompt,
+    CompanyFindNotFound,
+    CompanyFindMany,
 
     // Disabled companies screen
     DisabledTitle,

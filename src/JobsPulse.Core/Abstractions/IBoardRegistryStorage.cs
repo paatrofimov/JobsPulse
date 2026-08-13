@@ -19,5 +19,8 @@ public interface IBoardRegistryStorage
 
     Task<IReadOnlyCollection<string>> GetProcessedCrawlsAsync(string sourceId, CancellationToken ct);
 
+    /// <summary>Number of fully mined crawl indexes per source - how much of the crawl dataset is done.</summary>
+    Task<IReadOnlyDictionary<string, int>> CountProcessedCrawlsBySourceAsync(CancellationToken ct);
+
     Task MarkCrawlProcessedAsync(CrawlIndexProgress progress, CancellationToken ct);
 }

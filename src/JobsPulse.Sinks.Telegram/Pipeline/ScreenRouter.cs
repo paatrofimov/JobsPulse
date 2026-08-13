@@ -67,6 +67,7 @@ public sealed class ScreenRouter(
             CallbackAction.CompanyToggleWorked => await companies.ToggleWorkedAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompanyToggleEnabled => await companies.ToggleEnabledAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompanyRemove => await companies.RemoveAsync(ctx, data.Id, data.Page, ct),
+            CallbackAction.CompanyFind => await companies.PromptFindAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompanyAdd => await addCompany.PromptAsync(ctx, data.Id, ct),
             CallbackAction.CompanyPick => await addCompany.PickAsync(ctx, data.Id, ct),
 
@@ -77,7 +78,7 @@ public sealed class ScreenRouter(
             CallbackAction.VacanciesOpen => await vacancies.RenderAsync(ctx, data.Id, data.Page, ct),
 
             CallbackAction.Language => language.Render(ctx),
-            CallbackAction.Admin => admin.Render(ctx),
+            CallbackAction.Admin => await admin.RenderAsync(ctx, ct),
 
             // A stale button from an old message, or the page label, which is a button only because rows need one.
             _ => menu.Render(ctx)
@@ -100,6 +101,7 @@ public sealed class ScreenRouter(
             PendingInputKind.FilterLocations =>
                 await filter.ApplyListAsync(ctx, session.WatchlistId, PendingInputKind.FilterLocations, text, ct),
             PendingInputKind.CompanyQuery => await addCompany.SearchAsync(ctx, session.WatchlistId, text, ct),
+            PendingInputKind.CompanyName => await companies.FindAsync(ctx, session.WatchlistId, text, ct),
             _ => null
         };
 

@@ -20,6 +20,7 @@ public sealed class RegistryPollingService(
     IWatchlistStorage watchlists,
     BoardProcessor boardProcessor,
     DiscoveredBoardPromoter promoter,
+    ITraversalProgressTracker progress,
     IOptionsMonitor<RegistryPollingOptions> options,
     ILog log)
 {
@@ -28,6 +29,12 @@ public sealed class RegistryPollingService(
 
     /// <summary>Round-robin cursor over the registry. In-memory: after a restart the walk simply starts over.</summary>
     private int cursor;
+
+    /// <summary>
+    /// Boards of the current walk, per source. Reset when the cursor wraps, so the reported percentage is «how much
+    /// of the registry this round has covered» rather than a number that only ever grows.
+    /// </summary>
+    private readonly Dictionary<string, int> walkedBySource = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<CycleRunResult> TryRunCycleAsync(CancellationToken ct)
     {
@@ -69,10 +76,14 @@ public sealed class RegistryPollingService(
         if (boards.Count == 0)
         {
             ctxLog.Debug("Board registry has nothing to poll");
+            progress.CycleFinished(TraversalKind.Registry, []);
+
             return CycleReport.Empty;
         }
 
         var slice = TakeSlice(boards, opts.BoardsPerCycle);
+
+        progress.CycleStarted(TraversalKind.Registry, Coverage(boards, slice));
 
         ctxLog.Info(
             "Start registry cycle: {Slice} of {Total} boards (cursor {Cursor})",
@@ -98,6 +109,13 @@ public sealed class RegistryPollingService(
                 gate.Release();
             }
         }));
+
+        foreach (var board in slice)
+        {
+            walkedBySource[board.SourceId] = walkedBySource.GetValueOrDefault(board.SourceId) + 1;
+        }
+
+        progress.CycleFinished(TraversalKind.Registry, Coverage(boards, []));
 
         // Promotion is database work only, so it runs after the fetch pass: one writer, and the cap is exact.
         var promoted = await PromoteAsync(results, SelectPromotionCandidates(enabled, opts), opts, ct);
@@ -192,6 +210,8 @@ public sealed class RegistryPollingService(
 
         var result = await boardProcessor.ProcessAsync(work, settings, ct);
 
+        progress.UnitFinished(TraversalKind.Registry, board.SourceId, result.BoardMissing || result.Report.Failed);
+
         if (result.BoardMissing)
         {
             ctxLog.Info("Registry board {Source}/{Board} is gone — deactivated", board.SourceId, board.BoardId);
@@ -204,10 +224,40 @@ public sealed class RegistryPollingService(
         return result;
     }
 
+    /// <summary>
+    /// The per-source progress units of the sweep: the active registry as the dataset, the boards the current walk
+    /// has already visited as its covered part, and the slice as the plan of this cycle.
+    /// </summary>
+    private List<TraversalSourceUnits> Coverage(
+        IReadOnlyList<RegisteredBoard> boards,
+        IReadOnlyList<RegisteredBoard> slice)
+    {
+        var planned = slice
+            .GroupBy(b => b.SourceId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        return
+        [
+            .. boards
+                .GroupBy(b => b.SourceId, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new TraversalSourceUnits
+                {
+                    SourceId = g.Key,
+                    Planned = planned.GetValueOrDefault(g.Key),
+                    DatasetTotal = g.Count(),
+                    DatasetCovered = walkedBySource.GetValueOrDefault(g.Key)
+                })
+        ];
+    }
+
     private List<RegisteredBoard> TakeSlice(IReadOnlyList<RegisteredBoard> boards, int size)
     {
         if (cursor >= boards.Count)
             cursor = 0;
+
+        // A fresh walk over the registry starts a fresh coverage count.
+        if (cursor == 0)
+            walkedBySource.Clear();
 
         var slice = boards.Skip(cursor).Take(size).ToList();
 

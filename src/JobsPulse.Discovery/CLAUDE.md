@@ -167,6 +167,10 @@ which index is read and in what order; the reading is in the passes.
 Runs never overlap - a zero-timeout `SemaphoreSlim(1, 1)`, the same trick as `PollingOrchestrator`. A busy service
 returns `BoardDiscoveryReport.Busy`.
 
+`GetProgressAsync` is the read side for the bot: the same gate tells whether a run is in progress, the cached
+collection list gives the total and `crawl_index_state` gives what is mined per source. A crawl index that does not
+answer costs the total only - the call never throws, because it is rendered into an admin screen.
+
 ## ParquetIndexDiscoveryPass
 
 The default reader, and collection-major rather than source-major: a query costs the same whether it asks about one

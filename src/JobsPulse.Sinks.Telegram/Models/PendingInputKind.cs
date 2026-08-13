@@ -12,5 +12,8 @@ public enum PendingInputKind
     FilterKeywords,
     FilterExcluded,
     FilterLocations,
-    CompanyQuery
+    CompanyQuery,
+
+    /// <summary>The name of a company already in the watchlist - the entry point of «change a company».</summary>
+    CompanyName
 }
