@@ -92,7 +92,9 @@ public sealed partial class SuccessFactorsCareerPortalClient(
     /// <summary>
     /// The branded domain out of the portal page. Anything on a SuccessFactors data center host is skipped: those are
     /// the portal's own links, and 'api{N}.jobs2web.com' is skipped for the same reason - it is the platform's api
-    /// host, not a career site anyone can be sent to.
+    /// host, not a career site anyone can be sent to. A platform-hosted career site
+    /// ('ace1950.jobs2web.com', 'x.jobs.hr.cloud.sap') is kept: for a tenant without a domain of its own that is the
+    /// answer.
     /// </summary>
     private static string? BrandDomain(string html, string rcmHost)
     {
@@ -106,7 +108,7 @@ public sealed partial class SuccessFactorsCareerPortalClient(
             if (SuccessFactorsBoardConfig.IsRcmHost(host))
                 continue;
 
-            if (host.EndsWith(".jobs2web.com", StringComparison.Ordinal) &&
+            if (SuccessFactorsBoardConfig.IsHostedCareerSite(host) &&
                 host.StartsWith("api", StringComparison.Ordinal))
             {
                 continue;

@@ -22,15 +22,43 @@ public sealed class SuccessFactorsDiscoveryTargetTests
     {
         var targets = Targets();
 
-        var careerHost = targets.Single(t => t.Host == "successfactors.com");
+        var careerHost = targets.Single(t => t.Host == "successfactors.com" && t.PathPrefix == "/career");
 
         careerHost.HostIsSuffix.Should().BeTrue();
         careerHost.Tld.Should().Be("com");
-        careerHost.PathPrefix.Should().Be("/career");
         careerHost.QueryKeys.Should().Equal("company");
 
         // The platform's own hosted sites name no parameter - their domain is already the board.
         targets.Single(t => t.Host == "jobs2web.com").QueryKeys.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The deep link to one posting is on a path of its own ('/sfcareer/jobreqcareer?jobId=..&amp;company=..'), and it
+    /// is the form most crawled legacy urls have. Asking only for '/career' finds none of them, and the path predicate
+    /// is a prefix - so the pattern has to be there.
+    /// </summary>
+    [Test]
+    public void From_should_cover_the_legacy_deep_link_path()
+    {
+        var deepLink = Targets().Single(t => t.Host == "successfactors.eu" && t.PathPrefix == "/sfcareer/");
+
+        deepLink.HostIsSuffix.Should().BeTrue();
+        deepLink.QueryKeys.Should().Equal("company");
+    }
+
+    /// <summary>
+    /// A platform-hosted site is a whole domain of SAP's, so it is asked for like one - and without a query key, since
+    /// its host is already the board id.
+    /// </summary>
+    [Test]
+    public void From_should_cover_the_platform_hosted_domains()
+    {
+        var hosted = Targets().Single(t => t.Host == "jobs.hr.cloud.sap");
+
+        hosted.HostIsSuffix.Should().BeTrue();
+        hosted.Tld.Should().Be("sap");
+        hosted.PathPrefix.Should().Be("/");
+        hosted.QueryKeys.Should().BeEmpty();
     }
 
     [Test]
@@ -83,6 +111,10 @@ public sealed class SuccessFactorsDiscoveryTargetTests
     [TestCase("https://career8.successfactors.com/career?company=brevardcou", "career8.successfactors.com/brevardcou")]
     [TestCase("https://career5.successfactors.eu/career?company=SAP&lang=en_US", "career5.successfactors.eu/SAP")]
     [TestCase("https://ace1950.jobs2web.com/search/", "ace1950.jobs2web.com")]
+    [TestCase("https://career5.successfactors.eu/sfcareer/jobreqcareer?jobId=32385&company=kmd",
+        "career5.successfactors.eu/kmd")]
+    [TestCase("https://ascendlearning.jobs.hr.cloud.sap/job/Leawood-Senior-Software-Engineer-KS-66211/1415909200/",
+        "ascendlearning.jobs.hr.cloud.sap")]
     public void TryParseBoardId_should_read_a_token_out_of_a_crawled_url(string url, string expected)
     {
         IBoardUrlParser parser = new SuccessFactorsBoardUrlParser();

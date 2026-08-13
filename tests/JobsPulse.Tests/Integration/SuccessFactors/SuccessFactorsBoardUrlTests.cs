@@ -39,10 +39,33 @@ public sealed class SuccessFactorsBoardUrlTests
         parts.PostId.Should().Be("1395914533");
     }
 
+    /// <summary>
+    /// A site the platform hosts itself sits under a data center domain, so the one thing that must not happen is it
+    /// being read as a tenant url: nothing on it names a tenant, and the domain already is the board.
+    /// </summary>
+    [TestCase("https://ascendlearning.jobs.hr.cloud.sap/job/Leawood-Senior-Software-Engineer-KS-66211/1415909200/",
+        "ascendlearning.jobs.hr.cloud.sap", "1415909200")]
+    [TestCase("https://ace1950.jobs2web.com/search/", "ace1950.jobs2web.com", null)]
+    public void Parse_should_read_a_platform_hosted_site_as_the_board_itself(
+        string url,
+        string expected,
+        string? postId)
+    {
+        var parts = SuccessFactorsBoardUrl.Parse(url);
+
+        parts.Should().NotBeNull();
+        parts!.Variant.Should().Be(SuccessFactorsSiteVariant.CareerSiteBuilder);
+        parts.ToConfig().BoardId.Should().Be(expected);
+        parts.PostId.Should().Be(postId);
+    }
+
     [TestCase("https://career8.successfactors.com/career?company=brevardcou", "career8.successfactors.com/brevardcou")]
     [TestCase("https://career5.successfactors.eu/career?company=SAP&lang=en_US", "career5.successfactors.eu/SAP")]
     [TestCase("https://career41.sapsf.com/career?career_company=joysonsafety", "career41.sapsf.com/joysonsafety")]
     [TestCase("https://career-hcm20.ns2cloud.com/career?company=ENTHCM20", "career-hcm20.ns2cloud.com/ENTHCM20")]
+    // The deep link to one posting - the form a vacancy is actually shared as, and a different path of the same board.
+    [TestCase("https://career5.successfactors.eu/sfcareer/jobreqcareer?jobId=32385&company=kmd&utm_source=chatgpt.com",
+        "career5.successfactors.eu/kmd")]
     public void Parse_should_read_the_tenant_out_of_a_legacy_url(string url, string expected)
     {
         var parts = SuccessFactorsBoardUrl.Parse(url);
@@ -62,6 +85,15 @@ public sealed class SuccessFactorsBoardUrlTests
     public void Parse_should_return_null_for_what_is_not_a_board(string url)
     {
         SuccessFactorsBoardUrl.Parse(url).Should().BeNull();
+    }
+
+    /// <summary>A deep link names the requisition, and it is not the 'career_job_req_id' the portal url uses.</summary>
+    [Test]
+    public void Parse_should_recognize_a_legacy_deep_link_as_a_job_url()
+    {
+        SuccessFactorsBoardUrl
+            .Parse("https://career5.successfactors.eu/sfcareer/jobreqcareer?jobId=32385&company=kmd")!
+            .IsJobUrl.Should().BeTrue();
     }
 
     [Test]

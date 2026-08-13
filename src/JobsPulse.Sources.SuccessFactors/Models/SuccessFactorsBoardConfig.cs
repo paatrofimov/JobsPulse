@@ -110,11 +110,25 @@ public sealed record SuccessFactorsBoardConfig
     /// <summary>
     /// Whether a host belongs to one of the SuccessFactors data centers rather than to a company. Kept here because
     /// url parsing, board id parsing and the crawl index parser all have to agree on it.
+    ///
+    /// A platform-hosted career site is never one, even though it sits under a data center domain
+    /// ('ascendlearning.jobs.hr.cloud.sap'): it is a career site builder site like any branded one, and treating it as
+    /// a data center host would send its urls to the legacy parse, which asks for a tenant no such url carries.
     /// </summary>
     public static bool IsRcmHost(string? host) =>
         !string.IsNullOrWhiteSpace(host) &&
+        !IsHostedCareerSite(host) &&
         RcmDomains.Any(d => host.EndsWith('.' + d, StringComparison.OrdinalIgnoreCase) ||
                             host.Equals(d, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Whether a host is a career site the platform hosts itself, on a domain of SAP's rather than the company's -
+    /// 'ace1950.jobs2web.com', 'ascendlearning.jobs.hr.cloud.sap'. The site behind it is an ordinary career site
+    /// builder one, so the only thing this decides is that the host is a board and not a tenant to translate.
+    /// </summary>
+    public static bool IsHostedCareerSite(string? host) =>
+        !string.IsNullOrWhiteSpace(host) &&
+        HostedCareerDomains.Any(d => host.EndsWith('.' + d, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The domains SAP serves recruiting backends from. Several of them exist because the product was rebranded twice,
@@ -130,6 +144,17 @@ public sealed record SuccessFactorsBoardConfig
         "sapsf.cn",
         "ns2cloud.com",
         "hr.cloud.sap"
+    ];
+
+    /// <summary>
+    /// The domains SAP publishes career sites on for the tenants that never brought a domain of their own. 'jobs2web'
+    /// is the platform under its acquired name, 'jobs.hr.cloud.sap' the same thing under the current one - which is why
+    /// it sits under a data center domain and has to be recognized before one.
+    /// </summary>
+    public static readonly string[] HostedCareerDomains =
+    [
+        "jobs2web.com",
+        "jobs.hr.cloud.sap"
     ];
 
     private SuccessFactorsBoardConfig Normalized() => this with

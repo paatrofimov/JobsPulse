@@ -152,6 +152,14 @@ public sealed class SuccessFactorsBoardResolver(
     /// </summary>
     private static string CompanyNameOf(string domain)
     {
+        // On a platform-hosted site the whole domain but the tenant label belongs to SAP, so no suffix rule applies:
+        // 'ascendlearning.jobs.hr.cloud.sap' reads as 'ascendlearning'.
+        var hosted = SuccessFactorsBoardConfig.HostedCareerDomains
+            .FirstOrDefault(d => domain.EndsWith('.' + d, StringComparison.OrdinalIgnoreCase));
+
+        if (hosted is not null)
+            return domain[..^(hosted.Length + 1)];
+
         var labels = domain.Split('.', StringSplitOptions.RemoveEmptyEntries);
 
         var meaningful = labels

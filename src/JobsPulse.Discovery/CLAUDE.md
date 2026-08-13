@@ -3,7 +3,8 @@ registry (`board_registry` table, `IBoardRegistryStorage` in Core).
 
 Nothing here knows about a particular ATS. Everything source-specific lives in the source project behind
 `IBoardUrlParser` (`GreenhouseBoardUrlParser`, `LeverBoardUrlParser`, `SmartRecruitersBoardUrlParser`,
-`AshbyBoardUrlParser`, `WorkdayBoardUrlParser`), so adding a source means adding one parser, not touching this project.
+`AshbyBoardUrlParser`, `WorkdayBoardUrlParser`, `SuccessFactorsBoardUrlParser`), so adding a source means adding one
+parser, not touching this project.
 
 A pattern may name a whole domain (`*.myworkdayjobs.com/*`) instead of a known host. That is what Workday needs - every
 tenant gets its own careers host - and it costs a suffix match where the other sources get equality, in both index

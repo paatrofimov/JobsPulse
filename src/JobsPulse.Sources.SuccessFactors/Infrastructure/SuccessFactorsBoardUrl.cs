@@ -13,6 +13,10 @@ namespace JobsPulse.Sources.SuccessFactors.Infrastructure;
 /// recruiting marketing platform generates ('/search/', '/job/{slug}/{id}/', '/go/{slug}/{id}/'), plus a bare domain,
 /// which is what a person pastes. That deliberately over-claims - a careers page of some other vendor matches too -
 /// and the probe is what settles it: a site that is not one of these has no feed to answer with.
+///
+/// The exception is a site the platform hosts itself ('ascendlearning.jobs.hr.cloud.sap') - there the domain does say
+/// SuccessFactors, and it says career site rather than data center host, which is why
+/// <see cref="SuccessFactorsBoardConfig.IsHostedCareerSite"/> is asked before <c>IsRcmHost</c>.
 /// </summary>
 public static class SuccessFactorsBoardUrl
 {
@@ -49,7 +53,9 @@ public static class SuccessFactorsBoardUrl
     }
 
     /// <summary>
-    /// 'career8.successfactors.com/career?company=brevardcou&amp;career_job_req_id=123'. The tenant is spelled out,
+    /// 'career8.successfactors.com/career?company=brevardcou&amp;career_job_req_id=123', and every other path the
+    /// recruiting backend serves with a 'company=' on it - '/sfcareer/jobreqcareer?jobId=32385&amp;company=kmd' is the
+    /// same board. The path is ignored on purpose: only the tenant identifies anything here, and it is spelled out,
     /// which is what makes the legacy form worth mining a crawl index for - but it is still only a hint until the
     /// portal answers for it.
     /// </summary>
@@ -67,7 +73,9 @@ public static class SuccessFactorsBoardUrl
             RcmHost = host,
             TenantHint = tenant.Trim(),
             Variant = SuccessFactorsSiteVariant.LegacyCareerPortal,
-            IsJobUrl = !string.IsNullOrWhiteSpace(query["career_job_req_id"])
+            // The portal spells the requisition out as 'career_job_req_id', the deep link as 'jobId'.
+            IsJobUrl = !string.IsNullOrWhiteSpace(query["career_job_req_id"]) ||
+                       !string.IsNullOrWhiteSpace(query["jobId"])
         };
     }
 

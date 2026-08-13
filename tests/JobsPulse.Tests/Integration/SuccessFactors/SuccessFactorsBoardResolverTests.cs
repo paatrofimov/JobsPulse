@@ -15,6 +15,9 @@ public sealed class SuccessFactorsBoardResolverTests
     [TestCase("https://careers.swissre.com/search/?q=", "careers.swissre.com")]
     [TestCase("https://jobs.corbion.com/job/Gorinchem-Engineer/1234567890/", "jobs.corbion.com")]
     [TestCase("jobs.corbion.com", "jobs.corbion.com")]
+    // A site the platform hosts itself: the domain is SAP's, but it is a career site and not a data center host.
+    [TestCase("https://ascendlearning.jobs.hr.cloud.sap/job/Leawood-Senior-Software-Engineer-KS-66211/1415909200/",
+        "ascendlearning.jobs.hr.cloud.sap")]
     public async Task ResolveByUrl_should_answer_with_the_branded_board(string url, string expected)
     {
         using var host = new SuccessFactorsTestHost();
@@ -34,9 +37,17 @@ public sealed class SuccessFactorsBoardResolverTests
     /// The bridge: the legacy url names a tenant and nothing else, and it has to come back as the same board the
     /// branded url resolves to - otherwise one company is watched as two boards.
     /// </summary>
-    [TestCase("https://career2.successfactors.eu/career?company=SwissRe", "careers.swissre.com")]
-    [TestCase("https://career2.successfactors.eu/career?company=corbion", "jobs.corbion.com")]
-    public async Task ResolveByUrl_should_translate_a_tenant_into_its_branded_board(string url, string expected)
+    [TestCase("https://career2.successfactors.eu/career?company=corbion", "career2.successfactors.eu",
+        "jobs.corbion.com")]
+    [TestCase("https://career2.successfactors.eu/career?company=SwissRe", "career2.successfactors.eu",
+        "careers.swissre.com")]
+    // The deep link to one posting names its tenant the same way, and has to reach the same board.
+    [TestCase("https://career5.successfactors.eu/sfcareer/jobreqcareer?jobId=32385&company=kmd&utm_source=chatgpt.com",
+        "career5.successfactors.eu", "jobs.kmd.net")]
+    public async Task ResolveByUrl_should_translate_a_tenant_into_its_branded_board(
+        string url,
+        string rcmHost,
+        string expected)
     {
         using var host = new SuccessFactorsTestHost();
         using var cts = new CancellationTokenSource(RequestTimeout);
@@ -49,7 +60,7 @@ public sealed class SuccessFactorsBoardResolverTests
         var config = SuccessFactorsBoardConfig.FromJson(candidate.Configuration)!;
 
         config.Domain.Should().Be(expected);
-        config.RcmHost.Should().Be("career2.successfactors.eu");
+        config.RcmHost.Should().Be(rcmHost);
         config.Tenant.Should().NotBeNullOrWhiteSpace();
     }
 
