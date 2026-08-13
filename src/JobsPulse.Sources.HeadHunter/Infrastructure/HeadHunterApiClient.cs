@@ -215,6 +215,17 @@ public sealed class HeadHunterApiClient(
         if (response.StatusCode == HttpStatusCode.NotFound)
             return HeadHunterFetch<T>.Missing();
 
+        if (response.StatusCode == HttpStatusCode.BadRequest && error?.NamesBadUserAgent() == true)
+        {
+            ctxLog.Error(
+                "HeadHunter has blacklisted the user agent this installation sends ({Error}). Every request will be "
+                + "refused until 'Sources:HeadHunter:UserAgent' names the application and a real contact: {Url}",
+                described, relativeUrl);
+
+            // The caller is the problem, not the employer asked about - reported like a 403 so nothing retries it.
+            return HeadHunterFetch<T>.Refused(described);
+        }
+
         if (response.StatusCode == HttpStatusCode.BadRequest && error?.NamesUnknownEmployer() == true)
         {
             ctxLog.Debug("HeadHunter does not know the employer asked for: {Url}", relativeUrl);
@@ -225,8 +236,9 @@ public sealed class HeadHunterApiClient(
         if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
         {
             ctxLog.Warn(
-                "HeadHunter has refused the request ({Error}). The public endpoints need no token; if this persists, "
-                + "an application token in 'Sources:HeadHunter:AccessToken' is what the api is asking for: {Url}",
+                "HeadHunter has refused the request ({Error}). The search endpoints stopped answering anonymous callers "
+                + "in April 2026, so a registered application token in 'Sources:HeadHunter:AccessToken' is what the api "
+                + "is asking for: {Url}",
                 described, relativeUrl);
 
             return HeadHunterFetch<T>.Refused(described);

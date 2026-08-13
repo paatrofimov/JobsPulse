@@ -25,7 +25,19 @@ public static class HeadHunterServiceCollectionExtensions
                 http.Timeout = TimeSpan.FromSeconds(Math.Max(1, opts.RequestTimeoutSeconds));
 
                 // The api refuses a user agent it does not like, so this header is part of the contract.
-                http.DefaultRequestHeaders.UserAgent.ParseAdd(opts.UserAgent);
+                var userAgent = HeadHunterUserAgent.Resolve(opts.UserAgent);
+
+                if (!HeadHunterUserAgent.IsAcceptable(opts.UserAgent))
+                {
+                    sp.GetRequiredService<ILog>()
+                        .ForContext(typeof(HeadHunterServiceCollectionExtensions))
+                        .Warn(
+                            "'Sources:HeadHunter:UserAgent' is empty or a placeholder ('{Configured}'), which HeadHunter "
+                            + "blacklists - sending '{UserAgent}' instead. Name the installation and a real contact there.",
+                            opts.UserAgent, userAgent);
+                }
+
+                http.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
                 http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
             })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler

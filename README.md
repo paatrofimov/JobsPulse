@@ -101,7 +101,8 @@ Each project carries a `CLAUDE.md` documenting its modules and, more importantly
 **Data:** PostgreSQL 16 · EF Core 9 (reads, migrations) · Npgsql.
 
 **Integrations:** Telegram Bot API (`Telegram.Bot`) · Greenhouse, Lever, SmartRecruiters, Ashby, Workday and
-SuccessFactors careers APIs · HeadHunter public API (employer catalog, no OAuth required)
+SuccessFactors careers APIs · HeadHunter API (employer catalog; its search endpoints need an application token since
+April 2026)
 · Common Crawl (DuckDB over remote Parquet, HTTP index fallback).
 
 **Runtime & patterns:** `Microsoft.Extensions.Hosting` background services · options pattern with hot reload

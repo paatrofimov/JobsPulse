@@ -1,3 +1,5 @@
+using JobsPulse.Sources.HeadHunter.Infrastructure;
+
 namespace JobsPulse.Sources.HeadHunter.Options;
 
 public sealed class HeadHunterOptions
@@ -8,14 +10,16 @@ public sealed class HeadHunterOptions
 
     /// <summary>
     /// HeadHunter rejects a request whose user agent it does not like with HTTP 400 `bad_user_agent`, so this is not
-    /// cosmetic: it has to name the application and a way to reach whoever runs it.
+    /// cosmetic: it has to name the application and a way to reach whoever runs it. The blacklist covers the placeholder
+    /// contacts of the api's own examples (`example.com` and friends), so a copied sample agent is refused - see
+    /// <see cref="HeadHunterUserAgent"/>, which is what a placeholder is replaced by.
     /// </summary>
-    public string UserAgent { get; set; } = "JobsPulse/0.1 (jobs-pulse@example.com)";
+    public string UserAgent { get; set; } = HeadHunterUserAgent.Default;
 
     /// <summary>
-    /// Optional bearer token. Discovery and reading vacancies need none, so this stays empty in a default
-    /// installation; it exists so an application or user token can be handed to the api later without touching
-    /// anything but the configuration - see `IHeadHunterAuthorization`.
+    /// Bearer token of a registered HeadHunter application. Since April 2026 the search endpoints answer HTTP 403
+    /// `forbidden` to anonymous callers - only the dictionaries stayed public - so a working installation needs one;
+    /// `IHeadHunterAuthorization` is the seam it is asked for.
     /// </summary>
     public string? AccessToken { get; set; }
 

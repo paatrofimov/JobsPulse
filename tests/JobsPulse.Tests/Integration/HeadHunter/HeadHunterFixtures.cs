@@ -67,4 +67,10 @@ public static class HeadHunterFixtures
         """
         { "description": "employer_id", "errors": [ { "type": "bad_argument", "value": "employer_id" } ] }
         """;
+
+    /// <summary>The other HTTP 400 - the api's verdict on the caller's user agent, and about no employer at all.</summary>
+    public const string BlacklistedUserAgent =
+        """
+        { "description": "Bad User-Agent header", "errors": [ { "type": "bad_user_agent", "value": "blacklisted" } ] }
+        """;
 }

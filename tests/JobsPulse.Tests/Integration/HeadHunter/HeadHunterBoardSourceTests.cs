@@ -124,6 +124,29 @@ public sealed class HeadHunterBoardSourceTests
         result.IsComplete.Should().BeFalse();
     }
 
+    /// <summary>
+    /// The two HTTP 400s share nothing but the code: a blacklisted user agent is about the caller, so it must not close
+    /// the board the way `bad_argument` does - and it must not be retried either, because no retry can fix a header.
+    /// </summary>
+    [Test]
+    public async Task TraverseTarget_should_not_report_a_blacklisted_user_agent_as_a_missing_board()
+    {
+        var api = new HeadHunterStubApi(_ => HeadHunterStubAnswer.Error(
+            HttpStatusCode.BadRequest, HeadHunterFixtures.BlacklistedUserAgent));
+
+        var options = HeadHunterTestHost.Fast();
+        options.Retries = 3;
+
+        using var host = new HeadHunterTestHost(api, options);
+
+        var result = await host.Source.TraverseTargetAsync(Target(), CancellationToken.None);
+
+        result.BoardMissing.Should().BeFalse();
+        result.IsComplete.Should().BeFalse();
+        result.Error.Should().NotBeNull();
+        api.Requests.Should().HaveCount(1);
+    }
+
     /// <summary>A refused request is the api's verdict on us, never an employer that stopped existing.</summary>
     [Test]
     public async Task TraverseTarget_should_not_report_a_refused_request_as_a_missing_board()

@@ -31,6 +31,14 @@ public sealed class HeadHunterErrorDto
     /// Whether the refusal is «there is no such employer». The vacancy search validates `employer_id` as an argument,
     /// so an employer that never existed - or one that was deleted - is HTTP 400 and not a 404.
     /// </summary>
+    /// <summary>
+    /// Whether the refusal is about the caller rather than the request: the api keeps a user agent blacklist and answers
+    /// HTTP 400 `bad_user_agent` to everything on it, whatever else was right. Nothing about the request can fix it, so
+    /// it is a configuration answer - see `HeadHunterUserAgent`.
+    /// </summary>
+    public bool NamesBadUserAgent() =>
+        (Errors ?? []).Any(e => string.Equals(e.Type, "bad_user_agent", StringComparison.OrdinalIgnoreCase));
+
     public bool NamesUnknownEmployer() =>
         (Errors ?? []).Any(e =>
             string.Equals(e.Value, "employer_id", StringComparison.OrdinalIgnoreCase)

@@ -1,5 +1,9 @@
-HeadHunter source: the public HeadHunter api (`https://api.hh.ru`) - the same one the platform's own site is built on.
-No credentials, no partner agreement.
+HeadHunter source: the HeadHunter api (`https://api.hh.ru`) - the same one the platform's own site is built on.
+
+**It is no longer anonymous.** Since April 2026 the search endpoints (`/vacancies`, `/employers`, an employer, a vacancy)
+answer HTTP 403 `forbidden` without a token; only the dictionaries (`/areas`, `/dictionaries`, `/suggests`) stayed public.
+So this source needs a token of an application registered at `dev.hh.ru` - see «Authorization» - and without one every
+board it owns reports `Refused` rather than failing quietly.
 
 This is the first source that is not an ATS, and that is what shapes the project. Every other source is one company's
 own job board addressed by something the company owns - a slug, a careers host, a tenant. HeadHunter is a **centralized
@@ -26,21 +30,23 @@ Differences from the ATS sources that follow from it:
 - **no documented rate limit.** There is no number to stay under, only the api's reaction, which is why the client paces
   itself adaptively instead of assuming an RPS - see `HeadHunterApiClient`.
 - **the user agent is part of the contract**: a request the api does not like the agent of is answered HTTP 400
-  `bad_user_agent`, whatever else was right about it.
+  `bad_user_agent`, whatever else was right about it - and the agent of its own documentation examples is on the
+  blacklist, so it cannot be copied either. See `HeadHunterUserAgent`.
 
 # Authorization
 
-Everything this source does is public and works unauthorized: the employer search, the employer, the vacancy search and
-one vacancy. There is no OAuth flow in the process and no token in a default installation.
+`IHeadHunterAuthorization` is asked for a bearer token before every request and answers whatever
+`Sources:HeadHunter:AccessToken` holds (`ConfiguredHeadHunterAuthorization`). Empty is still a valid configuration - it
+is what a build without a registered application has - but it no longer polls anything: the api closed the search
+endpoints to anonymous callers, so an installation without a token discovers and reads nothing and says so.
 
-What exists is the seam. `IHeadHunterAuthorization` is asked for a bearer token before every request and answers null by
-default (`ConfiguredHeadHunterAuthorization` - whatever `Sources:HeadHunter:AccessToken` holds, normally nothing). It is
-an abstraction rather than a string because the two tokens the platform can issue are acquired differently: an
-application token is a client-credentials call refreshed on a timer, a user token is an authorization-code flow bound to
-one person. Either can be added later by replacing that one registration; nothing else in the source knows.
+The token wanted is an **application** token from `dev.hh.ru`; registration is moderated. The seam is an abstraction
+rather than a string because the two tokens the platform can issue are acquired differently: an application token is a
+client-credentials call refreshed on a timer, a user token is an authorization-code flow bound to one person. Either can
+be added by replacing that one registration; nothing else in the source knows.
 
-A refusal is reported as its own outcome (`HeadHunterFetch.Forbidden`) and logged with the hint, so the day an endpoint
-stops being public reads as «the api is asking for a token» instead of as a company that disappeared.
+A refusal is reported as its own outcome (`HeadHunterFetch.Forbidden`) and logged with the hint, so «the api is asking
+for a token» never reads as a company that disappeared.
 
 # Options
 
@@ -61,8 +67,8 @@ missing employer, and never retried.
 ## HeadHunterErrorDto
 
 The refusal body (`{ "description": ..., "errors": [ { "type": "bad_argument", "value": "employer_id" } ] }`). Read
-rather than logged as text, because the status code alone does not say what happened - `NamesUnknownEmployer` is what
-turns a 400 into a missing board.
+rather than logged as text, because the status code alone does not say what happened: HTTP 400 is a missing board
+(`NamesUnknownEmployer`) or a blacklisted caller (`NamesBadUserAgent`), and the two have nothing in common but the code.
 
 ## HeadHunterVacancyQuery
 
@@ -93,7 +99,15 @@ give one step back. Both directions are logged, so the log shows how hard the ap
 steps of `RetryDelaySeconds`, honouring `Retry-After` when it asks for more.
 
 429, 408 and 5xx are transient. **403 is not**: it is the api's verdict on the caller, and every retry of it is one more
-request against whatever limit produced it. It is reported as `Refused` instead.
+request against whatever limit produced it. It is reported as `Refused` instead - and so is the HTTP 400 of a blacklisted
+user agent, for the same reason: nothing about the request can fix it, only the configuration.
+
+## HeadHunterUserAgent
+
+The agent the client sends. The api blacklists the placeholder contacts of its own examples (`example.com` and friends)
+and answers HTTP 400 `bad_user_agent:blacklisted` to them, so a configured agent is checked instead of trusted: an empty
+or placeholder one is replaced by `Default` and logged as a warning at registration, because the alternative is every
+request of the process failing on a header.
 
 The client is a singleton - the pacing state is the point of it, and a per-request client would have none. The bearer
 token comes from `IHeadHunterAuthorization` per request, which is why this is the one source using
