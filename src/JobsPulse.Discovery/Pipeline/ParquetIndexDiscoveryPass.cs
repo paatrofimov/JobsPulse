@@ -345,7 +345,9 @@ public sealed class ParquetIndexDiscoveryPass(
         ParquetIndexOptions opts,
         CancellationToken ct)
     {
-        using var stage = StageTimer.Start(ctxLog, $"{label} over {candidates.Count} files");
+        var stageLbl = $"{label} over {candidates.Count} files";
+
+        using var stage = StageTimer.Start(ctxLog, stageLbl);
 
         var batches = candidates.Chunk(Math.Max(1, opts.FilesPerQuery)).ToList();
         var matched = new List<string>();
@@ -369,9 +371,9 @@ public sealed class ParquetIndexDiscoveryPass(
 
                 ctxLog.Warn(
                     ex,
-                    "Probe batch {Batch}/{Batches} of {Collection} has failed ({Reason}) — the files it covers are "
+                    "{Label}: Probe batch {Batch}/{Batches} of {Collection} has failed ({Reason}) — the files it covers are "
                     + "left out of this run",
-                    i + 1, batches.Count, collection.Id, CrawlIndexFailure.Describe(ex));
+                    stageLbl, i + 1, batches.Count, collection.Id, CrawlIndexFailure.Describe(ex));
 
                 if (failures >= Math.Max(1, opts.MaxBatchFailuresPerCollection))
                 {
@@ -384,7 +386,7 @@ public sealed class ParquetIndexDiscoveryPass(
 
             ctxLog.Debug(
                 "{Label}: {Probed}/{Total} files probed, {Matched} match ({Elapsed})",
-                label, probed, candidates.Count, matched.Count, stage.Elapsed);
+                stageLbl, probed, candidates.Count, matched.Count, stage.Elapsed);
 
             await DiscoveryPause.WaitAsync(ctxLog, opts.PauseBetweenBatchesMsec, "probe batches", ct);
         }

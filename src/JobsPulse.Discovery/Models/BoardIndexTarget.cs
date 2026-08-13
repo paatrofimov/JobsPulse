@@ -26,6 +26,19 @@ public sealed record BoardIndexTarget
     /// <summary>Always starts with '/'; '/' means the whole host.</summary>
     public required string PathPrefix { get; init; }
 
+    /// <summary>
+    /// Query parameters the board id is built from - the pattern was 'host/career?company=*'. Empty for every source
+    /// whose board is named by the path, which is all of them but SuccessFactors: its career sites live on company
+    /// domains, so the only enumerable urls are the data center ones, and those carry the tenant in 'company='.
+    ///
+    /// The columnar index drops the query otherwise, and it is the *one* parameter that is projected rather than the
+    /// whole query string on purpose: a board's five thousand job urls differ by their other parameters and would
+    /// come back as five thousand distinct rows, exactly the way an uncut `url_path` would.
+    /// </summary>
+    public IReadOnlyList<string> QueryKeys { get; init; } = [];
+
+    public bool HasQueryKeys => QueryKeys.Count > 0;
+
     /// <summary>Whether a host seen in the index belongs to this target.</summary>
     public bool Matches(string host) =>
         HostIsSuffix

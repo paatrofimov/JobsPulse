@@ -70,7 +70,11 @@ public static class ParquetIndexSql
 
         sql.Append("SELECT DISTINCT url_host_name, regexp_extract(coalesce(url_path, '/'), '^(?:/[^/]*){0,")
             .Append(Math.Max(1, query.PathSegments))
-            .Append("}') AS url_path_head FROM read_parquet([");
+            .Append("}') AS url_path_head");
+
+        AppendQueryColumns(sql, query);
+
+        sql.Append(" FROM read_parquet([");
 
         AppendList(sql, query.Files);
 
@@ -105,6 +109,41 @@ public static class ParquetIndexSql
 
         return sql.ToString();
     }
+
+    /// <summary>
+    /// The query parameters some source builds its board id from, one projected column each - see
+    /// <see cref="BoardIndexTarget.QueryKeys"/>. The parameter is extracted rather than `url_query` selected whole,
+    /// because the whole query is unique per job page and `DISTINCT` would return a row per posting instead of a row
+    /// per board - the same reason <see cref="BoardUrls"/> cuts `url_path` down to its leading segments.
+    ///
+    /// Every target of the query shares the column list, so a source that asks for no parameter simply reads null
+    /// there. That keeps one query answering for every ATS at once, which is what makes the columnar pass affordable.
+    /// </summary>
+    public static IReadOnlyList<string> QueryColumns(ParquetIndexQuery query) =>
+        query.Targets
+            .SelectMany(t => t.QueryKeys)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
+
+    private static void AppendQueryColumns(StringBuilder sql, ParquetIndexQuery query)
+    {
+        foreach (var key in QueryColumns(query))
+        {
+            // '(?:^|&)key=([^&]*)' - the value of one parameter, wherever it sits in the query.
+            sql.Append(", regexp_extract(coalesce(url_query, ''), ")
+                .Append(Literal("(?:^|&)" + Escape(key) + "=([^&]*)"))
+                .Append(", 1) AS ")
+                .Append(ColumnAlias(key));
+        }
+    }
+
+    /// <summary>A parameter name is an identifier, but the alias still has to be one DuckDB accepts.</summary>
+    private static string ColumnAlias(string key) =>
+        "url_query_" + new string([.. key.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '_')]);
+
+    private static string Escape(string value) =>
+        string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c.ToString() : "\\" + c));
 
     /// <summary>
     /// Every subdomain of one domain. The leading '%' rules out a row group skip, but there is no alternative: an ATS

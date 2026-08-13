@@ -20,8 +20,14 @@
     <ProjectReference Include="..\..\src\JobsPulse.Core\JobsPulse.Core.csproj" />
     <ProjectReference Include="..\..\src\JobsPulse.Host\JobsPulse.Host.csproj" />
     <ProjectReference Include="..\..\src\JobsPulse.Sinks.Telegram\JobsPulse.Sinks.Telegram.csproj" />
+    <ProjectReference Include="..\..\src\JobsPulse.Discovery\JobsPulse.Discovery.csproj" />
     <ProjectReference Include="..\..\src\JobsPulse.Sources.Greenhouse\JobsPulse.Sources.Greenhouse.csproj" />
+    <ProjectReference Include="..\..\src\JobsPulse.Sources.SuccessFactors\JobsPulse.Sources.SuccessFactors.csproj" />
     <ProjectReference Include="..\..\src\JobsPulse.Storage\JobsPulse.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Integration\SuccessFactors\Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

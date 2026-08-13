@@ -25,6 +25,7 @@
     <ProjectReference Include="..\JobsPulse.Discovery\JobsPulse.Discovery.csproj" />
     <ProjectReference Include="..\JobsPulse.Sources.SmartRecruiters\JobsPulse.Sources.SmartRecruiters.csproj" />
     <ProjectReference Include="..\JobsPulse.Sources.Ashby\JobsPulse.Sources.Ashby.csproj" />
+    <ProjectReference Include="..\JobsPulse.Sources.SuccessFactors\JobsPulse.Sources.SuccessFactors.csproj" />
     <ProjectReference Include="..\JobsPulse.Sources.Workday\JobsPulse.Sources.Workday.csproj" />
   </ItemGroup>
 

@@ -24,6 +24,17 @@ public static class BoardIndexTargets
     {
         var cleaned = pattern.Trim();
 
+        // 'host/career?company=*' - the query part names the parameters the board id is read out of. Split off first
+        // so the wildcard inside it is never mistaken for the one that ends the path.
+        var queryKeys = Array.Empty<string>();
+        var question = cleaned.IndexOf('?');
+
+        if (question >= 0)
+        {
+            queryKeys = QueryKeys(cleaned[(question + 1)..]);
+            cleaned = cleaned[..question];
+        }
+
         foreach (var scheme in Schemes)
         {
             if (cleaned.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
@@ -59,7 +70,22 @@ public static class BoardIndexTargets
             Tld = host[(dot + 1)..],
             Host = host,
             HostIsSuffix = hostIsSuffix,
-            PathPrefix = path
+            PathPrefix = path,
+            QueryKeys = queryKeys
         };
     }
+
+    /// <summary>The parameter names of 'company=*&amp;site=*' - the values are wildcards and carry nothing.</summary>
+    private static string[] QueryKeys(string query) =>
+        query
+            .Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(p =>
+            {
+                var eq = p.IndexOf('=');
+
+                return (eq < 0 ? p : p[..eq]).Trim();
+            })
+            .Where(k => k.Length > 0 && !k.Contains('*'))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 }

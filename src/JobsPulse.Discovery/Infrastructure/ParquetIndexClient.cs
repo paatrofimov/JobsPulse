@@ -49,6 +49,9 @@ public sealed class ParquetIndexClient(
         if (query.Files.Count == 0 || query.Targets.Count == 0)
             return 0;
 
+        // The projected query parameters follow the host and the path head, in the order the sql put them.
+        var queryKeys = ParquetIndexSql.QueryColumns(query);
+
         return await ExecuteAsync(
             ParquetIndexSql.BoardUrls(query),
             query.Files.Count,
@@ -60,9 +63,37 @@ public sealed class ParquetIndexClient(
 
                 var path = reader.IsDBNull(1) ? "/" : reader.GetString(1);
 
-                onUrl($"https://{host}{(path.StartsWith('/') ? path : "/" + path)}");
+                onUrl($"https://{host}{(path.StartsWith('/') ? path : "/" + path)}{Query(reader, queryKeys)}");
             },
             ct);
+    }
+
+    /// <summary>
+    /// Puts the projected parameters back into the url, so a parser still reads one url and knows nothing about how
+    /// the index stores it. Empty for every source that named no query key - which is all of them but SuccessFactors.
+    /// </summary>
+    private static string Query(DuckDBDataReader reader, IReadOnlyList<string> keys)
+    {
+        if (keys.Count == 0)
+            return string.Empty;
+
+        var parts = new List<string>(keys.Count);
+
+        for (var i = 0; i < keys.Count; i++)
+        {
+            var column = i + 2;
+
+            if (reader.IsDBNull(column))
+                continue;
+
+            var value = reader.GetString(column);
+
+            // regexp_extract answers with an empty string when the parameter was not in the url at all.
+            if (!string.IsNullOrEmpty(value))
+                parts.Add($"{keys[i]}={value}");
+        }
+
+        return parts.Count == 0 ? string.Empty : "?" + string.Join('&', parts);
     }
 
     /// <summary>

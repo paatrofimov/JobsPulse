@@ -214,15 +214,22 @@ public sealed partial class CrawlIndexClient(
     /// '*.myworkdayjobs.com/*' asks for a whole domain, and the cdx api reads a leading '*.' as exactly that - but
     /// only when nothing follows the host, so the path part is dropped. Every capture of the domain is then streamed
     /// and the parser is what filters, which it does anyway.
+    ///
+    /// The query part of a pattern ('/career?company=*') is dropped for the same reason: it says which parameter the
+    /// board id is read out of, which is instruction for the columnar reader and not something to match a url on.
+    /// The api keeps the query on the urls it streams, so the parser still sees it.
     /// </summary>
     private static string CdxPattern(string pattern)
     {
-        if (!pattern.StartsWith("*.", StringComparison.Ordinal))
-            return pattern;
+        var question = pattern.IndexOf('?');
+        var cleaned = question < 0 ? pattern : pattern[..question];
 
-        var slash = pattern.IndexOf('/');
+        if (!cleaned.StartsWith("*.", StringComparison.Ordinal))
+            return cleaned;
 
-        return slash < 0 ? pattern : pattern[..slash];
+        var slash = cleaned.IndexOf('/');
+
+        return slash < 0 ? cleaned : cleaned[..slash];
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using JobsPulse.Core.Abstractions;
+﻿using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Options;
@@ -11,6 +11,7 @@ using JobsPulse.Sources.Ashby.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Infrastructure;
 using JobsPulse.Sources.Lever.Infrastructure;
 using JobsPulse.Sources.SmartRecruiters.Infrastructure;
+using JobsPulse.Sources.SuccessFactors.Infrastructure;
 using JobsPulse.Sources.Workday.Infrastructure;
 using JobsPulse.Storage.Infrastructure;
 using JobsPulse.Storage.Storages;
@@ -39,6 +40,7 @@ builder.Services.AddGreenhouseSource(builder.Configuration);
 builder.Services.AddSmartRecruitersSource(builder.Configuration);
 builder.Services.AddAshbySource(builder.Configuration);
 builder.Services.AddWorkdaySource(builder.Configuration);
+builder.Services.AddSuccessFactorsSource(builder.Configuration);
 
 var registeredSources = new[]
 {
@@ -46,7 +48,8 @@ var registeredSources = new[]
     GreenhouseMapper.SourceId,
     SmartRecruitersMapper.SourceId,
     AshbyMapper.SourceId,
-    WorkdayMapper.SourceId
+    WorkdayMapper.SourceId,
+    SuccessFactorsMapper.SourceId
 };
 builder.Services.AddSingleton<ISourceCatalog>(sp => new SourceCatalog(sp, registeredSources));
 
