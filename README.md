@@ -38,15 +38,17 @@ Interface and notifications are available in **English and Russian**, switchable
 ## 2. How it works
 
 ```
- ATS APIs                    Core pipeline                     PostgreSQL                Telegram
- ────────                    ─────────────                     ──────────                ────────
+ Source APIs                 Core pipeline                     PostgreSQL                Telegram
+ ───────────                 ─────────────                     ──────────                ────────
  Greenhouse  ┐                                            ┌── seen_vacancy       (global board state)
  Lever       │   PollingWorker → PollingOrchestrator  ────>┤   watchlist_vacancy  (match layer)
- SmartRecr.  ├──>   └─ BoardProcessor                      └── outbox ──> OutboxDispatcher ──> TelegramSink
- Ashby       │         └─ ChangeDetector (pure)                                                   │
- Workday     ┘                                                                                    v
-                                                                                            BotUpdateHandler
- Common Crawl ──> Discovery ──> board_registry ──> RegistryPollingService                    (screens, buttons)
+ SmartRecr.  │      └─ BoardProcessor                      └── outbox ──> OutboxDispatcher ──> TelegramSink
+ Ashby       ├──>      └─ ChangeDetector (pure)                                                   │
+ Workday     │                                                                                    v
+ SuccessF.   │                                                                              BotUpdateHandler
+ HeadHunter  ┘                                                                               (screens, buttons)
+
+ Common Crawl ──> Discovery ──> board_registry ──> RegistryPollingService
                                                     └─ DiscoveredBoardPromoter
 ```
 
@@ -83,7 +85,7 @@ your list is editable, somebody else's is a read-only example. Everything raw (b
 |---|---|
 | `JobsPulse.Core` | Domain model, watchlists, polling orchestration, change detection, filtering, abstractions |
 | `JobsPulse.Storage` | PostgreSQL persistence: EF Core reads, raw Npgsql upserts, migrations |
-| `JobsPulse.Sources.*` | One project per ATS: Greenhouse, Lever (global + EU), SmartRecruiters, Ashby, Workday |
+| `JobsPulse.Sources.*` | One project per source: Greenhouse, Lever (global + EU), SmartRecruiters, Ashby, Workday, SuccessFactors, plus HeadHunter — a centralized employer catalog rather than an ATS |
 | `JobsPulse.Discovery` | Common Crawl mining and board validation |
 | `JobsPulse.Sinks.Telegram` | The bot: screens, localization, formatting, delivery |
 | `JobsPulse.Host` | Composition root and the background workers |
@@ -98,7 +100,8 @@ Each project carries a `CLAUDE.md` documenting its modules and, more importantly
 
 **Data:** PostgreSQL 16 · EF Core 9 (reads, migrations) · Npgsql.
 
-**Integrations:** Telegram Bot API (`Telegram.Bot`) · Greenhouse, Lever, SmartRecruiters, Ashby and Workday careers APIs
+**Integrations:** Telegram Bot API (`Telegram.Bot`) · Greenhouse, Lever, SmartRecruiters, Ashby, Workday and
+SuccessFactors careers APIs · HeadHunter public API (employer catalog, no OAuth required)
 · Common Crawl (DuckDB over remote Parquet, HTTP index fallback).
 
 **Runtime & patterns:** `Microsoft.Extensions.Hosting` background services · options pattern with hot reload

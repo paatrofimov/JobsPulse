@@ -3,12 +3,12 @@ registry (`board_registry` table, `IBoardRegistryStorage` in Core).
 
 Nothing here knows about a particular ATS. Everything source-specific lives in the source project behind
 `IBoardUrlParser` (`GreenhouseBoardUrlParser`, `LeverBoardUrlParser`, `SmartRecruitersBoardUrlParser`,
-`AshbyBoardUrlParser`, `WorkdayBoardUrlParser`, `SuccessFactorsBoardUrlParser`), so adding a source means adding one
-parser, not touching this project.
+`AshbyBoardUrlParser`, `WorkdayBoardUrlParser`, `SuccessFactorsBoardUrlParser`, `HeadHunterBoardUrlParser`), so adding
+a source means adding one parser, not touching this project.
 
 A pattern may name a whole domain (`*.myworkdayjobs.com/*`) instead of a known host. That is what Workday needs - every
-tenant gets its own careers host - and it costs a suffix match where the other sources get equality, in both index
-readers. A token whose board id the crawl could only guess (Workday's tenant) is not a special case either: validation
+tenant gets its own careers host - and what HeadHunter uses for the city subdomains of its regional sites
+(`*.hh.ru/employer/*`); it costs a suffix match where the other sources get equality, in both index readers. A token whose board id the crawl could only guess (Workday's tenant) is not a special case either: validation
 already probes every token against the ATS, and the candidate it returns is what the registry stores, so a corrected
 address lands there instead of the guessed one.
 

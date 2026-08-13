@@ -256,10 +256,11 @@ its status code and how long it took. A failure is logged the same way, with the
 exception message, and then rethrown - the wrapper decides nothing, it only makes the traffic readable.
 
 `GetAsync` covers every ATS whose list endpoint is a GET; `PostAsync` exists for Workday, whose careers backend takes
-its paging in a json body.
+its paging in a json body; `SendAsync` for a request that carries more than a url - HeadHunter's api takes a bearer
+token per request, which a default header on the shared client cannot express.
 
 The log context is `http:{name}` of the named client (`greenhouse`, `lever`, `smartrecruiters`, `ashby`, `workday`,
-`common-crawl-index`, `common-crawl-data`), so it is always clear which integration a line belongs to.
+`headhunter`, `common-crawl-index`, `common-crawl-data`), so it is always clear which integration a line belongs to.
 
 `IHttpClientFactory.CreateLoggingClient(name, log)` is how the wrapper is built - in the `Add*Source` extensions for
 the ATS clients, and inline in the resolvers that fetch a career page.
@@ -313,6 +314,10 @@ Sink implementations must implement formatting and sending.
 
 Searching board via human-readable name - bot command /watch {company_name}.
 `ProbeAsync` is also the validation step of board discovery - a token exists only if the ATS answers for it.
+
+Resolution is not always slug guessing. A source can also be a centralized catalog, where a name is a query and the
+answer is a ranked set of employers - see `JobsPulse.Sources.HeadHunter`. Such a resolver returns several candidates
+when the answer is genuinely ambiguous, which is what `LookupAsync` already renders as a choice.
 
 ## IBoardUrlParser
 

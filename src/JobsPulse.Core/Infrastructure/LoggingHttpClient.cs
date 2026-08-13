@@ -55,6 +55,42 @@ public sealed class LoggingHttpClient(HttpClient http, ILog log, string name)
         }
     }
 
+    /// <summary>
+    /// For a request that carries more than a url - an api taking a per-request authorization header, which a default
+    /// header on the shared client cannot express. The message is sent as given; nothing is added to it here.
+    /// </summary>
+    public async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        HttpCompletionOption completionOption,
+        CancellationToken ct)
+    {
+        var absolute = Absolute(request.RequestUri?.ToString() ?? string.Empty);
+
+        ctxLog.Debug("{Method} {Url}", request.Method.Method, absolute);
+
+        var watch = Stopwatch.StartNew();
+
+        try
+        {
+            var response = await http.SendAsync(request, completionOption, ct);
+
+            ctxLog.Debug(
+                "{Method} {Url} answered HTTP {Status} in {Elapsed} ms",
+                request.Method.Method, absolute, (int)response.StatusCode, watch.ElapsedMilliseconds);
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            ctxLog.Debug(
+                ex,
+                "{Method} {Url} has failed after {Elapsed} ms: {Error}",
+                request.Method.Method, absolute, watch.ElapsedMilliseconds, Describe(ex));
+
+            throw;
+        }
+    }
+
     /// <summary>For the ATS whose list endpoint is a POST with a json body - Workday's careers backend.</summary>
     public async Task<HttpResponseMessage> PostAsync(string url, HttpContent content, CancellationToken ct)
     {

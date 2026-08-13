@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\JobsPulse.Discovery\JobsPulse.Discovery.csproj" />
     <ProjectReference Include="..\..\src\JobsPulse.Sources.Greenhouse\JobsPulse.Sources.Greenhouse.csproj" />
     <ProjectReference Include="..\..\src\JobsPulse.Sources.SuccessFactors\JobsPulse.Sources.SuccessFactors.csproj" />
+    <ProjectReference Include="..\..\src\JobsPulse.Sources.HeadHunter\JobsPulse.Sources.HeadHunter.csproj" />
     <ProjectReference Include="..\..\src\JobsPulse.Storage\JobsPulse.Storage.csproj" />
   </ItemGroup>
 

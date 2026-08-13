@@ -9,6 +9,7 @@ using JobsPulse.Host.Rouitines;
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sources.Ashby.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Infrastructure;
+using JobsPulse.Sources.HeadHunter.Infrastructure;
 using JobsPulse.Sources.Lever.Infrastructure;
 using JobsPulse.Sources.SmartRecruiters.Infrastructure;
 using JobsPulse.Sources.SuccessFactors.Infrastructure;
@@ -41,6 +42,7 @@ builder.Services.AddSmartRecruitersSource(builder.Configuration);
 builder.Services.AddAshbySource(builder.Configuration);
 builder.Services.AddWorkdaySource(builder.Configuration);
 builder.Services.AddSuccessFactorsSource(builder.Configuration);
+builder.Services.AddHeadHunterSource(builder.Configuration);
 
 var registeredSources = new[]
 {
@@ -49,7 +51,8 @@ var registeredSources = new[]
     SmartRecruitersMapper.SourceId,
     AshbyMapper.SourceId,
     WorkdayMapper.SourceId,
-    SuccessFactorsMapper.SourceId
+    SuccessFactorsMapper.SourceId,
+    HeadHunterMapper.SourceId
 };
 builder.Services.AddSingleton<ISourceCatalog>(sp => new SourceCatalog(sp, registeredSources));
 
