@@ -11,5 +11,8 @@ public sealed record SourceTarget
     /// </summary>
     public string? Configuration { get; init; }
 
-    public bool IncludeDescriptions { get; init; }
+    /// <summary>
+    /// Should be enabled if any filter is configured by description contents.
+    /// </summary>
+    public bool IncludeDescriptions { get; init; } = true;
 }
