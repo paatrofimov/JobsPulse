@@ -74,6 +74,34 @@ internal class StateStore(
         return counts.ToDictionary(x => x.WatchlistId, x => x.Count);
     }
 
+    public async Task<IReadOnlyDictionary<string, int>> CountMatchesByBoardAsync(
+        long watchlistId,
+        CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var counts = await db.WatchlistVacancies
+            .AsNoTracking()
+            .Where(x => x.WatchlistId == watchlistId)
+            .GroupBy(x => new
+            {
+                x.SourceId,
+                x.BoardId
+            })
+            .Select(g => new
+            {
+                g.Key.SourceId,
+                g.Key.BoardId,
+                Count = g.Count()
+            })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(
+            x => $"{x.SourceId}/{x.BoardId}",
+            x => x.Count,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
     public async Task<IReadOnlyList<SeenVacancySnapshot>> LoadAllAsync(CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
@@ -351,7 +379,8 @@ internal class StateStore(
             cmd.Parameters.AddWithValue("title", vacancy.Title);
             cmd.Parameters.AddWithValue("location", (object?)vacancy.Location ?? DBNull.Value);
             cmd.Parameters.AddWithValue("url", vacancy.Url);
-            cmd.Parameters.AddWithValue("first_seen_at", (object?)vacancy.FirstSeenAt ?? DBNull.Value);
+            // `first_seen_at` is ours, not the board's: a source that did not stamp it is first seen right now.
+            cmd.Parameters.AddWithValue("first_seen_at", vacancy.FirstSeenAt ?? now);
             cmd.Parameters.AddWithValue(
                 "first_published_at",
                 (object?)vacancy.FirstPublishedAt ?? DBNull.Value);

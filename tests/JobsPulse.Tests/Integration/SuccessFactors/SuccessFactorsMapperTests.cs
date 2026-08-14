@@ -9,7 +9,7 @@ public sealed class SuccessFactorsMapperTests
 {
     private static readonly SuccessFactorsBoardConfig Board = new() { Domain = "jobs.sap.com" };
 
-    private readonly SuccessFactorsMapper mapper = new();
+    private readonly SuccessFactorsMapper mapper = new(TimeProvider.System);
 
     [Test]
     public void ToVacancy_should_take_the_location_off_the_title()

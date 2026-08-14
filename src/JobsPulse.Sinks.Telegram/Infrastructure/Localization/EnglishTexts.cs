@@ -75,6 +75,9 @@ internal static class EnglishTexts
         [TextKey.FilterKeywords] = "🔍 Title keywords",
         [TextKey.FilterExcluded] = "🚫 Excluded words",
         [TextKey.FilterLocations] = "📍 Locations",
+        [TextKey.FilterLocationsExcluded] = "🚫 Excluded locations",
+        [TextKey.FilterDescription] = "📝 Words in the text",
+        [TextKey.FilterDescriptionExcluded] = "🚫 Excluded in the text",
         [TextKey.FilterFreshness] = "🗓 Freshness",
         [TextKey.FilterKeywordsPrompt] =
             "Send the words a vacancy title must contain, comma separated — for example <b>backend, sre, platform</b>. "
@@ -85,6 +88,19 @@ internal static class EnglishTexts
         [TextKey.FilterLocationsPrompt] =
             "Send the locations you accept, comma separated — for example <b>remote, berlin, poland</b>. "
             + "Send <b>-</b> to clear.",
+        [TextKey.FilterLocationsExcludedPrompt] =
+            "Send the locations you do <b>not</b> want, comma separated — for example <b>usa, india</b>. "
+            + "A vacancy named after any of them is dropped, whatever the other rules say. Send <b>-</b> to clear.",
+        [TextKey.FilterDescriptionPrompt] =
+            "Send the words the vacancy <b>text</b> must contain, comma separated — for example "
+            + "<b>kubernetes, postgres</b>. A vacancy matching any of them is a hit. Send <b>-</b> to clear.<br>"
+            + "Two things to know: a vacancy whose text I could not read never matches such a rule, and the rule is "
+            + "checked when the company is polled — vacancies found earlier are not re-checked against it.",
+        [TextKey.FilterDescriptionExcludedPrompt] =
+            "Send the words that must <b>not</b> appear in the vacancy text, comma separated — for example "
+            + "<b>on-site, security clearance</b>. Send <b>-</b> to clear.<br>"
+            + "As above: a vacancy with no readable text passes this rule, and already found vacancies are not "
+            + "re-checked against it.",
         [TextKey.FilterFreshnessPrompt] = "How old may a vacancy be?",
         [TextKey.FilterFreshnessAny] = "Any age",
         [TextKey.FilterClear] = "🧹 Clear filter",
@@ -119,6 +135,10 @@ internal static class EnglishTexts
             "Send the name of the company you want to change. Part of the name is enough.",
         [TextKey.CompanyFindNotFound] = "No company «{0}» in this list. Try another name.",
         [TextKey.CompanyFindMany] = "Several companies match «{0}» — pick one.",
+        [TextKey.CompanyCounts] = "{0}",
+        [TextKey.CompanyCountsLegend] = "After every company: vacancies found on its board matching this filter",
+        [TextKey.CompaniesBySource] = "🏢 Group by source",
+        [TextKey.CompaniesByLocation] = "📍 Group by location",
 
         [TextKey.DisabledTitle] = "Disabled companies",
         [TextKey.DisabledEmpty] = "Nothing is disabled — every company of yours is being watched.",
@@ -141,6 +161,17 @@ internal static class EnglishTexts
         [TextKey.VacanciesCount] = "{0} open vacancies match this watchlist.",
         [TextKey.VacanciesShownOf] = "Showing the {0} freshest vacancies out of {1}.",
         [TextKey.VacancyUnknownLocation] = "Unknown location",
+        [TextKey.VacanciesByCompany] = "🏢 Group by company",
+        [TextKey.VacanciesByLocation] = "📍 Group by location",
+
+        [TextKey.RegionEurope] = "Europe",
+        [TextKey.RegionRemote] = "Remote",
+        [TextKey.RegionCis] = "CIS",
+        [TextKey.RegionAmericas] = "Americas",
+        [TextKey.RegionAsia] = "Asia",
+        [TextKey.RegionMiddleEastAndAfrica] = "Middle East and Africa",
+        [TextKey.RegionOceania] = "Australia and Oceania",
+        [TextKey.RegionUnknown] = "Location unclear",
 
         [TextKey.LanguageTitle] = "Choose a language",
         [TextKey.LanguageChanged] = "Language switched to English.",

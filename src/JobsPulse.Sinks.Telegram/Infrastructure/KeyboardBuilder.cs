@@ -30,6 +30,19 @@ public sealed class KeyboardBuilder(BotLanguage language)
     public KeyboardBuilder ButtonIf(bool condition, TextKey label, CallbackAction action, long id = 0, int page = 0) =>
         condition ? Button(label, action, id, page) : this;
 
+    /// <summary>
+    /// Two buttons on one row - for the «wanted / unwanted» pairs of the filter, where the two halves of one rule
+    /// belong together and a row each would only make the screen longer.
+    /// </summary>
+    public KeyboardBuilder Pair(
+        (TextKey Label, CallbackAction Action) left,
+        (TextKey Label, CallbackAction Action) right,
+        long id = 0,
+        int page = 0) =>
+        Row(
+            Make(BotTexts.Get(left.Label, language), left.Action, id, page),
+            Make(BotTexts.Get(right.Label, language), right.Action, id, page));
+
     /// <summary>One button per item, one per row - company and watchlist names are too long to share a row.</summary>
     public KeyboardBuilder Items<T>(
         IEnumerable<T> items,

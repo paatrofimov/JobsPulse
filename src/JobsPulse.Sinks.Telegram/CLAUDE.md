@@ -67,11 +67,23 @@ itself.
   Both name the owner explicitly.
 - `WatchlistScreen` - one watchlist: owner, state, company and match counts, the filter in words. Rename, filter,
   companies, vacancies, pause and delete, with a confirmation step before the delete.
-- `FilterScreen` - the filter one rule at a time: title keywords, excluded words, locations, freshness. Answers are
-  comma separated, `-` clears a rule. No json ever reaches a user.
-- `CompaniesScreen` - the companies of a watchlist, **grouped by the source they are watched through**. The list itself
+- `FilterScreen` - the filter one rule at a time, and now every rule `FilterSpec` has: wanted and unwanted words of the
+  **title**, of the **location** and of the vacancy **text**, plus freshness. The two halves of a field share a keyboard
+  row (`KeyboardBuilder.Pair`) - one rule read from two sides - and all six lists are also printed above the buttons by
+  `BotFormatter.Filter`, so «what is this watchlist actually looking for» is answered without opening anything. Answers
+  are comma separated, `-` clears a rule. No json ever reaches a user.
+  The two text rules say in their prompt what makes them different: descriptions are not stored, so an unreadable text
+  never passes «words in the text», and vacancies found earlier are not re-checked against either of them.
+- `CompaniesScreen` - the companies of a watchlist, **grouped by the source they are watched through** or, on one tap,
+  **by the region they hire in** (`CompaniesByLocation`, Europe first). The list itself
   answers «which are watched, which are off, which are done»: a glyph per row (▶️ / ⏸ / ✅), a legend, the CV date and
-  the discovery mark. The rows are text and not buttons, which is what raises the page from 8 companies to 30: a
+  the discovery mark, plus the two numbers per company - vacancies **found** on its board
+  (`IStateStore.CountOpenByBoardAsync`) and the ones **matching** this watchlist (`CountMatchesByBoardAsync`). Found
+  without matched is a company the filter throws away; both at zero is one that has nothing at all. The region of a
+  company is not stored anywhere - it is read from the vacancies found for it (`LocationRegions.ByBoard`), and a
+  company with nothing found yet is listed under «location unclear» rather than dropped. Every group is folded into a
+  `<details>` block whatever its size, and the page holds up to 200 companies - one screen for any real watchlist.
+  The rows are text and not buttons, which is what lifts the page from 8 companies to 200: a
   button per company capped the page at the keyboard size and filled the screen with labels that only repeated the
   list. One `🔧 Change a company` button asks for a name instead (`PendingInputKind.CompanyName` →
   `CompanyList.Find`): an exact name opens the per-company screen - mark worked through, disable, remove - several
@@ -81,9 +93,12 @@ itself.
 - `AddCompanyScreen` - a name or a careers-page link, resolved by `WatchService.LookupAsync`; the candidates become
   buttons. The ATS and the board id are never asked for.
 - `VacanciesScreen` - vacancies opened *by watchlist name*: pick a list, then read what matched it **grouped by
-  company**, the same shape the notifications have. The feed is loaded whole (capped at 500, freshest first) and
-  `VacancyPageBuilder` packs it into as few screens as the telegram message limit allows, so a normal watchlist is one
-  page. The browsable counterpart of the push notifications.
+  company**, the same shape the notifications have, or **grouped by location** (`VacanciesByLocation`) with Europe
+  first. The feed is loaded whole (capped at 500, freshest first) and `VacancyPageBuilder` packs it into as few screens
+  as the message limit allows - which, with every block folded and a rich-message budget, is normally one. Vacancies of
+  **disabled companies are left out** (`VacancyPageBuilder.OfActiveCompanies`) - a company the user switched off is not
+  being watched, so its vacancies are not part of the feed; the same rule drops a match row whose board has left the
+  watchlist and which the next cycle has not cleaned up yet. The browsable counterpart of the push notifications.
 - `LanguageScreen` - Russian / English, stored on the user so it also applies to notifications hours later.
 - `AdminScreen` - the door to the operator commands, and a refusal for everybody else. It opens with the traversal
   progress block (`ProgressReporter`) and a `🔄 Refresh` button, because that is the one thing an operator wants
@@ -107,7 +122,8 @@ The language applies to menus, buttons, hints, statuses, errors, the command men
 ## KeyboardBuilder
 
 Inline keyboard rows, paging and the closing navigation row. `PageSize` is 8 - more buttons than that on one screen is
-unreadable. The page label is a button only because a row needs one, so it points at the page it already shows.
+unreadable, which is also why `Pair` exists: the «wanted / unwanted» halves of a filter rule share a row instead of
+taking one each. The page label is a button only because a row needs one, so it points at the page it already shows.
 
 ## CallbackAction / CallbackData
 
@@ -137,7 +153,31 @@ the user and is logged instead of breaking the update.
 
 The grouped vacancy feed of one watchlist: a block per company (glyph, name, count) with its vacancies newest first,
 manual companies before discovered ones - the same ordering `MessageFormatter` uses, so a browsed list and a pushed one
-read alike.
+read alike. `VacancyGrouping.Location` slices the same feed by region instead (`LocationRegions`, Europe first) and
+moves the company name into the vacancy line, because a region block mixes companies and «whose vacancy is this» is the
+first question about such a row.
+
+**Every** block is a collapsed `<details><summary>glyph, name, count…` block, whatever its size - the rich message HTML
+telegram takes supports it, and the page then opens as the list of headers, which is what makes a whole watchlist
+readable on one screen. Folding only long blocks was tried first and dropped: a list where some blocks are open and
+some are not reads as two different lists. A block continued on the next page closes its `</details>` before the page
+is flushed and re-opens under the repeated header, so no page carries unbalanced markup.
+
+Paging is budgeted at 30 000 characters rather than 4096: a rich message is not a plain one, and `MessageFormatter` has
+been splitting notifications at that size since it existed.
+
+## LocationRegions
+
+Which region a location string means. There is no country field anywhere in the pipeline - «Berlin, Germany», «EMEA -
+Remote» and «Москва» are all a source ever says - so the answer is a keyword table of countries, capitals and the hubs
+the boards actually name, matched as whole words over a normalized string (which is what keeps «Cork» out of
+«Corktown» and lets «tel aviv» be one key).
+
+Two rules make it behave: geography wins over «remote» (a «Remote, Poland» posting is Europe, because that is what the
+reader wants to know), and the regions are tested in enum order, so a vacancy open in Berlin and New York counts as
+European - the priority the whole location grouping exists for. An unrecognized location is `Unknown` and is still
+shown last, never dropped. `ByBoard` is the company-level answer: the region most of a company's vacancies name, with
+a tie going to the earlier region and therefore to Europe.
 
 Pages are packed by size rather than by a fixed count: blocks are appended while the *visible* length stays under
 `PageBudget`, so a screen carries every vacancy that still fits. Visible length is measured with the markup and the
@@ -159,9 +199,10 @@ rest of the operator surface.
 
 ## CompanyList
 
-Ordering, source grouping and name lookup of a company list, kept out of the screen so all three can be read and
-tested on their own. Ordering is source, then active before disabled, then manual before discovered, then name -
-grouping only slices that order, so a group longer than a page continues under a repeated header. `Find` lets an exact
+Ordering, grouping and name lookup of a company list, kept out of the screen so all three can be read and
+tested on their own. Ordering is source (or region, `OrderByRegion`), then active before disabled, then manual before
+discovered, then name - grouping only slices that order into `CompanyGroup`s of consecutive equal labels, so a group
+longer than a page continues under a repeated header. `Find` lets an exact
 name win over a containing one, otherwise a company whose name is a prefix of another («Nebius» in «Nebius AI») could
 not be addressed by typing it in full.
 

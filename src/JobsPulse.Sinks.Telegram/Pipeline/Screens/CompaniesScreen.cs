@@ -1,4 +1,5 @@
 using System.Text;
+using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Sinks.Telegram.Infrastructure;
@@ -8,23 +9,39 @@ using JobsPulse.Sinks.Telegram.Models;
 namespace JobsPulse.Sinks.Telegram.Pipeline.Screens;
 
 /// <summary>
-/// Companies of one watchlist, grouped by the source they are watched through. The list itself answers the three
-/// questions a user has - which are being watched, which are switched off and which have already been worked through -
-/// with a glyph per row and a legend, so nothing has to be opened to find out.
+/// Companies of one watchlist, grouped by the source they are watched through - or by the region they hire in, which
+/// is the grouping that answers «who is hiring in Europe». The list itself answers the three questions a user has -
+/// which are being watched, which are switched off and which have already been worked through - with a glyph per row
+/// and a legend, so nothing has to be opened to find out. Every row also carries the two numbers that say whether a
+/// company is worth anything: vacancies found on its board matching this watchlist's filter.
 ///
 /// The rows are text, not buttons: a button per company capped the page at eight and filled the screen with labels
 /// that only repeat the list. One «change a company» button asks for a name instead, so a page carries
-/// <see cref="PageSize"/> companies.
+/// <see cref="PageSize"/> companies; every group is folded into a <c>&lt;details&gt;</c> block, so the page opens as
+/// its group headers however long the list behind them is.
 /// </summary>
-public sealed class CompaniesScreen(WatchService watch, WatchlistAccess access, UserSessionStore sessions)
+public sealed class CompaniesScreen(
+    WatchService watch,
+    WatchlistAccess access,
+    IStateStore stateStore,
+    UserSessionStore sessions)
 {
     /// <summary>
-    /// Companies per page. Bound by the telegram message limit rather than by the keyboard: ~30 rows of «glyph, name,
-    /// status» stay well inside 4096 characters.
+    /// Companies per page. Bound by the telegram message limit rather than by the keyboard, and a rich message is not
+    /// the 4096-character plain one (`MessageFormatter` splits notifications at 30 000), so a row of «glyph, name,
+    /// counts, status» fits a few hundred times over. Paging is what is left for a watchlist nobody should have.
     /// </summary>
-    private const int PageSize = 30;
+    private const int PageSize = 200;
 
-    public async Task<ScreenView> RenderAsync(BotContext ctx, long watchlistId, int page, CancellationToken ct)
+    /// <summary>How much of the feed the region of a company is read from - see <see cref="LocationRegions.ByBoard"/>.</summary>
+    private const int MaxVacanciesForRegions = 500;
+
+    public async Task<ScreenView> RenderAsync(
+        BotContext ctx,
+        long watchlistId,
+        int page,
+        CancellationToken ct,
+        VacancyGrouping grouping = VacancyGrouping.Company)
     {
         var resolved = await access.ResolveAsync(ctx, watchlistId, ct);
         if (resolved.Watchlist is not { } watchlist)
@@ -44,23 +61,39 @@ public sealed class CompaniesScreen(WatchService watch, WatchlistAccess access, 
             return new ScreenView(sb.ToString(), empty);
         }
 
-        var ordered = CompanyList.Order(watchlist.Entries);
-        var pageItems = WatchlistsScreen.Paged(ordered, page, PageSize, out var totalPages);
+        var matched = await stateStore.CountMatchesByBoardAsync(watchlistId, ct);
 
-        sb.Append($"<p>{BotTexts.Get(TextKey.CompanyLegend, ctx.Language)}</p>");
+        var byLocation = grouping == VacancyGrouping.Location;
 
-        foreach (var group in CompanyList.GroupBySource(pageItems))
+        var (groups, totalPages) = byLocation
+            ? await GroupByRegionAsync(watchlist, matched, page, ctx, ct)
+            : GroupBySource(watchlist, matched, page);
+
+        sb.Append($"<p>{BotTexts.Get(TextKey.CompanyLegend, ctx.Language)}<br>"
+                  + $"{BotTexts.Get(TextKey.CompanyCountsLegend, ctx.Language)}</p>");
+
+        // Every group is folded, whatever its size: the page then opens as the list of group headers.
+        foreach (var group in groups)
         {
-            sb.Append($"<p><b>{MessageFormatter.Escape(group.SourceId)}</b> · {group.Entries.Count}<br>");
+            sb.Append($"<details><summary><b>{MessageFormatter.Escape(group.Label)}</b> · "
+                      + $"{group.Entries.Count}</summary><p>");
 
             foreach (var entry in group.Entries)
-                AppendRow(sb, entry, ctx);
+                AppendRow(sb, entry, matched, ctx);
 
-            sb.Append("</p>");
+            sb.Append("</p></details>");
         }
 
         var keyboard = new KeyboardBuilder(ctx.Language)
-            .Paging(CallbackAction.CompaniesOpen, watchlistId, page, totalPages)
+            .Paging(
+                byLocation ? CallbackAction.CompaniesByLocation : CallbackAction.CompaniesOpen,
+                watchlistId,
+                page,
+                totalPages)
+            .Button(
+                byLocation ? TextKey.CompaniesBySource : TextKey.CompaniesByLocation,
+                byLocation ? CallbackAction.CompaniesOpen : CallbackAction.CompaniesByLocation,
+                watchlistId)
             .ButtonIf(resolved.CanEdit, TextKey.CompanyChange, CallbackAction.CompanyFind, watchlistId, page)
             .ButtonIf(resolved.CanEdit, TextKey.WatchlistAddCompany, CallbackAction.CompanyAdd, watchlistId)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
@@ -68,9 +101,51 @@ public sealed class CompaniesScreen(WatchService watch, WatchlistAccess access, 
         return new ScreenView(sb.ToString(), keyboard);
     }
 
-    private static void AppendRow(StringBuilder sb, WatchlistEntry entry, BotContext ctx)
+    private static (List<CompanyGroup> Groups, int TotalPages) GroupBySource(Watchlist watchlist, IReadOnlyDictionary<string, int> matchesByBoard, int page)
     {
+        var ordered = CompanyList.Order(watchlist.Entries, matchesByBoard);
+        var pageItems = WatchlistsScreen.Paged(ordered, page, PageSize, out var totalPages);
+
+        return (CompanyList.GroupBySource(pageItems), totalPages);
+    }
+
+    /// <summary>
+    /// A company carries no location of its own - the region is read from the vacancies found for it, which is one
+    /// query for the whole watchlist. A company with nothing found yet lands under «location unclear» rather than
+    /// disappearing from the list.
+    /// </summary>
+    private async Task<(List<CompanyGroup> Groups, int TotalPages)> GroupByRegionAsync(
+        Watchlist watchlist,
+        IReadOnlyDictionary<string, int> matchesByBoard,
+        int page,
+        BotContext ctx,
+        CancellationToken ct)
+    {
+        var vacancies = await stateStore.LoadMatchedVacanciesAsync(watchlist.Id, MaxVacanciesForRegions, ct);
+        var regions = LocationRegions.ByBoard(vacancies);
+
+        LocationRegion RegionOf(WatchlistEntry entry) =>
+            regions.GetValueOrDefault($"{entry.VacancySourceId}/{entry.BoardId}", LocationRegion.Unknown);
+
+        var ordered = CompanyList.OrderByRegion(watchlist.Entries, matchesByBoard, RegionOf);
+        var pageItems = WatchlistsScreen.Paged(ordered, page, PageSize, out var totalPages);
+
+        return (CompanyList.GroupByRegion(pageItems, RegionOf, ctx.Language), totalPages);
+    }
+
+    private static void AppendRow(
+        StringBuilder sb,
+        WatchlistEntry entry,
+        IReadOnlyDictionary<string, int> matched,
+        BotContext ctx)
+    {
+        var board = $"{entry.VacancySourceId}/{entry.BoardId}";
+
         sb.Append($"{BotFormatter.EntryGlyph(entry)} <b>{MessageFormatter.Escape(entry.CompanyName)}</b> — "
+                  + $"{BotTexts.Get(
+                      TextKey.CompanyCounts,
+                      ctx.Language,
+                      matched.GetValueOrDefault(board))}, "
                   + $"{BotFormatter.EntryStatus(entry, ctx.Language)}");
 
         if (entry.WorkedAt is { } workedAt)

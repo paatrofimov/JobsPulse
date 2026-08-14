@@ -147,8 +147,9 @@ watchlist the stored state is left untouched instead of being wiped.
 The match layer is deliberately not touched here: it is reconciled by the next poll of the board, which is also what
 turns a narrowed filter into a `Closed` notification for that watchlist.
 
-`DescriptionAnyOf` is dropped from the filter copies used for re-evaluation - descriptions are not persisted, so that
-rule cannot be re-checked offline and would otherwise wipe everything.
+`DescriptionAnyOf` and `DescriptionNoneOf` are dropped from the filter copies used for re-evaluation - descriptions are
+not persisted, so those rules cannot be re-checked offline: the first would wipe everything, the second would keep
+everything.
 
 ## ChangeDetector
 
@@ -302,6 +303,9 @@ notifications - all in one transaction, so a notification can never exist withou
 `seen_vacancy` rows, newest first, capped at a limit. It is not database-paged on purpose: the bot groups the feed by
 company and pages it by message size, which needs the whole set; the cap is what keeps a match-everything watchlist from
 loading everything (`CountMatchesByWatchlistAsync` only gives the totals).
+`CountOpenByBoardAsync` and `CountMatchesByBoardAsync` are the two halves of the company list the bot renders: how many
+vacancies a board has at all, and how many of them match one watchlist - counts, so a screen listing 200 companies does
+not load their feeds.
 `LoadAllAsync` and `PurgeAllAsync` are admin operations exposed through bot commands, not used by the pipeline;
 `PurgeAllAsync` wipes derived state (vacancies, matches, outbox, registry) and keeps the watchlists, which are
 configuration.
@@ -367,7 +371,16 @@ for each of them.
 
 ## FilterSpec
 
-Filter specification.
+Filter specification. Three fields of a vacancy are filtered, each from both sides, and every one of the six lists is
+editable from the bot (`FilterScreen`): `Title`, `Location` and `Description`, `AnyOf` (a hit on any value is enough) and
+`NoneOf` (a hit drops the vacancy). Exclusions are evaluated first in `VacancyMatcher` - «not this» outranks «any of
+these» - and `LocationAnyOf` is the one rule that also looks at `Offices`, because that is where several ATS keep the
+place.
+
+The description rules are the odd pair: `Vacancy.Description` is never persisted (it is too large and `[JsonIgnore]`d),
+so they hold only while the vacancy is being polled. Two consequences the bot states in its prompts - a vacancy whose
+text could not be read never passes `DescriptionAnyOf` and always passes `DescriptionNoneOf`, and
+`FilterMaintenanceService` drops both from the filter copy it re-evaluates stored rows with.
 
 ### PostedWithinDays
 

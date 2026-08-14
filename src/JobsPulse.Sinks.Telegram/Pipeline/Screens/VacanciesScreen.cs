@@ -9,8 +9,9 @@ namespace JobsPulse.Sinks.Telegram.Pipeline.Screens;
 
 /// <summary>
 /// The found vacancies, opened by watchlist name: the user picks a list and reads what matched it, grouped by company
-/// the same way the notifications are. This is the browsable counterpart of the push notifications - the same matches,
-/// but on demand and without scrolling the chat history.
+/// the same way the notifications are - or by location, Europe first, which is the other question asked of a feed.
+/// This is the browsable counterpart of the push notifications - the same matches, but on demand and without
+/// scrolling the chat history. Vacancies of disabled companies are left out: the list shows what is being watched.
 /// </summary>
 public sealed class VacanciesScreen(
     WatchService watch,
@@ -20,7 +21,8 @@ public sealed class VacanciesScreen(
 {
     /// <summary>
     /// How much of a watchlist feed one screen session may hold. Everything below the cap is rendered - grouped and
-    /// packed into as few pages as telegram's message limit allows - so a normal watchlist is fully browsable.
+    /// packed into as few pages as telegram's message limit allows - so a normal watchlist is fully browsable, and with
+    /// every block folded away it stays one screen.
     /// </summary>
     private const int MaxVacancies = 500;
 
@@ -56,7 +58,12 @@ public sealed class VacanciesScreen(
             keyboard);
     }
 
-    public async Task<ScreenView> RenderAsync(BotContext ctx, long watchlistId, int page, CancellationToken ct)
+    public async Task<ScreenView> RenderAsync(
+        BotContext ctx,
+        long watchlistId,
+        int page,
+        CancellationToken ct,
+        VacancyGrouping grouping = VacancyGrouping.Company)
     {
         var resolved = await access.ResolveAsync(ctx, watchlistId, ct);
         if (resolved.Watchlist is not { } watchlist)
@@ -66,12 +73,15 @@ public sealed class VacanciesScreen(
                 new KeyboardBuilder(ctx.Language).Build(CallbackAction.VacanciesPick));
         }
 
-        var vacancies = await stateStore.LoadMatchedVacanciesAsync(watchlistId, MaxVacancies, ct);
+        // A company the user has switched off is not watched any more, so its vacancies are not part of the feed.
+        var vacancies = VacancyPageBuilder.OfActiveCompanies(
+            watchlist,
+            await stateStore.LoadMatchedVacanciesAsync(watchlistId, MaxVacancies, ct));
 
         var head = new StringBuilder(
             $"<h6>{BotTexts.Get(TextKey.VacanciesTitle, ctx.Language, MessageFormatter.Escape(watchlist.Name))}</h6>");
 
-        var rendered = pages.Build(watchlist, vacancies, ctx.Language);
+        var rendered = pages.Build(watchlist, vacancies, ctx.Language, grouping);
 
         if (rendered.Count == 0)
         {
@@ -90,8 +100,19 @@ public sealed class VacanciesScreen(
                 ? $"<p>{BotTexts.Get(TextKey.VacanciesShownOf, ctx.Language, vacancies.Count, total)}</p>"
                 : $"<p>{BotTexts.Get(TextKey.VacanciesCount, ctx.Language, vacancies.Count)}</p>");
 
+        var byLocation = grouping == VacancyGrouping.Location;
+
+        // Paging stays inside the grouping the reader chose - the action is what carries it.
         var keyboard = new KeyboardBuilder(ctx.Language)
-            .Paging(CallbackAction.VacanciesOpen, watchlistId, current, rendered.Count)
+            .Paging(
+                byLocation ? CallbackAction.VacanciesByLocation : CallbackAction.VacanciesOpen,
+                watchlistId,
+                current,
+                rendered.Count)
+            .Button(
+                byLocation ? TextKey.VacanciesByCompany : TextKey.VacanciesByLocation,
+                byLocation ? CallbackAction.VacanciesOpen : CallbackAction.VacanciesByLocation,
+                watchlistId)
             .Build(CallbackAction.VacanciesPick);
 
         return new ScreenView(head.Append(rendered[current]).ToString(), keyboard);

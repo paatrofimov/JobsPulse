@@ -64,9 +64,16 @@ public sealed class FilterMaintenanceService(
     }
 
     /// <summary>
-    /// Descriptions are not persisted, so a description rule cannot be re-checked offline - it is dropped from the
-    /// filter copy used here, otherwise every stored vacancy would look non-matching.
+    /// Descriptions are not persisted, so a description rule cannot be re-checked offline - both of them are dropped
+    /// from the filter copy used here, otherwise every stored vacancy would look non-matching (`AnyOf`) or every
+    /// excluded one would look fine (`NoneOf`).
     /// </summary>
     private static FilterSpec Storable(FilterSpec filter) =>
-        filter.DescriptionAnyOf.Count == 0 ? filter : filter with { DescriptionAnyOf = [] };
+        filter.DescriptionAnyOf.Count == 0 && filter.DescriptionNoneOf.Count == 0
+            ? filter
+            : filter with
+            {
+                DescriptionAnyOf = [],
+                DescriptionNoneOf = []
+            };
 }

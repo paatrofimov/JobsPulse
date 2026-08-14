@@ -97,19 +97,11 @@ public static class ProgressFormatter
             return sb.Append("nothing mined yet — /discover to walk them.</p>").ToString();
         }
 
-        var total = discovery.CollectionsTotal;
-
-        sb.Append(total > 0
-            ? $"published indexes: <b>{total}</b><br>"
-            : "published index count is unavailable<br>");
+        sb.Append("<b>Processed crawl indexes by source:</b><br>");
 
         foreach (var (sourceId, processed) in discovery.ProcessedBySource.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             sb.Append($"• <code>{MessageFormatter.Escape(sourceId)}</code>: <b>{processed}</b>");
-
-            if (total > 0)
-                sb.Append($" of {total} ({TraversalProgress.Percent(processed, total)}%)");
-
             sb.Append("<br>");
         }
 

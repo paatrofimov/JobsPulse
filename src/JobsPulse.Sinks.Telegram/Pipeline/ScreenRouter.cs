@@ -58,11 +58,19 @@ public sealed class ScreenRouter(
                 await filter.PromptAsync(ctx, data.Id, PendingInputKind.FilterExcluded, ct),
             CallbackAction.FilterLocations =>
                 await filter.PromptAsync(ctx, data.Id, PendingInputKind.FilterLocations, ct),
+            CallbackAction.FilterLocationsExcluded =>
+                await filter.PromptAsync(ctx, data.Id, PendingInputKind.FilterLocationsExcluded, ct),
+            CallbackAction.FilterDescription =>
+                await filter.PromptAsync(ctx, data.Id, PendingInputKind.FilterDescription, ct),
+            CallbackAction.FilterDescriptionExcluded =>
+                await filter.PromptAsync(ctx, data.Id, PendingInputKind.FilterDescriptionExcluded, ct),
             CallbackAction.FilterFreshnessAsk => await filter.AskFreshnessAsync(ctx, data.Id, ct),
             CallbackAction.FilterFreshnessSet => await filter.SetFreshnessAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.FilterClear => await filter.ClearAsync(ctx, data.Id, ct),
 
             CallbackAction.CompaniesOpen => await companies.RenderAsync(ctx, data.Id, data.Page, ct),
+            CallbackAction.CompaniesByLocation =>
+                await companies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Location),
             CallbackAction.CompanyOpen => await companies.RenderCompanyAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompanyToggleWorked => await companies.ToggleWorkedAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompanyToggleEnabled => await companies.ToggleEnabledAsync(ctx, data.Id, data.Page, ct),
@@ -76,6 +84,8 @@ public sealed class ScreenRouter(
 
             CallbackAction.VacanciesPick => await vacancies.RenderPickAsync(ctx, data.Page, ct),
             CallbackAction.VacanciesOpen => await vacancies.RenderAsync(ctx, data.Id, data.Page, ct),
+            CallbackAction.VacanciesByLocation =>
+                await vacancies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Location),
 
             CallbackAction.Language => language.Render(ctx),
             CallbackAction.Admin => await admin.RenderAsync(ctx, ct),
@@ -100,6 +110,12 @@ public sealed class ScreenRouter(
                 await filter.ApplyListAsync(ctx, session.WatchlistId, PendingInputKind.FilterExcluded, text, ct),
             PendingInputKind.FilterLocations =>
                 await filter.ApplyListAsync(ctx, session.WatchlistId, PendingInputKind.FilterLocations, text, ct),
+            PendingInputKind.FilterLocationsExcluded => await filter.ApplyListAsync(
+                ctx, session.WatchlistId, PendingInputKind.FilterLocationsExcluded, text, ct),
+            PendingInputKind.FilterDescription => await filter.ApplyListAsync(
+                ctx, session.WatchlistId, PendingInputKind.FilterDescription, text, ct),
+            PendingInputKind.FilterDescriptionExcluded => await filter.ApplyListAsync(
+                ctx, session.WatchlistId, PendingInputKind.FilterDescriptionExcluded, text, ct),
             PendingInputKind.CompanyQuery => await addCompany.SearchAsync(ctx, session.WatchlistId, text, ct),
             PendingInputKind.CompanyName => await companies.FindAsync(ctx, session.WatchlistId, text, ct),
             _ => null

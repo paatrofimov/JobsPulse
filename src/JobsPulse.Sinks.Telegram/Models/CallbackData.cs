@@ -33,11 +33,15 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
         [CallbackAction.FilterKeywords] = "fk",
         [CallbackAction.FilterExcluded] = "fx",
         [CallbackAction.FilterLocations] = "fl",
+        [CallbackAction.FilterLocationsExcluded] = "flx",
+        [CallbackAction.FilterDescription] = "fd",
+        [CallbackAction.FilterDescriptionExcluded] = "fdx",
         [CallbackAction.FilterFreshnessAsk] = "ffa",
         [CallbackAction.FilterFreshnessSet] = "ffs",
         [CallbackAction.FilterClear] = "fc",
 
         [CallbackAction.CompaniesOpen] = "co",
+        [CallbackAction.CompaniesByLocation] = "cl",
         [CallbackAction.CompanyOpen] = "ce",
         [CallbackAction.CompanyToggleWorked] = "cw",
         [CallbackAction.CompanyToggleEnabled] = "cn",
@@ -50,7 +54,8 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
         [CallbackAction.CompanyRestore] = "cs",
 
         [CallbackAction.VacanciesPick] = "vp",
-        [CallbackAction.VacanciesOpen] = "vo"
+        [CallbackAction.VacanciesOpen] = "vo",
+        [CallbackAction.VacanciesByLocation] = "vl"
     }.ToFrozenDictionary();
 
     private static readonly FrozenDictionary<string, CallbackAction> Actions =

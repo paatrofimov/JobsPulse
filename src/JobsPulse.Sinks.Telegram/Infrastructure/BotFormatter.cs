@@ -71,6 +71,9 @@ public static class BotFormatter
         Append(sb, TextKey.FilterKeywords, filter.TitleAnyOf, language);
         Append(sb, TextKey.FilterExcluded, filter.TitleNoneOf, language);
         Append(sb, TextKey.FilterLocations, filter.LocationAnyOf, language);
+        Append(sb, TextKey.FilterLocationsExcluded, filter.LocationNoneOf, language);
+        Append(sb, TextKey.FilterDescription, filter.DescriptionAnyOf, language);
+        Append(sb, TextKey.FilterDescriptionExcluded, filter.DescriptionNoneOf, language);
 
         if (filter.PostedWithinDays is { } days)
         {

@@ -62,7 +62,9 @@ Table `seen_vacancy` - last known state of every post ever observed on a board.
 - `filter_hash`: which filter the row passed. `FilterMaintenanceService` re-evaluates and deletes rows whose hash
   fell out of use, so a narrowed filter cleans the table instead of leaving stale rows behind.
 - `content_hash`: change detection. Recomputed by `VacancyHasher` on write, not taken from the domain model.
-- `first_seen_at` vs `first_published_at`: ours vs the board's. `first_published_at` is `COALESCE`d on update so the
+- `first_seen_at` vs `first_published_at`: ours vs the board's. Because it is ours, the upsert falls back to the commit
+  time when the domain model carries none - a source that does not stamp it (`SuccessFactors` did not) must not fail the
+  whole transaction on the `NOT NULL` constraint. `first_published_at` is `COALESCE`d on update so the
   earliest known value is never overwritten by a later/absent one from the source.
 - `updated_at`: write time of the source's `updated_at` - ATS boards bump their own timestamp on
   cosmetic edits, which is why hashing exists at all.
@@ -176,6 +178,10 @@ An empty commit short-circuits before opening a connection.
 notification, the state that produced it and the match row that proves it was reported land together. The upsert is
 guarded by `content_hash IS DISTINCT FROM` (plus the filter hash), so an unchanged match is a no-op; removals are one
 statement per watchlist, because the composite key cannot be passed as a single array.
+
+`CountMatchesByBoardAsync` is the per-board read of that layer for one watchlist - a grouped count keyed
+`{sourceId}/{boardId}`, the same key shape `CountOpenByBoardAsync` uses, so the bot's company list pairs the two
+without translating anything.
 
 ### LoadAllAsync / PurgeAllAsync
 

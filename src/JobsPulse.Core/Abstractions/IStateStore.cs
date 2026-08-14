@@ -40,5 +40,11 @@ public interface IStateStore
     /// <summary>Number of vacancies matching each watchlist, by watchlist id.</summary>
     Task<IReadOnlyDictionary<long, int>> CountMatchesByWatchlistAsync(CancellationToken ct);
 
+    /// <summary>
+    /// Number of vacancies of one watchlist per '{sourceId}/{boardId}' - the matched half of the company list, with
+    /// <see cref="CountOpenByBoardAsync"/> as the found half.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, int>> CountMatchesByBoardAsync(long watchlistId, CancellationToken ct);
+
     Task<PurgeResult> PurgeAllAsync(CancellationToken ct);
 }

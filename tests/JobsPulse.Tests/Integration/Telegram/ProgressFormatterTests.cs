@@ -6,8 +6,7 @@ using NUnit.Framework;
 namespace JobsPulse.Tests.Integration.Telegram;
 
 /// <summary>
-/// The admin progress block. It is rendered from state that is empty most of the time - a fresh process, an
-/// unreachable crawl index, a registry nobody has swept yet - so «renders without dividing by zero» is as much the
+/// The admin progress block. It is rendered from state that is empty most of the time - a fresh process, a registry nobody has swept yet - so «renders without dividing by zero» is as much the
 /// point as the numbers themselves.
 /// </summary>
 public sealed class ProgressFormatterTests
@@ -91,33 +90,14 @@ public sealed class ProgressFormatterTests
         var discovery = new DiscoveryProgress
         {
             IsRunning = true,
-            CollectionsTotal = 100,
             ProcessedBySource = new Dictionary<string, int> { ["greenhouse"] = 25, ["lever"] = 100 }
         };
 
         var html = ProgressFormatter.Render([], discovery, new Dictionary<string, int>(), Now);
 
         html.Should().Contain("mining now");
-        html.Should().Contain("published indexes: <b>100</b>");
         html.Should().Contain("<b>25</b> of 100 (25%)");
         html.Should().Contain("<b>100</b> of 100 (100%)");
-    }
-
-    /// <summary>An index that did not answer must cost the total, not the whole screen.</summary>
-    [Test]
-    public void Render_should_omit_the_percentage_when_the_index_total_is_unknown()
-    {
-        var discovery = new DiscoveryProgress
-        {
-            CollectionsTotal = 0,
-            ProcessedBySource = new Dictionary<string, int> { ["greenhouse"] = 25 }
-        };
-
-        var html = ProgressFormatter.Render([], discovery, new Dictionary<string, int>(), Now);
-
-        html.Should().Contain("published index count is unavailable");
-        html.Should().Contain("<b>25</b>");
-        html.Should().NotContain("%");
     }
 
     private static TraversalSourceProgress Source(

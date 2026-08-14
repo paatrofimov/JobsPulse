@@ -31,10 +31,21 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
                 new KeyboardBuilder(ctx.Language).Build(CallbackAction.WatchlistOpen, watchlistId));
         }
 
+        // Wanted and unwanted words of one field share a row: the pair is one rule read from two sides, and seven
+        // buttons on seven rows would push the navigation off the screen.
         var keyboard = new KeyboardBuilder(ctx.Language)
-            .Button(TextKey.FilterKeywords, CallbackAction.FilterKeywords, watchlistId)
-            .Button(TextKey.FilterExcluded, CallbackAction.FilterExcluded, watchlistId)
-            .Button(TextKey.FilterLocations, CallbackAction.FilterLocations, watchlistId)
+            .Pair(
+                (TextKey.FilterKeywords, CallbackAction.FilterKeywords),
+                (TextKey.FilterExcluded, CallbackAction.FilterExcluded),
+                watchlistId)
+            .Pair(
+                (TextKey.FilterLocations, CallbackAction.FilterLocations),
+                (TextKey.FilterLocationsExcluded, CallbackAction.FilterLocationsExcluded),
+                watchlistId)
+            .Pair(
+                (TextKey.FilterDescription, CallbackAction.FilterDescription),
+                (TextKey.FilterDescriptionExcluded, CallbackAction.FilterDescriptionExcluded),
+                watchlistId)
             .Button(TextKey.FilterFreshness, CallbackAction.FilterFreshnessAsk, watchlistId)
             .ButtonIf(!watchlist.Filter.IsEmpty, TextKey.FilterClear, CallbackAction.FilterClear, watchlistId)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
@@ -61,6 +72,9 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
         {
             PendingInputKind.FilterExcluded => TextKey.FilterExcludedPrompt,
             PendingInputKind.FilterLocations => TextKey.FilterLocationsPrompt,
+            PendingInputKind.FilterLocationsExcluded => TextKey.FilterLocationsExcludedPrompt,
+            PendingInputKind.FilterDescription => TextKey.FilterDescriptionPrompt,
+            PendingInputKind.FilterDescriptionExcluded => TextKey.FilterDescriptionExcludedPrompt,
             _ => TextKey.FilterKeywordsPrompt
         };
 
@@ -89,6 +103,9 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
         {
             PendingInputKind.FilterExcluded => watchlist.Filter with { TitleNoneOf = values },
             PendingInputKind.FilterLocations => watchlist.Filter with { LocationAnyOf = values },
+            PendingInputKind.FilterLocationsExcluded => watchlist.Filter with { LocationNoneOf = values },
+            PendingInputKind.FilterDescription => watchlist.Filter with { DescriptionAnyOf = values },
+            PendingInputKind.FilterDescriptionExcluded => watchlist.Filter with { DescriptionNoneOf = values },
             _ => watchlist.Filter with { TitleAnyOf = values }
         };
 

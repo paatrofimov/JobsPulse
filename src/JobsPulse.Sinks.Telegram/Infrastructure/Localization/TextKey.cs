@@ -68,10 +68,16 @@ public enum TextKey
     FilterKeywords,
     FilterExcluded,
     FilterLocations,
+    FilterLocationsExcluded,
+    FilterDescription,
+    FilterDescriptionExcluded,
     FilterFreshness,
     FilterKeywordsPrompt,
     FilterExcludedPrompt,
     FilterLocationsPrompt,
+    FilterLocationsExcludedPrompt,
+    FilterDescriptionPrompt,
+    FilterDescriptionExcludedPrompt,
     FilterFreshnessPrompt,
     FilterFreshnessAny,
     FilterClear,
@@ -104,6 +110,10 @@ public enum TextKey
     CompanyFindPrompt,
     CompanyFindNotFound,
     CompanyFindMany,
+    CompanyCounts,
+    CompanyCountsLegend,
+    CompaniesBySource,
+    CompaniesByLocation,
 
     // Disabled companies screen
     DisabledTitle,
@@ -126,6 +136,18 @@ public enum TextKey
     VacanciesCount,
     VacanciesShownOf,
     VacancyUnknownLocation,
+    VacanciesByCompany,
+    VacanciesByLocation,
+
+    // Regions - the order of the enum is the order they are shown in
+    RegionEurope,
+    RegionRemote,
+    RegionCis,
+    RegionAmericas,
+    RegionAsia,
+    RegionMiddleEastAndAfrica,
+    RegionOceania,
+    RegionUnknown,
 
     // Language
     LanguageTitle,

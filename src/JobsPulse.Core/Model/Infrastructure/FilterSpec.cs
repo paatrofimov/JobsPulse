@@ -10,6 +10,7 @@ public sealed record FilterSpec
     public IReadOnlyList<string> LocationAnyOf { get; init; } = [];
     public IReadOnlyList<string> LocationNoneOf { get; init; } = [];
     public IReadOnlyList<string> DescriptionAnyOf { get; init; } = [];
+    public IReadOnlyList<string> DescriptionNoneOf { get; init; } = [];
 
     public int? PostedWithinDays { get; init; }
 
@@ -20,7 +21,8 @@ public sealed record FilterSpec
     public bool IsEmpty =>
         TitleAnyOf.Count == 0 && TitleNoneOf.Count == 0 &&
         LocationAnyOf.Count == 0 && LocationNoneOf.Count == 0 &&
-        PostedWithinDays is null && DescriptionAnyOf.Count == 0;
+        DescriptionAnyOf.Count == 0 && DescriptionNoneOf.Count == 0 &&
+        PostedWithinDays is null;
 
 
     public override string ToString()
@@ -34,6 +36,7 @@ public sealed record FilterSpec
         sb.AppendList(nameof(LocationAnyOf), LocationAnyOf);
         sb.AppendList(nameof(LocationNoneOf), LocationNoneOf);
         sb.AppendList(nameof(DescriptionAnyOf), DescriptionAnyOf);
+        sb.AppendList(nameof(DescriptionNoneOf), DescriptionNoneOf);
 
         return sb.ToString();
     }

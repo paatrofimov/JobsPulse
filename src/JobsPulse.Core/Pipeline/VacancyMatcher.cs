@@ -21,6 +21,9 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
         if (f.LocationNoneOf.Count > 0 && AnyMatch(v.Location, f.LocationNoneOf, f.MatchMode))
             return false;
 
+        if (f.DescriptionNoneOf.Count > 0 && AnyMatch(v.Description, f.DescriptionNoneOf, f.MatchMode))
+            return false;
+
         if (f.TitleAnyOf.Count > 0 && !AnyMatch(v.Title, f.TitleAnyOf, f.MatchMode))
             return false;
 

@@ -11,11 +11,12 @@ namespace JobsPulse.Sources.SuccessFactors.Infrastructure;
 /// - the feed has no publication date. '&lt;g:expiration_date&gt;' is not one, and the sites refresh their postings on
 ///   their own schedule, so deriving a date from it would rewrite the content hash for no reason. Both dates stay
 ///   null and change detection rests on the hash alone - the same call the Workday source makes about 'postedOn'.
-///   It costs nothing: age filtering in `VacancyMatcher` uses `FirstSeenAt`, which JobsPulse stamps itself.
+///   It costs nothing: age filtering in `VacancyMatcher` uses `FirstSeenAt`, which is stamped here from the clock -
+///   the field is not part of the content hash, so stamping it on every poll changes nothing.
 /// - the location is not repeated into `Offices`. `VacancyMatcher` already matches `Location`, so a copy would only
 ///   pad the content hash without ever changing an answer.
 /// </summary>
-public sealed class SuccessFactorsMapper
+public sealed class SuccessFactorsMapper(TimeProvider clock)
 {
     public const string SourceId = "successfactors";
 
@@ -37,6 +38,7 @@ public sealed class SuccessFactorsMapper
             PostId = postId,
             Title = title,
             Location = location,
+            FirstSeenAt = clock.GetUtcNow(),
             Url = Clean(item.Link) ?? $"{config.SiteUrl}/job/{postId}/",
             Description = Clean(item.Description)
         };

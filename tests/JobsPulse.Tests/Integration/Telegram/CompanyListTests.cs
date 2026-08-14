@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FluentAssertions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sinks.Telegram.Infrastructure;
@@ -20,7 +21,7 @@ public sealed class CompanyListTests
             Entry(2, "greenhouse", "beta", enabled: false),
             Entry(3, "greenhouse", "Alpha", origin: BoardOrigin.Discovery),
             Entry(4, "greenhouse", "Gamma")
-        ]);
+        ], new ConcurrentDictionary<string, int>());
 
         ordered.Select(e => e.CompanyName).Should().Equal("Gamma", "Alpha", "beta", "Zeta");
     }
@@ -33,9 +34,9 @@ public sealed class CompanyListTests
             Entry(1, "lever", "Zeta"),
             Entry(2, "greenhouse", "Alpha"),
             Entry(3, "greenhouse", "Gamma")
-        ]));
+        ], new ConcurrentDictionary<string, int>()));
 
-        groups.Select(g => g.SourceId).Should().Equal("greenhouse", "lever");
+        groups.Select(g => g.Label).Should().Equal("greenhouse", "lever");
         groups[0].Entries.Select(e => e.CompanyName).Should().Equal("Alpha", "Gamma");
         groups[1].Entries.Should().HaveCount(1);
     }

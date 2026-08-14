@@ -10,15 +10,33 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 public static class CompanyList
 {
     /// <summary>
-    /// Source first, because that is what the list is grouped by; then active before disabled and manual before
-    /// discovered, which is the order every other listing uses.
+    /// Source first, because that is what the list is grouped by; then active before disabled, manual before
+    /// discovered, more vacancy matches before less matches, which is the order every other listing uses.
     /// </summary>
-    public static List<WatchlistEntry> Order(IEnumerable<WatchlistEntry> entries) =>
+    public static List<WatchlistEntry> Order(IEnumerable<WatchlistEntry> entries, IReadOnlyDictionary<string, int> matchesByBoard) =>
     [
         .. entries
             .OrderBy(e => e.VacancySourceId, StringComparer.OrdinalIgnoreCase)
             .ThenByDescending(e => e.Enabled)
             .ThenBy(e => e.Origin)
+            .ThenByDescending(e => matchesByBoard.GetValueOrDefault(e.BoardKey, 0))
+            .ThenBy(e => e.CompanyName, StringComparer.OrdinalIgnoreCase)
+    ];
+
+    /// <summary>
+    /// Region first, because that is what the list is grouped by, and the regions come in their own order - Europe
+    /// leads, see <see cref="LocationRegion"/>. Inside a region the ordering is the one every other listing uses.
+    /// </summary>
+    public static List<WatchlistEntry> OrderByRegion(
+        IEnumerable<WatchlistEntry> entries,
+        IReadOnlyDictionary<string, int> matchesByBoard,
+        Func<WatchlistEntry, LocationRegion> regionOf) =>
+    [
+        .. entries
+            .OrderBy(regionOf)
+            .ThenByDescending(e => e.Enabled)
+            .ThenBy(e => e.Origin)
+            .ThenByDescending(e => matchesByBoard.GetValueOrDefault(e.BoardKey, 0))
             .ThenBy(e => e.CompanyName, StringComparer.OrdinalIgnoreCase)
     ];
 
@@ -26,26 +44,46 @@ public static class CompanyList
     /// Groups an already ordered slice, preserving that order. A group larger than one page continues under a
     /// repeated header rather than being cut - the same way <see cref="VacancyPageBuilder"/> handles a long company.
     /// </summary>
-    public static List<CompanyGroup> GroupBySource(IReadOnlyList<WatchlistEntry> ordered)
+    public static List<CompanyGroup> GroupBySource(IReadOnlyList<WatchlistEntry> ordered) =>
+        Group(ordered, e => e.VacancySourceId);
+
+    /// <summary>The same slicing by region; the label is already the name the reader sees.</summary>
+    public static List<CompanyGroup> GroupByRegion(
+        IReadOnlyList<WatchlistEntry> ordered,
+        Func<WatchlistEntry, LocationRegion> regionOf,
+        BotLanguage language) =>
+        Group(
+            ordered,
+            e => $"{LocationRegions.Glyph(regionOf(e))} {LocationRegions.Name(regionOf(e), language)}");
+
+    /// <summary>
+    /// Consecutive entries sharing a label become one group. Consecutive rather than keyed, so the order of the slice
+    /// decides everything and a group continued on the next page simply repeats its header.
+    /// </summary>
+    private static List<CompanyGroup> Group(
+        IReadOnlyList<WatchlistEntry> ordered,
+        Func<WatchlistEntry, string> labelOf)
     {
         var groups = new List<CompanyGroup>();
         var current = new List<WatchlistEntry>();
-        var sourceId = string.Empty;
+        var label = string.Empty;
 
         foreach (var entry in ordered)
         {
-            if (current.Count > 0 && !string.Equals(entry.VacancySourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+            var entryLabel = labelOf(entry);
+
+            if (current.Count > 0 && !string.Equals(entryLabel, label, StringComparison.OrdinalIgnoreCase))
             {
-                groups.Add(new CompanyGroup(sourceId, current));
+                groups.Add(new CompanyGroup(label, current));
                 current = [];
             }
 
-            sourceId = entry.VacancySourceId;
+            label = entryLabel;
             current.Add(entry);
         }
 
         if (current.Count > 0)
-            groups.Add(new CompanyGroup(sourceId, current));
+            groups.Add(new CompanyGroup(label, current));
 
         return groups;
     }

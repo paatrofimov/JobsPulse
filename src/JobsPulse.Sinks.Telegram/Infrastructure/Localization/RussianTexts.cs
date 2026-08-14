@@ -75,6 +75,9 @@ internal static class RussianTexts
         [TextKey.FilterKeywords] = "🔍 Слова в названии",
         [TextKey.FilterExcluded] = "🚫 Исключить слова",
         [TextKey.FilterLocations] = "📍 Локации",
+        [TextKey.FilterLocationsExcluded] = "🚫 Исключить локации",
+        [TextKey.FilterDescription] = "📝 Слова в тексте",
+        [TextKey.FilterDescriptionExcluded] = "🚫 Исключить в тексте",
         [TextKey.FilterFreshness] = "🗓 Свежесть",
         [TextKey.FilterKeywordsPrompt] =
             "Пришлите слова, которые должны быть в названии вакансии, через запятую — например "
@@ -85,6 +88,20 @@ internal static class RussianTexts
         [TextKey.FilterLocationsPrompt] =
             "Пришлите подходящие локации через запятую — например <b>remote, берлин, польша</b>. "
             + "Пришлите <b>-</b>, чтобы очистить.",
+        [TextKey.FilterLocationsExcludedPrompt] =
+            "Пришлите локации, которые <b>не</b> подходят, через запятую — например <b>usa, индия</b>. "
+            + "Вакансия с такой локацией отбрасывается, что бы ни говорили остальные правила. "
+            + "Пришлите <b>-</b>, чтобы очистить.",
+        [TextKey.FilterDescriptionPrompt] =
+            "Пришлите слова, которые должны быть в <b>тексте</b> вакансии, через запятую — например "
+            + "<b>kubernetes, postgres</b>. Достаточно любого из них. Пришлите <b>-</b>, чтобы очистить.<br>"
+            + "Два важных момента: вакансия, текст которой прочитать не удалось, такому правилу никогда не подходит, "
+            + "и правило проверяется при опросе компании — найденные раньше вакансии по нему не перепроверяются.",
+        [TextKey.FilterDescriptionExcludedPrompt] =
+            "Пришлите слова, которых в тексте вакансии быть <b>не</b> должно, через запятую — например "
+            + "<b>on-site, security clearance</b>. Пришлите <b>-</b>, чтобы очистить.<br>"
+            + "Как и выше: вакансия без читаемого текста это правило проходит, а уже найденные вакансии по нему не "
+            + "перепроверяются.",
         [TextKey.FilterFreshnessPrompt] = "Насколько старой может быть вакансия?",
         [TextKey.FilterFreshnessAny] = "Любая",
         [TextKey.FilterClear] = "🧹 Очистить фильтр",
@@ -119,6 +136,11 @@ internal static class RussianTexts
             "Пришлите название компании, которую нужно изменить. Достаточно части названия.",
         [TextKey.CompanyFindNotFound] = "В этом списке нет компании «{0}». Попробуйте другое название.",
         [TextKey.CompanyFindMany] = "Под «{0}» подходит несколько компаний — выберите одну.",
+        [TextKey.CompanyCounts] = "{0}",
+        [TextKey.CompanyCountsLegend] =
+            "После каждой компании: сколько вакансий найдено на её сайте, подходящих под фильтр",
+        [TextKey.CompaniesBySource] = "🏢 Группировать по источнику",
+        [TextKey.CompaniesByLocation] = "📍 Группировать по локации",
 
         [TextKey.DisabledTitle] = "Отключённые компании",
         [TextKey.DisabledEmpty] = "Отключённых нет — слежу за всеми вашими компаниями.",
@@ -141,6 +163,17 @@ internal static class RussianTexts
         [TextKey.VacanciesCount] = "Подходящих открытых вакансий: {0}.",
         [TextKey.VacanciesShownOf] = "Показаны {0} вакансий из {1} — самые свежие.",
         [TextKey.VacancyUnknownLocation] = "Локация неизвестна",
+        [TextKey.VacanciesByCompany] = "🏢 Группировать по компаниям",
+        [TextKey.VacanciesByLocation] = "📍 Группировать по локации",
+
+        [TextKey.RegionEurope] = "Европа",
+        [TextKey.RegionRemote] = "Удалённо",
+        [TextKey.RegionCis] = "СНГ",
+        [TextKey.RegionAmericas] = "Америка",
+        [TextKey.RegionAsia] = "Азия",
+        [TextKey.RegionMiddleEastAndAfrica] = "Ближний Восток и Африка",
+        [TextKey.RegionOceania] = "Австралия и Океания",
+        [TextKey.RegionUnknown] = "Локация непонятна",
 
         [TextKey.LanguageTitle] = "Выберите язык",
         [TextKey.LanguageChanged] = "Язык переключён на русский.",

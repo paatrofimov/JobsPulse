@@ -27,11 +27,18 @@ public enum CallbackAction
     FilterKeywords,
     FilterExcluded,
     FilterLocations,
+    FilterLocationsExcluded,
+    FilterDescription,
+    FilterDescriptionExcluded,
     FilterFreshnessAsk,
     FilterFreshnessSet,
     FilterClear,
 
     CompaniesOpen,
+
+    /// <summary>The same list grouped by region instead of by source - the grouping is the action, not a flag.</summary>
+    CompaniesByLocation,
+
     CompanyOpen,
     CompanyToggleWorked,
     CompanyToggleEnabled,
@@ -48,5 +55,8 @@ public enum CallbackAction
     CompanyRestore,
 
     VacanciesPick,
-    VacanciesOpen
+    VacanciesOpen,
+
+    /// <summary>The feed grouped by region, Europe first, instead of by company.</summary>
+    VacanciesByLocation
 }
