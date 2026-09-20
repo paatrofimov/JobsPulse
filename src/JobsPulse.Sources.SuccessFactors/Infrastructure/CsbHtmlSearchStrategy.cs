@@ -33,7 +33,6 @@ public sealed class CsbHtmlSearchStrategy(
 
     public async Task<SuccessFactorsFetch<SuccessFactorsListing>> FetchAsync(
         SuccessFactorsBoardConfig config,
-        bool includeDescriptions,
         CancellationToken ct)
     {
         var opts = options.CurrentValue;

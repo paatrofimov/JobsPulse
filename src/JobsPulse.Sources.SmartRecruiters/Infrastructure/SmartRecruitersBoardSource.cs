@@ -69,21 +69,13 @@ public sealed class SmartRecruitersBoardSource(
         };
     }
 
-    /// <summary>
-    /// Descriptions and the job id are not in the list, so they cost one request per posting. The budget bounds
-    /// that: postings past it are mapped without a description instead of turning the traversal into a crawl.
-    /// </summary>
     private async Task<IReadOnlyList<Vacancy>> MapAsync(
         SourceTarget target,
         IReadOnlyList<PostingDto> postings,
         SmartRecruitersOptions opts,
         CancellationToken ct)
     {
-        var withDetails = target.IncludeDescriptions || opts.IncludeContentOnPoll;
-        var budget = withDetails ? Math.Max(0, opts.MaxDescriptionRequests) : 0;
-
         var vacancies = new List<Vacancy>(postings.Count);
-        var skipped = 0;
 
         foreach (var posting in postings)
         {
@@ -91,30 +83,16 @@ public sealed class SmartRecruitersBoardSource(
 
             PostingDetailDto? detail = null;
 
-            if (withDetails && budget > 0)
-            {
-                budget--;
-
-                var response = await client.GetPostingAsync(target.BoardId, posting.Id, ct);
-                if (response.Success)
-                    detail = response.Value;
-                else
-                    ctxLog.Debug(
-                        "Posting {Posting} of {Board} has no readable detail ({Error})",
-                        posting.Id, target.BoardId, response.Error);
-            }
-            else if (withDetails)
-            {
-                skipped++;
-            }
+            var response = await client.GetPostingAsync(target.BoardId, posting.Id, ct);
+            if (response.Success)
+                detail = response.Value;
+            else
+                ctxLog.Debug(
+                    "Posting {Posting} of {Board} has no readable detail ({Error})",
+                    posting.Id, target.BoardId, response.Error);
 
             vacancies.Add(mapper.ToVacancy(posting, target.BoardId, detail));
         }
-
-        if (skipped > 0)
-            ctxLog.Warn(
-                "Board {Board}: {Skipped} postings are mapped without a description — request budget {Budget} is spent",
-                target.BoardId, skipped, opts.MaxDescriptionRequests);
 
         return vacancies;
     }

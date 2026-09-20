@@ -24,7 +24,6 @@ namespace JobsPulse.Sources.SuccessFactors.Infrastructure;
 /// </summary>
 public sealed class SuccessFactorsBoardSource(
     IEnumerable<ISuccessFactorsListStrategy> strategies,
-    IOptionsMonitor<SuccessFactorsOptions> options,
     ILog log) : IVacancySource
 {
     private readonly ILog ctxLog = log.ForContext<SuccessFactorsBoardSource>();
@@ -34,8 +33,6 @@ public sealed class SuccessFactorsBoardSource(
 
     public async Task<SourceTraverseResult> TraverseTargetAsync(SourceTarget target, CancellationToken ct)
     {
-        var opts = options.CurrentValue;
-
         // The configuration is the address; the board id is only its canonical rendering and the fallback for a row
         // written before configurations existed.
         var config = SuccessFactorsBoardConfig.FromJson(target.Configuration)
@@ -55,8 +52,6 @@ public sealed class SuccessFactorsBoardSource(
                 $"no strategy can serve a {config.Variant} board '{config.BoardId}'");
         }
 
-        var includeDescriptions = target.IncludeDescriptions || opts.IncludeContentOnPoll;
-
         var missing = true;
         string? lastError = null;
 
@@ -64,7 +59,7 @@ public sealed class SuccessFactorsBoardSource(
         {
             ct.ThrowIfCancellationRequested();
 
-            var response = await strategy.FetchAsync(config, includeDescriptions, ct);
+            var response = await strategy.FetchAsync(config, ct);
 
             if (response.Success)
             {

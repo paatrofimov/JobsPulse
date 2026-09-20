@@ -17,9 +17,9 @@ public sealed class GreenhouseBoardClient(
     private readonly ILog ctxLog = log.ForContext<GreenhouseBoardClient>();
 
     public async Task<BoardFetch<JobListResponse>> GetJobsAsync(
-        string boardId, bool includeContent, CancellationToken ct)
+        string boardId, CancellationToken ct)
     {
-        var url = $"{Uri.EscapeDataString(boardId)}/jobs" + (includeContent ? "?content=true" : string.Empty);
+        var url = $"{Uri.EscapeDataString(boardId)}/jobs?content=true";
         return await GetAsync<JobListResponse>(url, ct);
     }
 

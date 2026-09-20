@@ -8,8 +8,7 @@ public sealed class GreenhouseBoardSourceTests : IntegrationTestBase
 {
     public static IEnumerable<SourceTarget> Targets =>
     [
-        new() { SourceId = "greenhouse", BoardId = "nebius", IncludeDescriptions = false },
-        new() { SourceId = "greenhouse", BoardId = "nebius", IncludeDescriptions = true },
+        new() { SourceId = "greenhouse", BoardId = "nebius"},
     ];
 
     [TestCaseSource(nameof(Targets))]
@@ -31,9 +30,7 @@ public sealed class GreenhouseBoardSourceTests : IntegrationTestBase
         foreach (var vacancy in result.Vacancies)
         {
             TestContext.Progress.WriteLine(VacancyToString(vacancy));
-
-            if (sourceTarget.IncludeDescriptions)
-                vacancy.Description.Should().NotBeNull();
+            vacancy.Description.Should().NotBeNull();
         }
 
         result.Error.Should().BeNull();

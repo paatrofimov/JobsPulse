@@ -32,7 +32,7 @@ public sealed class WatchlistsScreen(WatchService watch, IBotUserStorage users, 
         }
 
         var matches = await stateStore.CountMatchesByWatchlistAsync(ct);
-        var pageItems = Paged(mine, page, out var totalPages);
+        var pageItems = Pager.Slice(mine, ref page, out var totalPages);
 
         sb.Append("<p>");
         foreach (var watchlist in pageItems)
@@ -72,7 +72,7 @@ public sealed class WatchlistsScreen(WatchService watch, IBotUserStorage users, 
         var owners = await users.GetManyAsync(
             [.. ordered.Where(w => w.OwnerUserId is not null).Select(w => w.OwnerUserId!.Value).Distinct()], ct);
 
-        var pageItems = Paged(ordered, page, out var totalPages);
+        var pageItems = Pager.Slice(ordered, ref page, out var totalPages);
 
         var sb = new StringBuilder($"<h6>{BotTexts.Get(TextKey.AllWatchlistsTitle, ctx.Language)}</h6>");
         sb.Append($"<p>{BotTexts.Get(TextKey.AllWatchlistsHint, ctx.Language)}</p><p>");
@@ -102,17 +102,4 @@ public sealed class WatchlistsScreen(WatchService watch, IBotUserStorage users, 
         return new ScreenView(sb.ToString(), keyboard);
     }
 
-    internal static List<T> Paged<T>(IReadOnlyList<T> items, int page, out int totalPages) =>
-        Paged(items, page, KeyboardBuilder.PageSize, out totalPages);
-
-    /// <summary>
-    /// A list whose rows are text rather than buttons is not bound by the keyboard size - it takes its own page size.
-    /// </summary>
-    internal static List<T> Paged<T>(IReadOnlyList<T> items, int page, int pageSize, out int totalPages)
-    {
-        totalPages = Math.Max(1, (int)Math.Ceiling(items.Count / (double)pageSize));
-        page = Math.Clamp(page, 0, totalPages - 1);
-
-        return [.. items.Skip(page * pageSize).Take(pageSize)];
-    }
 }

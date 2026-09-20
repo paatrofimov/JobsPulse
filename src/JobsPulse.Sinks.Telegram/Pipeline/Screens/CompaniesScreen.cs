@@ -1,16 +1,18 @@
 using System.Text;
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Infrastructure;
+using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sinks.Telegram.Infrastructure.Localization;
 using JobsPulse.Sinks.Telegram.Models;
+using Microsoft.Extensions.Options;
 
 namespace JobsPulse.Sinks.Telegram.Pipeline.Screens;
 
 /// <summary>
-/// Companies of one watchlist, grouped by the source they are watched through - or by the region they hire in, which
-/// is the grouping that answers «who is hiring in Europe». The list itself answers the three questions a user has -
+/// Companies of one watchlist, grouped by the source they are watched through - or by the region they hire in, by
+/// the month they last moved in, or by how hot they are. The list itself answers the three questions a user has -
 /// which are being watched, which are switched off and which have already been worked through - with a glyph per row
 /// and a legend, so nothing has to be opened to find out. Every row also carries the two numbers that say whether a
 /// company is worth anything: vacancies found on its board matching this watchlist's filter.
@@ -24,7 +26,9 @@ public sealed class CompaniesScreen(
     WatchService watch,
     WatchlistAccess access,
     IStateStore stateStore,
-    UserSessionStore sessions)
+    UserSessionStore sessions,
+    IOptionsMonitor<DeliveryOptions> deliveryOptions,
+    TimeProvider clock)
 {
     /// <summary>
     /// Companies per page. Bound by the telegram message limit rather than by the keyboard, and a rich message is not
@@ -33,8 +37,11 @@ public sealed class CompaniesScreen(
     /// </summary>
     private const int PageSize = 200;
 
-    /// <summary>How much of the feed the region of a company is read from - see <see cref="LocationRegions.ByBoard"/>.</summary>
-    private const int MaxVacanciesForRegions = 500;
+    /// <summary>
+    /// How much of the feed the region and the month of a company are read from - see
+    /// <see cref="LocationRegions.ByBoard"/> and <see cref="VacancyMonths.ByBoard"/>.
+    /// </summary>
+    private const int MaxVacanciesForGrouping = 500;
 
     public async Task<ScreenView> RenderAsync(
         BotContext ctx,
@@ -63,37 +70,38 @@ public sealed class CompaniesScreen(
 
         var matched = await stateStore.CountMatchesByBoardAsync(watchlistId, ct);
 
-        var byLocation = grouping == VacancyGrouping.Location;
+        // The activity indicator is the only grouping that needs the whole-database counts, so it is read on demand.
+        var activity = grouping == VacancyGrouping.Activity
+            ? await stateStore.CountBoardActivityAsync(
+                clock.GetUtcNow().AddDays(-deliveryOptions.CurrentValue.ActivityWindowDays), ct)
+            : null;
 
-        var (groups, totalPages) = byLocation
-            ? await GroupByRegionAsync(watchlist, matched, page, ctx, ct)
-            : GroupBySource(watchlist, matched, page);
+        var (groups, totalPages) = await GroupAsync(watchlist, matched, activity, grouping, ctx, page, ct);
+
+        // The slice is clamped, so a stale page button cannot open a page the list no longer has.
+        page = Math.Clamp(page, 0, totalPages - 1);
 
         sb.Append($"<p>{BotTexts.Get(TextKey.CompanyLegend, ctx.Language)}<br>"
                   + $"{BotTexts.Get(TextKey.CompanyCountsLegend, ctx.Language)}</p>");
 
+        if (activity is not null)
+            sb.Append($"<p>{BotTexts.Get(TextKey.ActivityLegend, ctx.Language)}</p>");
+
         // Every group is folded, whatever its size: the page then opens as the list of group headers.
-        foreach (var group in groups)
+        foreach (var group in groups.Where(g => g.Entries.Count > 0))
         {
             sb.Append($"<details><summary><b>{MessageFormatter.Escape(group.Label)}</b> · "
                       + $"{group.Entries.Count}</summary><p>");
 
             foreach (var entry in group.Entries)
-                AppendRow(sb, entry, matched, ctx);
+                AppendRow(sb, entry, matched, activity, ctx);
 
             sb.Append("</p></details>");
         }
 
         var keyboard = new KeyboardBuilder(ctx.Language)
-            .Paging(
-                byLocation ? CallbackAction.CompaniesByLocation : CallbackAction.CompaniesOpen,
-                watchlistId,
-                page,
-                totalPages)
-            .Button(
-                byLocation ? TextKey.CompaniesBySource : TextKey.CompaniesByLocation,
-                byLocation ? CallbackAction.CompaniesOpen : CallbackAction.CompaniesByLocation,
-                watchlistId)
+            .Paging(PagingAction(grouping), watchlistId, page, totalPages)
+            .Modes([.. OtherModes(grouping)], watchlistId)
             .ButtonIf(resolved.CanEdit, TextKey.CompanyChange, CallbackAction.CompanyFind, watchlistId, page)
             .ButtonIf(resolved.CanEdit, TextKey.WatchlistAddCompany, CallbackAction.CompanyAdd, watchlistId)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
@@ -101,45 +109,93 @@ public sealed class CompaniesScreen(
         return new ScreenView(sb.ToString(), keyboard);
     }
 
-    private static (List<CompanyGroup> Groups, int TotalPages) GroupBySource(Watchlist watchlist, IReadOnlyDictionary<string, int> matchesByBoard, int page)
-    {
-        var ordered = CompanyList.Order(watchlist.Entries, matchesByBoard);
-        var pageItems = WatchlistsScreen.Paged(ordered, page, PageSize, out var totalPages);
-
-        return (CompanyList.GroupBySource(pageItems), totalPages);
-    }
-
     /// <summary>
-    /// A company carries no location of its own - the region is read from the vacancies found for it, which is one
-    /// query for the whole watchlist. A company with nothing found yet lands under «location unclear» rather than
-    /// disappearing from the list.
+    /// One switch for the four slicings. Three of them need something a company does not carry itself - a region, a
+    /// month, an activity rate - and all three read it from the vacancies found for the board, which is one query
+    /// for the whole watchlist. A company with nothing found yet keeps its place in the list under the «unclear»
+    /// group rather than disappearing from it.
     /// </summary>
-    private async Task<(List<CompanyGroup> Groups, int TotalPages)> GroupByRegionAsync(
+    private async Task<(List<CompanyGroup> Groups, int TotalPages)> GroupAsync(
         Watchlist watchlist,
-        IReadOnlyDictionary<string, int> matchesByBoard,
-        int page,
+        IReadOnlyDictionary<string, int> matched,
+        IReadOnlyDictionary<string, BoardActivity>? activity,
+        VacancyGrouping grouping,
         BotContext ctx,
+        int page,
         CancellationToken ct)
     {
-        var vacancies = await stateStore.LoadMatchedVacanciesAsync(watchlist.Id, MaxVacanciesForRegions, ct);
+        if (grouping == VacancyGrouping.Activity)
+        {
+            BoardActivity ActivityOf(WatchlistEntry e) => ActivityRanks.Of(activity!, ActivityRanks.Key(e));
+
+            var byActivity = CompanyList.OrderByActivity(watchlist.Entries, matched, ActivityOf);
+            var slice = Pager.Slice(byActivity, ref page, PageSize, out var activityPages);
+
+            return (CompanyList.GroupByActivity(slice, ActivityOf, ctx.Language), activityPages);
+        }
+
+        if (grouping == VacancyGrouping.Company)
+        {
+            var bySource = CompanyList.Order(watchlist.Entries, matched);
+            var slice = Pager.Slice(bySource, ref page, PageSize, out var sourcePages);
+
+            return (CompanyList.GroupBySource(slice), sourcePages);
+        }
+
+        var vacancies = await stateStore.LoadMatchedVacanciesAsync(watchlist.Id, MaxVacanciesForGrouping, ct);
+
+        if (grouping == VacancyGrouping.Month)
+        {
+            var months = VacancyMonths.ByBoard(vacancies);
+
+            int MonthOf(WatchlistEntry e) => months.GetValueOrDefault(ActivityRanks.Key(e), VacancyMonths.Unknown);
+
+            var byMonth = CompanyList.OrderByMonth(watchlist.Entries, matched, MonthOf);
+            var slice = Pager.Slice(byMonth, ref page, PageSize, out var monthPages);
+
+            return (CompanyList.GroupByMonth(slice, MonthOf, ctx.Language), monthPages);
+        }
+
         var regions = LocationRegions.ByBoard(vacancies);
 
-        LocationRegion RegionOf(WatchlistEntry entry) =>
-            regions.GetValueOrDefault($"{entry.VacancySourceId}/{entry.BoardId}", LocationRegion.Unknown);
+        LocationRegion RegionOf(WatchlistEntry e) =>
+            regions.GetValueOrDefault(ActivityRanks.Key(e), LocationRegion.Unknown);
 
-        var ordered = CompanyList.OrderByRegion(watchlist.Entries, matchesByBoard, RegionOf);
-        var pageItems = WatchlistsScreen.Paged(ordered, page, PageSize, out var totalPages);
+        var byRegion = CompanyList.OrderByRegion(watchlist.Entries, matched, RegionOf);
+        var regionSlice = Pager.Slice(byRegion, ref page, PageSize, out var regionPages);
 
-        return (CompanyList.GroupByRegion(pageItems, RegionOf, ctx.Language), totalPages);
+        return (CompanyList.GroupByRegion(regionSlice, RegionOf, ctx.Language), regionPages);
     }
+
+    private static CallbackAction PagingAction(VacancyGrouping grouping) =>
+        grouping switch
+        {
+            VacancyGrouping.Location => CallbackAction.CompaniesByLocation,
+            VacancyGrouping.Month => CallbackAction.CompaniesByMonth,
+            VacancyGrouping.Activity => CallbackAction.CompaniesByActivity,
+            _ => CallbackAction.CompaniesOpen
+        };
+
+    /// <summary>The slicings the reader is not looking at - offering the current one would be a button to nowhere.</summary>
+    private static IEnumerable<(TextKey Label, CallbackAction Action)> OtherModes(VacancyGrouping grouping) =>
+        new (VacancyGrouping Grouping, TextKey Label, CallbackAction Action)[]
+            {
+                (VacancyGrouping.Company, TextKey.CompaniesBySource, CallbackAction.CompaniesOpen),
+                (VacancyGrouping.Location, TextKey.CompaniesByLocation, CallbackAction.CompaniesByLocation),
+                (VacancyGrouping.Month, TextKey.CompaniesByMonth, CallbackAction.CompaniesByMonth),
+                (VacancyGrouping.Activity, TextKey.CompaniesByActivity, CallbackAction.CompaniesByActivity)
+            }
+            .Where(m => m.Grouping != grouping)
+            .Select(m => (m.Label, m.Action));
 
     private static void AppendRow(
         StringBuilder sb,
         WatchlistEntry entry,
         IReadOnlyDictionary<string, int> matched,
+        IReadOnlyDictionary<string, BoardActivity>? activity,
         BotContext ctx)
     {
-        var board = $"{entry.VacancySourceId}/{entry.BoardId}";
+        var board = ActivityRanks.Key(entry);
 
         sb.Append($"{BotFormatter.EntryGlyph(entry)} <b>{MessageFormatter.Escape(entry.CompanyName)}</b> — "
                   + $"{BotTexts.Get(
@@ -147,6 +203,14 @@ public sealed class CompaniesScreen(
                       ctx.Language,
                       matched.GetValueOrDefault(board))}, "
                   + $"{BotFormatter.EntryStatus(entry, ctx.Language)}");
+
+        if (activity is not null)
+        {
+            var rate = ActivityRanks.Of(activity, board);
+
+            sb.Append($" · <b>{ActivityRanks.Rate(rate, ctx.Language)}</b> "
+                      + $"({ActivityRanks.Breakdown(rate, ctx.Language)})");
+        }
 
         if (entry.WorkedAt is { } workedAt)
         {

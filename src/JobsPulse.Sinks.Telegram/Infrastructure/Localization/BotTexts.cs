@@ -45,6 +45,20 @@ public static class BotTexts
         return withYear ? $"{day} {date.Year}" : day;
     }
 
+    /// <summary>«September 2026» / «Сентябрь 2026» - the header of a month group, hence the nominative.</summary>
+    public static string MonthName(int year, int month, BotLanguage language)
+    {
+        if (month is < 1 or > 12)
+            return year.ToString();
+
+        var months = language == BotLanguage.Russian ? RussianTexts.MonthsNominative : EnglishTexts.Months;
+
+        return $"{months[month - 1]} {year}";
+    }
+
+    /// <summary>«18:35» - the clock part of a notification window. UTC, like every stamp in the pipeline.</summary>
+    public static string FormatTime(DateTimeOffset time) => $"{time.Hour:00}:{time.Minute:00}";
+
     public static string LanguageName(BotLanguage language) => language switch
     {
         BotLanguage.Russian => "🇷🇺 Русский",

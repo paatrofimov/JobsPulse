@@ -1,15 +1,19 @@
 using System.Text;
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Model.Infrastructure;
+using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sinks.Telegram.Infrastructure.Localization;
 using JobsPulse.Sinks.Telegram.Models;
+using Microsoft.Extensions.Options;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace JobsPulse.Sinks.Telegram.Pipeline.Screens;
 
 /// <summary>
 /// The found vacancies, opened by watchlist name: the user picks a list and reads what matched it, grouped by company
-/// the same way the notifications are - or by location, Europe first, which is the other question asked of a feed.
+/// the same way the notifications are - or by location, by month, or by company ordered by how hot the company is.
 /// This is the browsable counterpart of the push notifications - the same matches, but on demand and without
 /// scrolling the chat history. Vacancies of disabled companies are left out: the list shows what is being watched.
 /// </summary>
@@ -17,7 +21,9 @@ public sealed class VacanciesScreen(
     WatchService watch,
     WatchlistAccess access,
     IStateStore stateStore,
-    VacancyPageBuilder pages)
+    VacancyPageBuilder pages,
+    IOptionsMonitor<DeliveryOptions> deliveryOptions,
+    TimeProvider clock)
 {
     /// <summary>
     /// How much of a watchlist feed one screen session may hold. Everything below the cap is rendered - grouped and
@@ -41,7 +47,7 @@ public sealed class VacanciesScreen(
         }
 
         var matches = await stateStore.CountMatchesByWatchlistAsync(ct);
-        var pageItems = WatchlistsScreen.Paged(mine, page, out var totalPages);
+        var pageItems = Pager.Slice(mine, ref page, out var totalPages);
 
         var keyboard = new KeyboardBuilder(ctx.Language)
             .Items(
@@ -81,13 +87,18 @@ public sealed class VacanciesScreen(
         var head = new StringBuilder(
             $"<h6>{BotTexts.Get(TextKey.VacanciesTitle, ctx.Language, MessageFormatter.Escape(watchlist.Name))}</h6>");
 
-        var rendered = pages.Build(watchlist, vacancies, ctx.Language, grouping);
+        // The indicator is one query and only the ordering of one grouping depends on it.
+        var activity = grouping == VacancyGrouping.Activity
+            ? await stateStore.CountBoardActivityAsync(ActivitySince(), ct)
+            : null;
+
+        var rendered = pages.Build(watchlist, vacancies, ctx.Language, grouping, activity);
 
         if (rendered.Count == 0)
         {
             return new ScreenView(
                 head.Append($"<p>{BotTexts.Get(TextKey.VacanciesEmpty, ctx.Language)}</p>").ToString(),
-                new KeyboardBuilder(ctx.Language).Build(CallbackAction.VacanciesPick));
+                Keyboard(ctx, watchlistId, 0, 0, grouping));
         }
 
         // A stale button from a previous, longer feed must not land on nothing.
@@ -100,21 +111,41 @@ public sealed class VacanciesScreen(
                 ? $"<p>{BotTexts.Get(TextKey.VacanciesShownOf, ctx.Language, vacancies.Count, total)}</p>"
                 : $"<p>{BotTexts.Get(TextKey.VacanciesCount, ctx.Language, vacancies.Count)}</p>");
 
-        var byLocation = grouping == VacancyGrouping.Location;
+        if (grouping == VacancyGrouping.Activity)
+            head.Append($"<p>{BotTexts.Get(TextKey.ActivityLegend, ctx.Language)}</p>");
 
-        // Paging stays inside the grouping the reader chose - the action is what carries it.
-        var keyboard = new KeyboardBuilder(ctx.Language)
-            .Paging(
-                byLocation ? CallbackAction.VacanciesByLocation : CallbackAction.VacanciesOpen,
-                watchlistId,
-                current,
-                rendered.Count)
-            .Button(
-                byLocation ? TextKey.VacanciesByCompany : TextKey.VacanciesByLocation,
-                byLocation ? CallbackAction.VacanciesOpen : CallbackAction.VacanciesByLocation,
+        return new ScreenView(
+            head.Append(rendered[current]).ToString(),
+            Keyboard(ctx, watchlistId, current, rendered.Count, grouping));
+    }
+
+    private DateTimeOffset ActivitySince() =>
+        clock.GetUtcNow().AddDays(-deliveryOptions.CurrentValue.ActivityWindowDays);
+
+    /// <summary>
+    /// Paging stays inside the grouping the reader chose - the action is what carries it - and the three groupings
+    /// they are not looking at share one row, so switching is one tap from anywhere.
+    /// </summary>
+    private static InlineKeyboardMarkup Keyboard(
+        BotContext ctx,
+        long watchlistId,
+        int page,
+        int totalPages,
+        VacancyGrouping grouping)
+    {
+        var modes = new (VacancyGrouping Grouping, TextKey Label, CallbackAction Action)[]
+        {
+            (VacancyGrouping.Company, TextKey.VacanciesByCompany, CallbackAction.VacanciesOpen),
+            (VacancyGrouping.Location, TextKey.VacanciesByLocation, CallbackAction.VacanciesByLocation),
+            (VacancyGrouping.Month, TextKey.VacanciesByMonth, CallbackAction.VacanciesByMonth),
+            (VacancyGrouping.Activity, TextKey.VacanciesByActivity, CallbackAction.VacanciesByActivity)
+        };
+
+        return new KeyboardBuilder(ctx.Language)
+            .Paging(modes.First(m => m.Grouping == grouping).Action, watchlistId, page, totalPages)
+            .Modes(
+                [.. modes.Where(m => m.Grouping != grouping).Select(m => (m.Label, m.Action))],
                 watchlistId)
             .Build(CallbackAction.VacanciesPick);
-
-        return new ScreenView(head.Append(rendered[current]).ToString(), keyboard);
     }
 }

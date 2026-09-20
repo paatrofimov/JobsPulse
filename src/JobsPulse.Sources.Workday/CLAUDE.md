@@ -111,9 +111,6 @@ the reported total being reached, or `MaxPages`. Only the last of those is an in
 that is really the tenant's own cap still counts as complete, because treating it otherwise would mean never
 committing state for a large board.
 
-Descriptions are then fetched per vacancy within `MaxDescriptionRequests`, exactly as SmartRecruiters does it;
-postings past the budget are mapped from the list alone and the count is logged.
-
 ## WorkdayBoardResolver
 
 `ResolveByUrlAsync` is the way a board is added: normalize the url, confirm tenant and site against the careers page,

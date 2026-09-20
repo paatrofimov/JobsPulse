@@ -39,6 +39,12 @@ public enum CallbackAction
     /// <summary>The same list grouped by region instead of by source - the grouping is the action, not a flag.</summary>
     CompaniesByLocation,
 
+    /// <summary>The same list grouped by the month its companies last moved in.</summary>
+    CompaniesByMonth,
+
+    /// <summary>The same list grouped by how hot a company is - see <c>BoardActivity</c>.</summary>
+    CompaniesByActivity,
+
     CompanyOpen,
     CompanyToggleWorked,
     CompanyToggleEnabled,
@@ -58,5 +64,11 @@ public enum CallbackAction
     VacanciesOpen,
 
     /// <summary>The feed grouped by region, Europe first, instead of by company.</summary>
-    VacanciesByLocation
+    VacanciesByLocation,
+
+    /// <summary>The feed grouped by the month a vacancy appeared or last changed in, newest first.</summary>
+    VacanciesByMonth,
+
+    /// <summary>The feed grouped by company again, but ordered by how hot the company is.</summary>
+    VacanciesByActivity
 }

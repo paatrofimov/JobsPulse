@@ -28,10 +28,9 @@ public sealed class CsbFeedStrategy(
 
     public async Task<SuccessFactorsFetch<SuccessFactorsListing>> FetchAsync(
         SuccessFactorsBoardConfig config,
-        bool includeDescriptions,
         CancellationToken ct)
     {
-        var response = await client.GetFeedAsync(config, includeDescriptions, ct);
+        var response = await client.GetFeedAsync(config, ct);
 
         if (!response.Success)
         {

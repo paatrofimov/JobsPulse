@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
@@ -10,9 +10,28 @@ using Telegram.Bot.Types;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
+/// <summary>
+/// Turns an outbox batch into messages. The unit is a **time window**, not a change: everything one cycle found
+/// within <c>Delivery:GroupChangesWithinMinutes</c> is reported together, under one «what happened between 18:35 and
+/// 18:40» header, because that is how it actually happened - a cycle that walks forty boards used to produce forty
+/// separate messages of two lines each.
+///
+/// Inside a window the batch is split per watchlist (the same vacancy legitimately arrives for several) and then
+/// folded into one collapsed <c>&lt;details&gt;</c> block per company, exactly like the browsable lists: the message
+/// opens as the list of company headers and unfolding one shows its vacancies. A block mixes the three change kinds,
+/// so the summary counts them and every line carries its own glyph.
+///
+/// Blocks are ordered manual companies before discovered ones, then by their freshest vacancy; vacancies inside a
+/// block by freshness too.
+/// </summary>
 public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOptions> deliveryOptions)
 {
     private const int SafeLimit = 30_000;
+
+    private const string DetailsClose = "</details>";
+
+    private static readonly VacancyChangeKind[] KindOrder =
+        [VacancyChangeKind.New, VacancyChangeKind.Updated, VacancyChangeKind.Closed];
 
     public IReadOnlyList<InputRichMessage> Format(
         IReadOnlyList<OutboxItem> batch,
@@ -21,51 +40,30 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         var messages = new List<InputRichMessage>();
         var sb = new StringBuilder();
 
-        // One block per (watchlist, company, kind, origin): the same vacancy may arrive for several watchlists at
-        // once, and the reader has to see which watchlist every notification belongs to. Manually added companies
-        // come first, the ones discovery brought in after them.
-        foreach (var group in batch
-                     .GroupBy(x => (x.WatchlistName, x.CompanyName, Kind: x.ChangeKind, x.Discovered))
-                     .OrderBy(g => g.Key.WatchlistName, StringComparer.OrdinalIgnoreCase)
-                     .ThenBy(g => g.Key.Discovered)
-                     .ThenByDescending(g => g.Max(PublishedAt) ?? DateTimeOffset.MinValue)
-                     .ThenBy(g => g.Key.Kind))
+        foreach (var section in Sections(batch))
         {
-            var items = Sorted(group);
-            var block = RenderBlock(
-                group.Key.WatchlistName,
-                group.Key.CompanyName,
-                group.Key.Kind,
-                group.Key.Discovered,
-                items,
-                language);
+            var header = RenderSectionHeader(section, language);
+            var pending = true;
 
-            if (sb.Length + block.Length > SafeLimit && sb.Length > 0)
+            foreach (var block in section.Companies.SelectMany(c => RenderCompanyBlocks(c, language)))
             {
-                messages.Add(ToRichMessage(sb));
-                sb.Clear();
-            }
+                var needed = (pending ? header.Length : 0) + block.Length;
 
-            if (block.Length > SafeLimit)
-            {
-                foreach (var chunk in SplitLarge(
-                             group.Key.WatchlistName,
-                             group.Key.CompanyName,
-                             group.Key.Kind,
-                             group.Key.Discovered,
-                             items,
-                             language))
+                if (sb.Length + needed > SafeLimit && sb.Length > 0)
                 {
-                    messages.Add(new InputRichMessage
-                    {
-                        Html = chunk
-                    });
+                    messages.Add(ToRichMessage(sb));
+                    sb.Clear();
+                    pending = true;
                 }
 
-                continue;
-            }
+                if (pending)
+                {
+                    sb.Append(header);
+                    pending = false;
+                }
 
-            sb.Append(block);
+                sb.Append(block);
+            }
         }
 
         if (sb.Length > 0)
@@ -74,41 +72,129 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         return messages;
     }
 
+    /// <summary>
+    /// One section per (time window, watchlist), oldest window first - the reader is catching up, so the story is
+    /// told forwards. A synthetic item (the <c>/show_state</c> dump) has no watchlist and simply gets a section
+    /// without a name.
+    /// </summary>
+    private IEnumerable<Section> Sections(IReadOnlyList<OutboxItem> batch)
+    {
+        var window = TimeSpan.FromMinutes(Math.Max(1, deliveryOptions.CurrentValue.GroupChangesWithinMinutes));
+        var now = clock.GetUtcNow();
+
+        // A synthetic item (the `/show_state` dump) is never stored and carries no stamp - it happens now.
+        return batch
+            .GroupBy(item => (
+                Window: Floor(item.CreatedAt == default ? now : item.CreatedAt, window),
+                item.WatchlistName))
+            .OrderBy(g => g.Key.Window)
+            .ThenBy(g => g.Key.WatchlistName, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new Section(
+                g.Key.Window,
+                g.Key.Window + window,
+                g.Key.WatchlistName,
+                [.. Companies(g)]));
+    }
+
+    /// <summary>
+    /// The blocks of one section. A company that produced both a new and a changed vacancy is still one block - the
+    /// reader asks «what happened at this company», not «what happened of kind Updated».
+    /// </summary>
+    private static IEnumerable<CompanyBatch> Companies(IEnumerable<OutboxItem> items) =>
+        items
+            .GroupBy(x => (x.CompanyName, x.Discovered))
+            .Select(g => new CompanyBatch(g.Key.CompanyName, g.Key.Discovered, Sorted(g)))
+            .OrderBy(c => c.Discovered)
+            .ThenByDescending(c => c.Items.Max(PublishedAt) ?? DateTimeOffset.MinValue)
+            .ThenBy(c => c.Company, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The start of the window an instant falls into - windows are aligned to the epoch, not to the batch.</summary>
+    private static DateTimeOffset Floor(DateTimeOffset time, TimeSpan window)
+    {
+        var ticks = time.UtcDateTime.Ticks / window.Ticks * window.Ticks;
+
+        return new DateTimeOffset(ticks, TimeSpan.Zero);
+    }
+
     private static InputRichMessage ToRichMessage(StringBuilder sb) =>
         new()
         {
             Html = sb.ToString()
         };
 
-    private string RenderBlock(
-        string? watchlist,
-        string company,
-        VacancyChangeKind kind,
-        bool discovered,
-        IReadOnlyList<OutboxItem> items,
-        BotLanguage language)
+    private string RenderSectionHeader(Section section, BotLanguage language)
     {
-        var sb = new StringBuilder();
+        var window = BotTexts.Get(
+            TextKey.NotificationWindow,
+            language,
+            BotTexts.FormatDate(section.From, section.From.Year != clock.GetUtcNow().Year, language),
+            BotTexts.FormatTime(section.From),
+            BotTexts.FormatTime(section.To));
 
-        sb.Append("<h6>")
-            .Append(Header(kind, discovered, language))
-            .Append(" · ")
-            .Append(Escape(company));
+        var sb = new StringBuilder("<h6>").Append(window);
 
         // A state dump has no watchlist, a real notification always has one.
-        if (!string.IsNullOrWhiteSpace(watchlist))
-            sb.Append(" · ").Append(Escape(watchlist));
+        if (!string.IsNullOrWhiteSpace(section.Watchlist))
+            sb.Append(" · ").Append(Escape(section.Watchlist));
 
         sb.Append("</h6>");
 
-        foreach (var item in items)
+        var changes = section.Companies.Sum(c => c.Items.Count);
+
+        return sb.Append("<p>")
+            .Append(BotTexts.Get(TextKey.NotificationWindowCounts, language, changes, section.Companies.Count))
+            .Append("</p>")
+            .ToString();
+    }
+
+    /// <summary>
+    /// One company, folded. The summary has to carry the whole answer on its own - it is the only line visible while
+    /// the block is collapsed - so it names the company and counts the changes per kind.
+    ///
+    /// A promoted board announces itself: a discovered company reporting new vacancies is the one place the reader
+    /// learns that discovery, not a manual add, brought it in.
+    /// </summary>
+    private IEnumerable<string> RenderCompanyBlocks(CompanyBatch company, BotLanguage language)
+    {
+        var announcement = company.Discovered && company.Items.Any(i => i.ChangeKind == VacancyChangeKind.New);
+
+        var title = announcement
+            ? $"🔎 {BotTexts.Get(TextKey.NotificationNewBoard, language)} · {Escape(company.Company)}"
+            : $"{(company.Discovered ? "🔎" : "🏢")} {Escape(company.Company)}";
+
+        var counts = new StringBuilder();
+
+        foreach (var kind in KindOrder)
         {
-            sb.Append("<p>")
-                .Append(RenderVacancy(item, language))
-                .Append("</p>");
+            var count = company.Items.Count(i => i.ChangeKind == kind);
+
+            if (count > 0)
+                counts.Append($" · {KindGlyph(kind)} {count}");
         }
 
-        return sb.ToString();
+        var summary = $"<details><summary><b>{title}{counts}</b></summary>";
+        var lines = company.Items.Select(i => $"<p>{RenderVacancy(i, language)}</p>").ToList();
+
+        // A company is one block; only one that cannot fit a message at all is continued under a repeated header.
+        var block = new StringBuilder(summary);
+        var used = summary.Length + DetailsClose.Length;
+
+        foreach (var line in lines)
+        {
+            if (used + line.Length > SafeLimit && block.Length > summary.Length)
+            {
+                yield return block.Append(DetailsClose).ToString();
+
+                block = new StringBuilder(summary);
+                used = summary.Length + DetailsClose.Length;
+            }
+
+            block.Append(line);
+            used += line.Length;
+        }
+
+        if (block.Length > summary.Length)
+            yield return block.Append(DetailsClose).ToString();
     }
 
     private string RenderVacancy(OutboxItem item, BotLanguage language)
@@ -119,7 +205,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         var geography = RenderGeography(item, language);
         var dates = RenderDate(PublishedAt(item), language) ?? RenderDate(item.Vacancy.FirstSeenAt, language);
 
-        var line = $"{title}<br> {geography} · {dates}";
+        var line = $"{KindGlyph(item.ChangeKind)} {title}<br> {geography} · {dates}";
 
         return fresh ? $"🔥 <b>{line}</b>" : line;
     }
@@ -139,33 +225,14 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
 
     private static IReadOnlyList<OutboxItem> Sorted(IEnumerable<OutboxItem> items) =>
     [
-        .. items.OrderByDescending(PublishedAt).ThenBy(i => i.Vacancy.Title, StringComparer.OrdinalIgnoreCase)
+        .. items
+            .OrderBy(i => Array.IndexOf(KindOrder, i.ChangeKind))
+            .ThenByDescending(PublishedAt)
+            .ThenBy(i => i.Vacancy.Title, StringComparer.OrdinalIgnoreCase)
     ];
 
     private static string RenderTitleLink(OutboxItem item) =>
         $"<a href=\"{Escape(item.Vacancy.Url)}\"><b>{Escape(item.Vacancy.Title)}</b></a>";
-
-    private IEnumerable<string> SplitLarge(
-        string? watchlist,
-        string company,
-        VacancyChangeKind kind,
-        bool discovered,
-        IReadOnlyList<OutboxItem> items,
-        BotLanguage language)
-    {
-        const int perMessage = 20;
-
-        for (var i = 0; i < items.Count; i += perMessage)
-        {
-            yield return RenderBlock(
-                watchlist,
-                company,
-                kind,
-                discovered,
-                items.Skip(i).Take(perMessage).ToArray(),
-                language);
-        }
-    }
 
     /// <summary>
     /// Month names come from the text table, not from a culture: the solution builds with
@@ -195,22 +262,26 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     private static string RenderOffices(IReadOnlyList<string> offices) =>
         offices.Select(Escape).JoinStrings(" · ");
 
-    /// <summary>
-    /// A promoted board announces itself: its first batch is the only place the reader learns that discovery -
-    /// not a manual add - brought this company in. Later batches keep the 🔎 so the two never look alike.
-    /// </summary>
-    private static string Header(VacancyChangeKind kind, bool discovered, BotLanguage language) =>
-        (kind, discovered) switch
+    /// <summary>The kind of a change in one character - a folded block mixes all three.</summary>
+    private static string KindGlyph(VacancyChangeKind kind) =>
+        kind switch
         {
-            (VacancyChangeKind.New, true) => $"🔎 {BotTexts.Get(TextKey.NotificationNewBoard, language)}",
-            (VacancyChangeKind.New, false) => $"🆕 {BotTexts.Get(TextKey.NotificationNew, language)}",
-            (VacancyChangeKind.Updated, true) => $"🔎 ✏️ {BotTexts.Get(TextKey.NotificationUpdated, language)}",
-            (VacancyChangeKind.Updated, false) => $"✏️ {BotTexts.Get(TextKey.NotificationUpdated, language)}",
-            (VacancyChangeKind.Closed, true) => $"🔎 ❌ {BotTexts.Get(TextKey.NotificationClosed, language)}",
-            (VacancyChangeKind.Closed, false) => $"❌ {BotTexts.Get(TextKey.NotificationClosed, language)}",
+            VacancyChangeKind.New => "🆕",
+            VacancyChangeKind.Updated => "✏️",
+            VacancyChangeKind.Closed => "❌",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 
     public static string Escape(string? text) =>
         WebUtility.HtmlEncode(text ?? string.Empty);
+
+    /// <summary>One time window of one watchlist - the unit a delivered message is built from.</summary>
+    private sealed record Section(
+        DateTimeOffset From,
+        DateTimeOffset To,
+        string? Watchlist,
+        IReadOnlyList<CompanyBatch> Companies);
+
+    /// <summary>Everything that happened at one company inside a window.</summary>
+    private sealed record CompanyBatch(string Company, bool Discovered, IReadOnlyList<OutboxItem> Items);
 }

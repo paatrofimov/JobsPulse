@@ -23,5 +23,11 @@ public sealed record OutboxItem
     /// </summary>
     public bool Discovered { get; init; }
 
+    /// <summary>
+    /// When the change was detected and enqueued - not when it is delivered. The sink buckets a batch by this stamp,
+    /// so everything one cycle found within a few minutes reads as one message instead of a wall of them.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; init; }
+
     public int Attempts { get; init; }
 }

@@ -202,33 +202,4 @@ public sealed class HeadHunterBoardSourceTests
         result.Vacancies.Should().HaveCount(1);
         result.Error.Should().Contain("page cap");
     }
-
-    /// <summary>Descriptions are one request per vacancy, so the budget has to be an upper bound on the whole traversal.</summary>
-    [Test]
-    public async Task TraverseTarget_should_stop_asking_for_descriptions_when_the_budget_is_spent()
-    {
-        var options = HeadHunterTestHost.Fast();
-        options.MaxDescriptionRequests = 1;
-
-        var api = new HeadHunterStubApi(uri => uri.AbsolutePath.StartsWith("/vacancies/")
-            ? HeadHunterStubAnswer.Json("""{ "id": "1", "description": "The whole ad" }""")
-            : HeadHunterStubAnswer.Json(
-                HeadHunterFixtures.VacancySearch(
-                    found: 2,
-                    pages: 1,
-                    HeadHunterFixtures.Vacancy("1", "Engineer", Published),
-                    HeadHunterFixtures.Vacancy("2", "Analyst", Published))));
-
-        using var host = new HeadHunterTestHost(api, options);
-
-        var result = await host.Source.TraverseTargetAsync(
-            Target() with { IncludeDescriptions = true },
-            CancellationToken.None);
-
-        result.IsComplete.Should().BeTrue();
-        result.Vacancies[0].Description.Should().Be("The whole ad");
-        // The second one keeps the search snippet instead of costing another request.
-        result.Vacancies[1].Description.Should().Be("Писать код\nC#");
-        api.Requests.Count(r => r.AbsolutePath.StartsWith("/vacancies/")).Should().Be(1);
-    }
 }

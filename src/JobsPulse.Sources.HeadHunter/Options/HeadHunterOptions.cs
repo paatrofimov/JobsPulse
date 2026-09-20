@@ -44,9 +44,6 @@ public sealed class HeadHunterOptions
     /// </summary>
     public int MaxDateWindows { get; set; } = 20;
 
-    /// <summary>Upper bound on description requests per traversal - the rest is mapped from the search snippet.</summary>
-    public int MaxDescriptionRequests { get; set; } = 100;
-
     /// <summary>How the vacancy search is sorted. Date windowing needs a publication-time order to walk backwards.</summary>
     public string OrderBy { get; set; } = "publication_time";
 

@@ -17,7 +17,7 @@ public static class SuccessFactorsFeedParser
     /// <exception cref="InvalidDataException">The body is well formed but is not a feed - an error page, or the seo
     /// url list that some sites answer '/sitemap.xml' with.</exception>
     /// <exception cref="XmlException">The body ends mid-way, or is not xml at all.</exception>
-    public static async Task<JobFeedDto> ParseAsync(Stream stream, bool includeDescriptions, CancellationToken ct)
+    public static async Task<JobFeedDto> ParseAsync(Stream stream, CancellationToken ct)
     {
         using var reader = XmlReader.Create(stream, ReaderSettings());
 
@@ -25,7 +25,7 @@ public static class SuccessFactorsFeedParser
         // told apart from a feed that was cut off - the first has nothing to retry, the second has a fallback.
         await ReadRootAsync(reader, ct);
 
-        return await ReadChannelAsync(reader, includeDescriptions, ct);
+        return await ReadChannelAsync(reader, ct);
     }
 
     /// <summary>
@@ -34,7 +34,6 @@ public static class SuccessFactorsFeedParser
     /// </summary>
     public static async Task<JobFeedDto> ReadChannelAsync(
         XmlReader reader,
-        bool includeDescriptions,
         CancellationToken ct)
     {
         string? channelTitle = null;
@@ -58,7 +57,7 @@ public static class SuccessFactorsFeedParser
             switch (reader.LocalName)
             {
                 case "item":
-                    items.Add(await ReadItemAsync(reader, includeDescriptions, ct));
+                    items.Add(await ReadItemAsync(reader, ct));
 
                     // ReadSubtree leaves the outer reader on </item>; step off it before looking for the next one.
                     await reader.ReadAsync();
@@ -124,7 +123,6 @@ public static class SuccessFactorsFeedParser
 
     private static async Task<JobFeedItemDto> ReadItemAsync(
         XmlReader reader,
-        bool includeDescriptions,
         CancellationToken ct)
     {
         string? id = null, guid = null, title = null, link = null, description = null;
@@ -168,11 +166,7 @@ public static class SuccessFactorsFeedParser
                     break;
 
                 case "description":
-                    if (includeDescriptions)
-                        description = Clean(await item.ReadElementContentAsStringAsync());
-                    else
-                        await item.SkipAsync();
-
+                    description = Clean(await item.ReadElementContentAsStringAsync());
                     break;
 
                 case "location":

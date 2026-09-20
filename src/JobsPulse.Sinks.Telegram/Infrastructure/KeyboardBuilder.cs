@@ -43,6 +43,16 @@ public sealed class KeyboardBuilder(BotLanguage language)
             Make(BotTexts.Get(left.Label, language), left.Action, id, page),
             Make(BotTexts.Get(right.Label, language), right.Action, id, page));
 
+    /// <summary>
+    /// The groupings a list is not currently showing, all on one row. A row each would push the navigation off the
+    /// screen, which is why the labels in the text table are as short as they are.
+    /// </summary>
+    public KeyboardBuilder Modes(
+        IReadOnlyList<(TextKey Label, CallbackAction Action)> modes,
+        long id = 0,
+        int page = 0) =>
+        Row([.. modes.Select(m => Make(BotTexts.Get(m.Label, language), m.Action, id, page))]);
+
     /// <summary>One button per item, one per row - company and watchlist names are too long to share a row.</summary>
     public KeyboardBuilder Items<T>(
         IEnumerable<T> items,

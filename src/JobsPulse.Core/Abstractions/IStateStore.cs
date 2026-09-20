@@ -46,5 +46,13 @@ public interface IStateStore
     /// </summary>
     Task<IReadOnlyDictionary<string, int>> CountMatchesByBoardAsync(long watchlistId, CancellationToken ct);
 
+    /// <summary>
+    /// How much moved on every board since <paramref name="since"/>, keyed '{sourceId}/{boardId}' - the indicator the
+    /// «hottest companies first» grouping is ordered by. Boards with nothing in the window are absent.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, BoardActivity>> CountBoardActivityAsync(
+        DateTimeOffset since,
+        CancellationToken ct);
+
     Task<PurgeResult> PurgeAllAsync(CancellationToken ct);
 }

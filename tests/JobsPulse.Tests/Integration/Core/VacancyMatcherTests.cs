@@ -16,7 +16,7 @@ public sealed class VacancyMatcherTests : IntegrationTestBase
     [TestCaseSource(nameof(Filters))]
     public async Task Matches_should_return_matches(FilterSpec filter)
     {
-        var sourceTarget = new SourceTarget() { SourceId = "greenhouse", BoardId = "nebius", IncludeDescriptions = true };
+        var sourceTarget = new SourceTarget() { SourceId = "greenhouse", BoardId = "nebius"};
         var result = await FetchRealVacanciesAsync(sourceTarget);
 
         var hits = new List<Vacancy>();

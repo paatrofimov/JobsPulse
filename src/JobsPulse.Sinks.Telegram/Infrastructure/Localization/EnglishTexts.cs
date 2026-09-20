@@ -137,8 +137,11 @@ internal static class EnglishTexts
         [TextKey.CompanyFindMany] = "Several companies match «{0}» — pick one.",
         [TextKey.CompanyCounts] = "{0}",
         [TextKey.CompanyCountsLegend] = "After every company: vacancies found on its board matching this filter",
-        [TextKey.CompaniesBySource] = "🏢 Group by source",
-        [TextKey.CompaniesByLocation] = "📍 Group by location",
+        // Short on purpose: the four groupings share one keyboard row.
+        [TextKey.CompaniesBySource] = "🏢 By source",
+        [TextKey.CompaniesByLocation] = "📍 By location",
+        [TextKey.CompaniesByMonth] = "🗓 By month",
+        [TextKey.CompaniesByActivity] = "🔥 By activity",
 
         [TextKey.DisabledTitle] = "Disabled companies",
         [TextKey.DisabledEmpty] = "Nothing is disabled — every company of yours is being watched.",
@@ -161,8 +164,22 @@ internal static class EnglishTexts
         [TextKey.VacanciesCount] = "{0} open vacancies match this watchlist.",
         [TextKey.VacanciesShownOf] = "Showing the {0} freshest vacancies out of {1}.",
         [TextKey.VacancyUnknownLocation] = "Unknown location",
-        [TextKey.VacanciesByCompany] = "🏢 Group by company",
-        [TextKey.VacanciesByLocation] = "📍 Group by location",
+        [TextKey.VacanciesByCompany] = "🏢 By company",
+        [TextKey.VacanciesByLocation] = "📍 By location",
+        [TextKey.VacanciesByMonth] = "🗓 By month",
+        [TextKey.VacanciesByActivity] = "🔥 By activity",
+
+        [TextKey.MonthUnknown] = "Date unknown",
+
+        [TextKey.ActivityBlazing] = "Boiling",
+        [TextKey.ActivityHot] = "Busy",
+        [TextKey.ActivityWarm] = "Slow",
+        [TextKey.ActivityStill] = "Nothing moved",
+        [TextKey.ActivityRate] = "{0}/mo",
+        [TextKey.ActivityBreakdown] = "+{0} / ✏️{1} / ❌{2}",
+        [TextKey.ActivityLegend] =
+            "Activity: vacancy events per month on the company board — opened / changed / closed. "
+            + "An impossible number usually means the board rewrites its postings, not that it is hiring.",
 
         [TextKey.RegionEurope] = "Europe",
         [TextKey.RegionRemote] = "Remote",
@@ -195,6 +212,8 @@ internal static class EnglishTexts
         [TextKey.NotificationNew] = "New",
         [TextKey.NotificationUpdated] = "Changed",
         [TextKey.NotificationClosed] = "Closed",
-        [TextKey.NotificationNewBoard] = "New company found"
+        [TextKey.NotificationNewBoard] = "New company found",
+        [TextKey.NotificationWindow] = "🕔 {0}, {1}–{2} UTC",
+        [TextKey.NotificationWindowCounts] = "{0} changes in {1} companies"
     };
 }

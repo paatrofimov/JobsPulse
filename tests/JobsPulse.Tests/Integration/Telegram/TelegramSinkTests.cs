@@ -9,7 +9,7 @@ public sealed class TelegramSinkTests : IntegrationTestBase
     [Test]
     public async Task Sink_should_deliver()
     {
-        var sourceTarget = new SourceTarget() { SourceId = "greenhouse", BoardId = "nebius", IncludeDescriptions = true };
+        var sourceTarget = new SourceTarget() { SourceId = "greenhouse", BoardId = "nebius" };
         var result = await FetchRealVacanciesAsync(sourceTarget);
 
         var vacancies = result.Vacancies.Take(15).ToArray();

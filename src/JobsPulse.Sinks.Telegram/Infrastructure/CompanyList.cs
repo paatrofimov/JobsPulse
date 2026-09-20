@@ -6,6 +6,9 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 /// <summary>
 /// Ordering, grouping and name lookup of a company list. Pure functions, kept out of the screen so the ordering of a
 /// long list and the «which company did the user mean» rule can be read - and tested - on their own.
+///
+/// Every ordering is «the thing the list is grouped by, then the tie-break every listing shares», so switching the
+/// grouping never reshuffles companies inside a group.
 /// </summary>
 public static class CompanyList
 {
@@ -13,14 +16,13 @@ public static class CompanyList
     /// Source first, because that is what the list is grouped by; then active before disabled, manual before
     /// discovered, more vacancy matches before less matches, which is the order every other listing uses.
     /// </summary>
-    public static List<WatchlistEntry> Order(IEnumerable<WatchlistEntry> entries, IReadOnlyDictionary<string, int> matchesByBoard) =>
+    public static List<WatchlistEntry> Order(
+        IEnumerable<WatchlistEntry> entries,
+        IReadOnlyDictionary<string, int> matchesByBoard) =>
     [
         .. entries
             .OrderBy(e => e.VacancySourceId, StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(e => e.Enabled)
-            .ThenBy(e => e.Origin)
-            .ThenByDescending(e => matchesByBoard.GetValueOrDefault(e.BoardKey, 0))
-            .ThenBy(e => e.CompanyName, StringComparer.OrdinalIgnoreCase)
+            .ThenCommon(matchesByBoard)
     ];
 
     /// <summary>
@@ -34,11 +36,47 @@ public static class CompanyList
     [
         .. entries
             .OrderBy(regionOf)
+            .ThenCommon(matchesByBoard)
+    ];
+
+    /// <summary>
+    /// Newest month first - a list sorted by time is read from the present backwards. A company nothing is known
+    /// about carries <see cref="VacancyMonths.Unknown"/> and therefore lands at the end.
+    /// </summary>
+    public static List<WatchlistEntry> OrderByMonth(
+        IEnumerable<WatchlistEntry> entries,
+        IReadOnlyDictionary<string, int> matchesByBoard,
+        Func<WatchlistEntry, int> monthOf) =>
+    [
+        .. entries
+            .OrderByDescending(monthOf)
+            .ThenCommon(matchesByBoard)
+    ];
+
+    /// <summary>
+    /// The band first, so the list slices into "boiling / busy / slow / nothing moved", and the raw rate inside it -
+    /// the band is for reading, the rate is what actually ranks two companies of the same band.
+    /// </summary>
+    public static List<WatchlistEntry> OrderByActivity(
+        IEnumerable<WatchlistEntry> entries,
+        IReadOnlyDictionary<string, int> matchesByBoard,
+        Func<WatchlistEntry, BoardActivity> activityOf) =>
+    [
+        .. entries
+            .OrderBy(e => ActivityRanks.Rank(activityOf(e)))
+            .ThenByDescending(e => activityOf(e).PerMonth)
+            .ThenCommon(matchesByBoard)
+    ];
+
+    /// <summary>Active before disabled, manual before discovered, more matches first, then the name.</summary>
+    private static IOrderedEnumerable<WatchlistEntry> ThenCommon(
+        this IOrderedEnumerable<WatchlistEntry> ordered,
+        IReadOnlyDictionary<string, int> matchesByBoard) =>
+        ordered
             .ThenByDescending(e => e.Enabled)
             .ThenBy(e => e.Origin)
             .ThenByDescending(e => matchesByBoard.GetValueOrDefault(e.BoardKey, 0))
-            .ThenBy(e => e.CompanyName, StringComparer.OrdinalIgnoreCase)
-    ];
+            .ThenBy(e => e.CompanyName, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Groups an already ordered slice, preserving that order. A group larger than one page continues under a
@@ -56,9 +94,24 @@ public static class CompanyList
             ordered,
             e => $"{LocationRegions.Glyph(regionOf(e))} {LocationRegions.Name(regionOf(e), language)}");
 
+    public static List<CompanyGroup> GroupByMonth(
+        IReadOnlyList<WatchlistEntry> ordered,
+        Func<WatchlistEntry, int> monthOf,
+        BotLanguage language) =>
+        Group(
+            ordered,
+            e => $"{VacancyMonths.Glyph(monthOf(e))} {VacancyMonths.Label(monthOf(e), language)}");
+
+    public static List<CompanyGroup> GroupByActivity(
+        IReadOnlyList<WatchlistEntry> ordered,
+        Func<WatchlistEntry, BoardActivity> activityOf,
+        BotLanguage language) =>
+        Group(ordered, e => ActivityRanks.Label(ActivityRanks.Rank(activityOf(e)), language));
+
     /// <summary>
     /// Consecutive entries sharing a label become one group. Consecutive rather than keyed, so the order of the slice
-    /// decides everything and a group continued on the next page simply repeats its header.
+    /// decides everything and a group continued on the next page simply repeats its header. An empty slice yields no
+    /// groups at all - a header with nothing under it is what an empty page looks like to a reader.
     /// </summary>
     private static List<CompanyGroup> Group(
         IReadOnlyList<WatchlistEntry> ordered,

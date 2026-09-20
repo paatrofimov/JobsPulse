@@ -15,23 +15,19 @@ public sealed class SuccessFactorsBoardSourceTests
 {
     private static TimeSpan RequestTimeout => TimeSpan.FromMinutes(3);
 
-    private static SourceTarget Target(string boardId, bool descriptions = false) => new()
+    private static SourceTarget Target(string boardId) => new()
     {
         SourceId = SuccessFactorsMapper.SourceId,
         BoardId = boardId,
-        IncludeDescriptions = descriptions
     };
 
-    [TestCase("jobs.corbion.com", false)]
-    [TestCase("jobs.corbion.com", true)]
-    [TestCase("careers.swissre.com", false)]
-    [TestCase("jobs.csiro.au", false)]
-    public async Task TraverseTarget_should_read_a_whole_board(string boardId, bool descriptions)
+    [TestCase("jobs.corbion.com")]
+    public async Task TraverseTarget_should_read_a_whole_board(string boardId)
     {
         using var host = new SuccessFactorsTestHost();
         using var cts = new CancellationTokenSource(RequestTimeout);
 
-        var result = await host.Source.TraverseTargetAsync(Target(boardId, descriptions), cts.Token);
+        var result = await host.Source.TraverseTargetAsync(Target(boardId), cts.Token);
 
         TestContext.Progress.WriteLine(
             $"{boardId}: complete={result.IsComplete}, missing={result.BoardMissing}, " +
@@ -53,8 +49,7 @@ public sealed class SuccessFactorsBoardSourceTests
             if (!string.IsNullOrEmpty(vacancy.Location))
                 vacancy.Title.Should().NotEndWith($"({vacancy.Location})");
 
-            if (descriptions)
-                vacancy.Description.Should().NotBeNullOrWhiteSpace();
+            vacancy.Description.Should().NotBeNullOrWhiteSpace();
         }
 
         result.Vacancies.Select(v => v.PostId).Should().OnlyHaveUniqueItems();

@@ -70,7 +70,7 @@ public abstract partial class IntegrationTestBase
 
     protected async Task<(StateCommitResult, IReadOnlyList<Vacancy>, IReadOnlyList<OutboxItem>)> InsertVacanciesAsync(int take, VacancyChangeKind changeKind)
     {
-        var sourceTarget = new SourceTarget() { SourceId = "greenhouse", BoardId = "nebius", IncludeDescriptions = true };
+        var sourceTarget = new SourceTarget() { SourceId = "greenhouse", BoardId = "nebius" };
         var result = await FetchRealVacanciesAsync(sourceTarget);
 
         var vacancies = result.Vacancies.Take(take).ToList();

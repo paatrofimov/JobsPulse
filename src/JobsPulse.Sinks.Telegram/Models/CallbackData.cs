@@ -42,6 +42,8 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
 
         [CallbackAction.CompaniesOpen] = "co",
         [CallbackAction.CompaniesByLocation] = "cl",
+        [CallbackAction.CompaniesByMonth] = "cmo",
+        [CallbackAction.CompaniesByActivity] = "cac",
         [CallbackAction.CompanyOpen] = "ce",
         [CallbackAction.CompanyToggleWorked] = "cw",
         [CallbackAction.CompanyToggleEnabled] = "cn",
@@ -55,7 +57,9 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
 
         [CallbackAction.VacanciesPick] = "vp",
         [CallbackAction.VacanciesOpen] = "vo",
-        [CallbackAction.VacanciesByLocation] = "vl"
+        [CallbackAction.VacanciesByLocation] = "vl",
+        [CallbackAction.VacanciesByMonth] = "vmo",
+        [CallbackAction.VacanciesByActivity] = "vac"
     }.ToFrozenDictionary();
 
     private static readonly FrozenDictionary<string, CallbackAction> Actions =

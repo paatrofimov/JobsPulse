@@ -37,6 +37,7 @@ public static class PersistencyExtensions
             WatchlistId = persistentItem.WatchlistId,
             WatchlistName = persistentItem.WatchlistName,
             Discovered = persistentItem.Discovered,
+            CreatedAt = persistentItem.CreatedAt,
             Attempts = persistentItem.Attempts,
             Vacancy = JsonSerializer.Deserialize<Vacancy>(
                           persistentItem.VacancyPayload, JsonSerializerOptionsFactory.Instance

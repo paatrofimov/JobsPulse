@@ -171,10 +171,6 @@ A non-numeric board id is rejected without a request.
 brings nothing new ends the traversal. Only `MaxPages` and `MaxDateWindows` produce an incomplete traversal - and an
 incomplete one is still reported with what it read, because the orchestrator is what decides not to commit it.
 
-An unaddressable board id is a failure, never a missing board. Descriptions are fetched per vacancy within
-`MaxDescriptionRequests`, exactly as SmartRecruiters does it; vacancies past the budget keep the search snippet, which
-is enough for a keyword filter to work on.
-
 ## HeadHunterMapper
 
 `VacancyItemDto` to `Vacancy`. `BoardId` is always the employer the traversal asked about. `Location` prefers the

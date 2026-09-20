@@ -21,6 +21,12 @@ public sealed class DeliveryOptions
     // Vacancies published within this window are highlighted in messages
     [Range(0, 365)] public int FreshVacancyDays { get; set; } = 3;
 
+    // Changes detected within one such window are delivered as a single message instead of one per company
+    [Range(1, 1440)] public int GroupChangesWithinMinutes { get; set; } = 5;
+
+    // How far back the company activity indicator looks - see BoardActivity
+    [Range(7, 730)] public int ActivityWindowDays { get; set; } = 90;
+
     // Delivered notifications are kept for a while for troubleshooting, then dropped
     [Range(0, 8760)] public int DeliveredRetentionHours { get; set; } = 24;
 

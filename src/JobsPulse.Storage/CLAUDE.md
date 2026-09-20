@@ -183,6 +183,14 @@ statement per watchlist, because the composite key cannot be passed as a single 
 `{sourceId}/{boardId}`, the same key shape `CountOpenByBoardAsync` uses, so the bot's company list pairs the two
 without translating anything.
 
+### CountBoardActivityAsync
+
+The company activity indicator (`BoardActivity`): one grouped count over the three stamps `seen_vacancy` already
+carries - rows first seen, updated or closed since a point in time - keyed the same `{sourceId}/{boardId}` way. The
+window is filtered before grouping, so a board nothing happened on simply has no row, and the window length in months
+is attached to every value so the caller does not have to know how it was measured. No new table, no history of its
+own: `outbox` is purged within a day and cannot answer this.
+
 ### LoadAllAsync / PurgeAllAsync
 
 Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and

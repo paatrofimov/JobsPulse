@@ -16,8 +16,5 @@ public sealed class WorkdayOptions
     /// </summary>
     public int MaxPages { get; set; } = 250;
 
-    /// <summary>Budget of detail requests per board traversal - postings past it are mapped without a description.</summary>
-    public int MaxDescriptionRequests { get; set; } = 100;
-
     public int RequestTimeoutSeconds { get; set; } = 30;
 }

@@ -74,8 +74,10 @@ itself.
   are comma separated, `-` clears a rule. No json ever reaches a user.
   The two text rules say in their prompt what makes them different: descriptions are not stored, so an unreadable text
   never passes «words in the text», and vacancies found earlier are not re-checked against either of them.
-- `CompaniesScreen` - the companies of a watchlist, **grouped by the source they are watched through** or, on one tap,
-  **by the region they hire in** (`CompaniesByLocation`, Europe first). The list itself
+- `CompaniesScreen` - the companies of a watchlist under one of **four groupings**, each one tap away on a shared
+  keyboard row: by the **source** they are watched through, by the **region** they hire in (Europe first), by the
+  **month** they last moved in (newest first) or by **how hot** they are (`BoardActivity`, boiling first, with the
+  rate and the opened/changed/closed breakdown written into every row). The list itself
   answers «which are watched, which are off, which are done»: a glyph per row (▶️ / ⏸ / ✅), a legend, the CV date and
   the discovery mark, plus the two numbers per company - vacancies **found** on its board
   (`IStateStore.CountOpenByBoardAsync`) and the ones **matching** this watchlist (`CountMatchesByBoardAsync`). Found
@@ -85,16 +87,21 @@ itself.
   `<details>` block whatever its size, and the page holds up to 200 companies - one screen for any real watchlist.
   The rows are text and not buttons, which is what lifts the page from 8 companies to 200: a
   button per company capped the page at the keyboard size and filled the screen with labels that only repeated the
-  list. One `🔧 Change a company` button asks for a name instead (`PendingInputKind.CompanyName` →
+  list. The region, the month and the rate are none of them stored on a company: the first two are read from the
+  vacancies found for it (one query per screen), the third from `IStateStore.CountBoardActivityAsync`. A company with
+  nothing found yet lands under «location unclear» / «date unknown» / «nothing moved» rather than being dropped.
+  One `🔧 Change a company` button asks for a name instead (`PendingInputKind.CompanyName` →
   `CompanyList.Find`): an exact name opens the per-company screen - mark worked through, disable, remove - several
   matches become buttons, a miss leaves the step armed, because a miss is usually a typo.
 - `DisabledCompaniesScreen` - every disabled company of the user across all their watchlists, one tap to restore.
   Without it a switched-off company is effectively lost inside some watchlist page.
 - `AddCompanyScreen` - a name or a careers-page link, resolved by `WatchService.LookupAsync`; the candidates become
   buttons. The ATS and the board id are never asked for.
-- `VacanciesScreen` - vacancies opened *by watchlist name*: pick a list, then read what matched it **grouped by
-  company**, the same shape the notifications have, or **grouped by location** (`VacanciesByLocation`) with Europe
-  first. The feed is loaded whole (capped at 500, freshest first) and `VacancyPageBuilder` packs it into as few screens
+- `VacanciesScreen` - vacancies opened *by watchlist name*: pick a list, then read what matched it under the same
+  four groupings the company list has - **by company** (the shape the notifications have), **by location** (Europe
+  first), **by month** (newest first, the month a vacancy appeared or last changed in) or **by company ordered by
+  activity**, where the hottest board leads and its rate stands in the block header.
+  The feed is loaded whole (capped at 500, freshest first) and `VacancyPageBuilder` packs it into as few screens
   as the message limit allows - which, with every block folded and a rich-message budget, is normally one. Vacancies of
   **disabled companies are left out** (`VacancyPageBuilder.OfActiveCompanies`) - a company the user switched off is not
   being watched, so its vacancies are not part of the feed; the same rule drops a match row whose board has left the
@@ -119,11 +126,20 @@ actually read as Russian.
 
 The language applies to menus, buttons, hints, statuses, errors, the command menu and the delivered notifications.
 
+## Pager
+
+Slices a list into pages, and takes the page number **by reference** so it is clamped in the caller too. That is the
+whole point: a button lives in a message that is never deleted, so a tap can always carry a page number a shorter list
+no longer has. Clamping only the slice while building the keyboard from the number the user tapped is what rendered an
+empty screen under a «page 4 of 2» label.
+
 ## KeyboardBuilder
 
 Inline keyboard rows, paging and the closing navigation row. `PageSize` is 8 - more buttons than that on one screen is
 unreadable, which is also why `Pair` exists: the «wanted / unwanted» halves of a filter rule share a row instead of
 taking one each. The page label is a button only because a row needs one, so it points at the page it already shows.
+`Modes` puts the groupings a list is *not* showing on one row - four of them, hence the very short labels in the text
+table; offering the current one would be a button to nowhere.
 
 ## CallbackAction / CallbackData
 
@@ -154,8 +170,15 @@ the user and is logged instead of breaking the update.
 The grouped vacancy feed of one watchlist: a block per company (glyph, name, count) with its vacancies newest first,
 manual companies before discovered ones - the same ordering `MessageFormatter` uses, so a browsed list and a pushed one
 read alike. `VacancyGrouping.Location` slices the same feed by region instead (`LocationRegions`, Europe first) and
-moves the company name into the vacancy line, because a region block mixes companies and «whose vacancy is this» is the
-first question about such a row.
+`VacancyGrouping.Month` by the month a vacancy appeared or last changed in (`VacancyMonths`, newest first); both move
+the company name into the vacancy line, because such a block mixes companies and «whose vacancy is this» is the first
+question about the row. `VacancyGrouping.Activity` keeps the per-company blocks and only changes their order - hottest
+board first - and writes the rate into the header, which is the one thing the ordering cannot show on its own.
+
+A page is flushed on vacancy lines only and is never emitted without one: a screen carrying group headers and nothing
+under them is an empty page to a reader. Size is bounded twice - by the **visible** length, which is what telegram
+counts against the message limit, and by the **raw** html, which is what it has to accept. A page of long link targets
+can be five times its visible size, and a rejected message shows the reader no screen at all.
 
 **Every** block is a collapsed `<details><summary>glyph, name, count…` block, whatever its size - the rich message HTML
 telegram takes supports it, and the page then opens as the list of headers, which is what makes a whole watchlist
@@ -197,12 +220,29 @@ One reporter for two entry points (the admin screen and `/progress`), so they ca
 `ProgressFormatter` itself is static and does no IO, which is what makes it testable; both are English only, like the
 rest of the operator surface.
 
+## VacancyMonths
+
+Which month a vacancy belongs to - the board's own publication date, falling back to the update stamp and then to
+when we first saw it, exactly the freshness every other listing sorts by. The key is `yyyyMM` as a plain number, so
+«newest first» is a descending sort and a vacancy with no date at all is `0` and lands last instead of being dropped.
+`ByBoard` is the company-level answer: the freshest month a company's vacancies name - «when this company last moved».
+
+## ActivityRanks
+
+The company activity indicator on screen: the rate out of `BoardActivity` (events per month on that board), the band
+it puts a company in (`ActivityRank`: boiling / busy / slow / nothing moved) and how the two are written. The ordering
+uses the raw rate and the reader is given the band, because the number is noisy - an ATS that rewrites every posting
+on a nightly reindex inflates it - and an impossible rate is the fastest way to notice a source bug rather than a
+hiring spree, which is half of what the indicator is for.
+
 ## CompanyList
 
 Ordering, grouping and name lookup of a company list, kept out of the screen so all three can be read and
-tested on their own. Ordering is source (or region, `OrderByRegion`), then active before disabled, then manual before
-discovered, then name - grouping only slices that order into `CompanyGroup`s of consecutive equal labels, so a group
-longer than a page continues under a repeated header. `Find` lets an exact
+tested on their own. Ordering is the thing the list is grouped by - source, region (`OrderByRegion`), month
+(`OrderByMonth`, newest first) or activity band and then the raw rate (`OrderByActivity`) - followed by the tie-break
+every listing shares: active before disabled, manual before discovered, more matches, then name. Switching the
+grouping therefore never reshuffles companies inside a group. Grouping only slices that order into `CompanyGroup`s of
+consecutive equal labels, so a group longer than a page continues under a repeated header. `Find` lets an exact
 name win over a containing one, otherwise a company whose name is a prefix of another («Nebius» in «Nebius AI») could
 not be addressed by typing it in full.
 
@@ -213,13 +253,21 @@ Rendering shared by the screens: the company status glyph, the owner label and t
 
 ## MessageFormatter
 
-One block per (watchlist, company, change kind, origin) - the same vacancy may arrive for several watchlists at once,
-so the watchlist is part of the block header. Blocks are ordered by watchlist, then **manual companies before
-discovered ones**, then by their freshest vacancy; vacancies inside a block by freshness too.
+The unit is a **time window**, not a change. Everything the pipeline found within `Delivery:GroupChangesWithinMinutes`
+(5 by default, floored against the epoch on `OutboxItem.CreatedAt`) is reported together under one
+`🕔 12 September, 18:35–18:40 UTC · Watchlist` header with the change and company counts under it. Before this, a
+cycle that walked forty boards produced forty two-line messages; the window is split per watchlist because the same
+vacancy legitimately arrives for several, and the reader has to see which list a notification belongs to.
 
-A block whose company came from discovery (`OutboxItem.Discovered`) is marked with 🔎, and its first batch - the `New`
-one the promotion enqueues - reads `🔎 New company found · Company · Watchlist`. That block is the announcement of the
-company itself: it carries the whole matching vacancy list, and the next poll reports nothing more, because
+Inside a window every company is **one collapsed `<details>` block**, exactly like the browsable lists: the message
+opens as the list of company headers and unfolding one shows its vacancies. A block mixes the three change kinds, so
+the summary counts them (`🏢 Acme · 🆕 3 · ✏️ 1`) and every line carries its own glyph. Blocks are ordered **manual
+companies before discovered ones**, then by their freshest vacancy; vacancies inside a block by kind, then freshness.
+A company too large for a whole message - and only such a company - is continued under a repeated header.
+
+A block whose company came from discovery (`OutboxItem.Discovered`) is marked with 🔎, and the one reporting its `New`
+vacancies - the batch the promotion enqueues - reads `🔎 New company found · Company`. That block is the announcement
+of the company itself: it carries the whole matching vacancy list, and the next poll reports nothing more, because
 `DiscoveredBoardPromoter` has already written the match rows.
 
 Freshness is `FirstPublishedAt`, falling back to `UpdatedAt`. Anything published within `Delivery:FreshVacancyDays` is

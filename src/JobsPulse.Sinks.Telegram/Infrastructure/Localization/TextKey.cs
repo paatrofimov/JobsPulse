@@ -114,6 +114,8 @@ public enum TextKey
     CompanyCountsLegend,
     CompaniesBySource,
     CompaniesByLocation,
+    CompaniesByMonth,
+    CompaniesByActivity,
 
     // Disabled companies screen
     DisabledTitle,
@@ -138,6 +140,20 @@ public enum TextKey
     VacancyUnknownLocation,
     VacanciesByCompany,
     VacanciesByLocation,
+    VacanciesByMonth,
+    VacanciesByActivity,
+
+    // Months
+    MonthUnknown,
+
+    // Company activity - how much moves on a board per month
+    ActivityBlazing,
+    ActivityHot,
+    ActivityWarm,
+    ActivityStill,
+    ActivityRate,
+    ActivityBreakdown,
+    ActivityLegend,
 
     // Regions - the order of the enum is the order they are shown in
     RegionEurope,
@@ -167,5 +183,7 @@ public enum TextKey
     NotificationNew,
     NotificationUpdated,
     NotificationClosed,
-    NotificationNewBoard
+    NotificationNewBoard,
+    NotificationWindow,
+    NotificationWindowCounts
 }

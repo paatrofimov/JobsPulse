@@ -85,7 +85,7 @@ public sealed class SuccessFactorsSitemapClient(
         // answer is the same and there is nothing to gain by asking twice.
         if (root.Equals("rss", StringComparison.OrdinalIgnoreCase))
         {
-            var feed = await SuccessFactorsFeedParser.ReadChannelAsync(reader, includeDescriptions: false, ct);
+            var feed = await SuccessFactorsFeedParser.ReadChannelAsync(reader, ct);
 
             return new SuccessFactorsSiteSummary
             {

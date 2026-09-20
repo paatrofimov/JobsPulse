@@ -29,7 +29,6 @@ public sealed class SuccessFactorsFeedClient(
 
     public async Task<SuccessFactorsFetch<JobFeedDto>> GetFeedAsync(
         SuccessFactorsBoardConfig config,
-        bool includeDescriptions,
         CancellationToken ct)
     {
         var opts = options.CurrentValue;
@@ -61,7 +60,7 @@ public sealed class SuccessFactorsFeedClient(
 
             try
             {
-                var feed = await SuccessFactorsFeedParser.ParseAsync(budgeted, includeDescriptions, ct);
+                var feed = await SuccessFactorsFeedParser.ParseAsync(budgeted, ct);
 
                 return SuccessFactorsFetch<JobFeedDto>.Ok(feed);
             }

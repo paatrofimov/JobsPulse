@@ -243,7 +243,7 @@ public sealed class SuccessFactorsBoardResolver(
         }
         else
         {
-            var response = await feed.GetFeedAsync(config, includeDescriptions: false, ct);
+            var response = await feed.GetFeedAsync(config, ct);
 
             if (!response.Success)
                 return null;

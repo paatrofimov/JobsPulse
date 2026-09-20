@@ -71,6 +71,10 @@ public sealed class ScreenRouter(
             CallbackAction.CompaniesOpen => await companies.RenderAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompaniesByLocation =>
                 await companies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Location),
+            CallbackAction.CompaniesByMonth =>
+                await companies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Month),
+            CallbackAction.CompaniesByActivity =>
+                await companies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Activity),
             CallbackAction.CompanyOpen => await companies.RenderCompanyAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompanyToggleWorked => await companies.ToggleWorkedAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.CompanyToggleEnabled => await companies.ToggleEnabledAsync(ctx, data.Id, data.Page, ct),
@@ -86,6 +90,10 @@ public sealed class ScreenRouter(
             CallbackAction.VacanciesOpen => await vacancies.RenderAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.VacanciesByLocation =>
                 await vacancies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Location),
+            CallbackAction.VacanciesByMonth =>
+                await vacancies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Month),
+            CallbackAction.VacanciesByActivity =>
+                await vacancies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Activity),
 
             CallbackAction.Language => language.Render(ctx),
             CallbackAction.Admin => await admin.RenderAsync(ctx, ct),

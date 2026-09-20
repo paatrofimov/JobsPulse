@@ -24,10 +24,6 @@ Pages with `offset`/`limit` until `totalFound` is covered or a short page arrive
 hitting it returns an incomplete traversal, so the orchestrator drops the batch instead of closing everything it did
 not fetch.
 
-Descriptions (and with them `GroupId`) are fetched per posting only when the target or `IncludeContentOnPoll` asks
-for them, and never more than `MaxDescriptionRequests` times per traversal: the rest of the board is mapped without
-a description and the shortfall is logged. A failed detail request is not fatal - the posting is still mapped.
-
 ## SmartRecruitersBoardResolver
 
 Name resolution reuses `CompanySlugGuesser`; url resolution takes the company out of a `smartrecruiters.com` link or

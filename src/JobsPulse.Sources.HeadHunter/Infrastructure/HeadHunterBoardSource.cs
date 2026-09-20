@@ -36,7 +36,7 @@ public sealed class HeadHunterBoardSource(
         if (page.Error is not null)
             return SourceTraverseResult.Failed(page.Error, page.BoardMissing);
 
-        var vacancies = await MapAsync(target, employerId, page.Items, opts, ct);
+        var vacancies = await MapAsync(employerId, page.Items, ct);
 
         if (page.IsComplete)
             return SourceTraverseResult.Complete(vacancies);
@@ -166,17 +166,11 @@ public sealed class HeadHunterBoardSource(
     /// bounds that: vacancies past it keep the snippet instead of turning a poll into a crawl.
     /// </summary>
     private async Task<IReadOnlyList<Vacancy>> MapAsync(
-        SourceTarget target,
         string employerId,
         IReadOnlyList<VacancyItemDto> items,
-        HeadHunterOptions opts,
         CancellationToken ct)
     {
-        var withDetails = target.IncludeDescriptions || opts.IncludeContentOnPoll;
-        var budget = withDetails ? Math.Max(0, opts.MaxDescriptionRequests) : 0;
-
         var vacancies = new List<Vacancy>(items.Count);
-        var skipped = 0;
 
         foreach (var item in items)
         {
@@ -184,33 +178,17 @@ public sealed class HeadHunterBoardSource(
 
             VacancyDetailDto? detail = null;
 
-            if (withDetails && budget > 0)
-            {
-                budget--;
+            var response = await client.GetVacancyAsync(item.Id!, ct);
 
-                var response = await client.GetVacancyAsync(item.Id!, ct);
-
-                if (response.Success)
-                    detail = response.Value;
-                else
-                    ctxLog.Debug(
-                        "Vacancy {Vacancy} of employer {Employer} has no readable detail ({Error})",
-                        item.Id, employerId, response.Error ?? "vacancy is missing");
-            }
-            else if (withDetails)
-            {
-                skipped++;
-            }
+            if (response.Success)
+                detail = response.Value;
+            else
+                ctxLog.Debug(
+                    "Vacancy {Vacancy} of employer {Employer} has no readable detail ({Error})",
+                    item.Id, employerId, response.Error ?? "vacancy is missing");
 
             if (mapper.ToVacancy(item, employerId, detail) is { } vacancy)
                 vacancies.Add(vacancy);
-        }
-
-        if (skipped > 0)
-        {
-            ctxLog.Warn(
-                "Employer {Employer}: {Skipped} vacancies keep the search snippet — request budget {Budget} is spent",
-                employerId, skipped, opts.MaxDescriptionRequests);
         }
 
         return vacancies;

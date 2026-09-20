@@ -10,9 +10,4 @@ public sealed record SourceTarget
     /// needs more than <see cref="BoardId"/> reads them from here instead of parsing the id.
     /// </summary>
     public string? Configuration { get; init; }
-
-    /// <summary>
-    /// Should be enabled if any filter is configured by description contents.
-    /// </summary>
-    public bool IncludeDescriptions { get; init; } = true;
 }

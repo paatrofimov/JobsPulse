@@ -9,6 +9,13 @@ internal static class RussianTexts
         "июля", "августа", "сентября", "октября", "ноября", "декабря"
     ];
 
+    /// <summary>«12 сентября» needs the genitive, «Сентябрь 2026» needs the nominative - two tables, one language.</summary>
+    internal static readonly string[] MonthsNominative =
+    [
+        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+    ];
+
     internal static readonly Dictionary<TextKey, string> Values = new()
     {
         [TextKey.MenuTitle] = "Главное меню",
@@ -139,8 +146,11 @@ internal static class RussianTexts
         [TextKey.CompanyCounts] = "{0}",
         [TextKey.CompanyCountsLegend] =
             "После каждой компании: сколько вакансий найдено на её сайте, подходящих под фильтр",
-        [TextKey.CompaniesBySource] = "🏢 Группировать по источнику",
-        [TextKey.CompaniesByLocation] = "📍 Группировать по локации",
+        // Short on purpose: the four groupings share one keyboard row.
+        [TextKey.CompaniesBySource] = "🏢 По источнику",
+        [TextKey.CompaniesByLocation] = "📍 По локации",
+        [TextKey.CompaniesByMonth] = "🗓 По месяцам",
+        [TextKey.CompaniesByActivity] = "🔥 По активности",
 
         [TextKey.DisabledTitle] = "Отключённые компании",
         [TextKey.DisabledEmpty] = "Отключённых нет — слежу за всеми вашими компаниями.",
@@ -163,8 +173,22 @@ internal static class RussianTexts
         [TextKey.VacanciesCount] = "Подходящих открытых вакансий: {0}.",
         [TextKey.VacanciesShownOf] = "Показаны {0} вакансий из {1} — самые свежие.",
         [TextKey.VacancyUnknownLocation] = "Локация неизвестна",
-        [TextKey.VacanciesByCompany] = "🏢 Группировать по компаниям",
-        [TextKey.VacanciesByLocation] = "📍 Группировать по локации",
+        [TextKey.VacanciesByCompany] = "🏢 По компаниям",
+        [TextKey.VacanciesByLocation] = "📍 По локации",
+        [TextKey.VacanciesByMonth] = "🗓 По месяцам",
+        [TextKey.VacanciesByActivity] = "🔥 По активности",
+
+        [TextKey.MonthUnknown] = "Дата неизвестна",
+
+        [TextKey.ActivityBlazing] = "Кипит",
+        [TextKey.ActivityHot] = "Оживлённо",
+        [TextKey.ActivityWarm] = "Вяло",
+        [TextKey.ActivityStill] = "Ничего не менялось",
+        [TextKey.ActivityRate] = "{0}/мес",
+        [TextKey.ActivityBreakdown] = "+{0} / ✏️{1} / ❌{2}",
+        [TextKey.ActivityLegend] =
+            "Активность: сколько событий с вакансиями в месяц на сайте компании — появилось / изменилось / закрылось. "
+            + "Неправдоподобное число обычно значит, что сайт переписывает объявления, а не что там нанимают.",
 
         [TextKey.RegionEurope] = "Европа",
         [TextKey.RegionRemote] = "Удалённо",
@@ -197,6 +221,8 @@ internal static class RussianTexts
         [TextKey.NotificationNew] = "Новая",
         [TextKey.NotificationUpdated] = "Изменилась",
         [TextKey.NotificationClosed] = "Закрыта",
-        [TextKey.NotificationNewBoard] = "Найдена новая компания"
+        [TextKey.NotificationNewBoard] = "Найдена новая компания",
+        [TextKey.NotificationWindow] = "🕔 {0}, {1}–{2} UTC",
+        [TextKey.NotificationWindowCounts] = "Изменений: {0}, компаний: {1}"
     };
 }

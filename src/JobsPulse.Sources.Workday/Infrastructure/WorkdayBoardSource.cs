@@ -36,7 +36,7 @@ public sealed class WorkdayBoardSource(
         if (page.Error is not null)
             return SourceTraverseResult.Failed(page.Error, page.BoardMissing);
 
-        var vacancies = await MapAsync(target, config, page.Postings, opts, ct);
+        var vacancies = await MapAsync(config, page.Postings, ct);
 
         if (page.IsComplete)
             return SourceTraverseResult.Complete(vacancies);
@@ -147,17 +147,11 @@ public sealed class WorkdayBoardSource(
     /// The budget bounds that: postings past it are mapped from the list alone instead of turning a poll into a crawl.
     /// </summary>
     private async Task<IReadOnlyList<Vacancy>> MapAsync(
-        SourceTarget target,
         WorkdayBoardConfig config,
         IReadOnlyList<(JobPostingDto Dto, string ExternalPath)> postings,
-        WorkdayOptions opts,
         CancellationToken ct)
     {
-        var withDetails = target.IncludeDescriptions || opts.IncludeContentOnPoll;
-        var budget = withDetails ? Math.Max(0, opts.MaxDescriptionRequests) : 0;
-
         var vacancies = new List<Vacancy>(postings.Count);
-        var skipped = 0;
 
         foreach (var (dto, externalPath) in postings)
         {
@@ -165,32 +159,16 @@ public sealed class WorkdayBoardSource(
 
             JobPostingInfoDto? detail = null;
 
-            if (withDetails && budget > 0)
-            {
-                budget--;
+            var response = await client.GetJobAsync(config, externalPath, ct);
 
-                var response = await client.GetJobAsync(config, externalPath, ct);
-
-                if (response.Success)
-                    detail = response.Value!.JobPostingInfo;
-                else
-                    ctxLog.Debug(
-                        "Posting {Path} of {Board} has no readable detail ({Error})",
-                        externalPath, config.BoardId, response.Error ?? "board is missing");
-            }
-            else if (withDetails)
-            {
-                skipped++;
-            }
+            if (response.Success)
+                detail = response.Value!.JobPostingInfo;
+            else
+                ctxLog.Debug(
+                    "Posting {Path} of {Board} has no readable detail ({Error})",
+                    externalPath, config.BoardId, response.Error ?? "board is missing");
 
             vacancies.Add(mapper.ToVacancy(dto, config, externalPath, detail));
-        }
-
-        if (skipped > 0)
-        {
-            ctxLog.Warn(
-                "Board {Board}: {Skipped} postings are mapped without a description — request budget {Budget} is spent",
-                config.BoardId, skipped, opts.MaxDescriptionRequests);
         }
 
         return vacancies;

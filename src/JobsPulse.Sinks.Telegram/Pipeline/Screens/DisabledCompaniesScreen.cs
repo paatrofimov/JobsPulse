@@ -33,7 +33,7 @@ public sealed class DisabledCompaniesScreen(WatchService watch, WatchlistAccess 
                 new KeyboardBuilder(ctx.Language).Build(CallbackAction.Menu));
         }
 
-        var pageItems = WatchlistsScreen.Paged(disabled, page, out var totalPages);
+        var pageItems = Pager.Slice(disabled, ref page, out var totalPages);
 
         sb.Append($"<p>{BotTexts.Get(TextKey.DisabledHint, ctx.Language)}</p><p>");
 

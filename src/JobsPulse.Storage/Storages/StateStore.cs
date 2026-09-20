@@ -232,6 +232,46 @@ internal class StateStore(
             StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// One grouped count over the three stamps every row already carries, so the indicator costs a single query and
+    /// no extra table. The window is filtered before grouping - a board untouched since then simply has no row.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, BoardActivity>> CountBoardActivityAsync(
+        DateTimeOffset since,
+        CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var counts = await db.SeenVacancies
+            .AsNoTracking()
+            .Where(x =>
+                x.FirstSeenAt >= since ||
+                (x.UpdatedAt != null && x.UpdatedAt >= since) ||
+                (x.ClosedAt != null && x.ClosedAt >= since))
+            .GroupBy(x => new
+            {
+                x.SourceId,
+                x.BoardId
+            })
+            .Select(g => new
+            {
+                g.Key.SourceId,
+                g.Key.BoardId,
+                Opened = g.Count(x => x.FirstSeenAt >= since),
+                Changed = g.Count(x => x.UpdatedAt != null && x.UpdatedAt >= since),
+                Closed = g.Count(x => x.ClosedAt != null && x.ClosedAt >= since)
+            })
+            .ToListAsync(ct);
+
+        // The average gregorian month, so «per month» means the same thing for a 30 and for a 400 day window.
+        var months = Math.Max((clock.GetUtcNow() - since).TotalDays / 30.436875d, 1d / 30.436875d);
+
+        return counts.ToDictionary(
+            x => $"{x.SourceId}/{x.BoardId}",
+            x => new BoardActivity(x.Opened, x.Changed, x.Closed, months),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
     /// <summary>Composite keys cannot be passed as one array - statements are grouped per board instead.</summary>
     private async Task<int> ExecuteByBoardAsync(
         IReadOnlyList<VacancyKey> keys,

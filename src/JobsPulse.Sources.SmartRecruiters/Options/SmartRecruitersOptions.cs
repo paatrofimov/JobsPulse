@@ -6,9 +6,6 @@ public sealed class SmartRecruitersOptions
 
     public string BaseUrl { get; set; } = "https://api.smartrecruiters.com/v1/companies/";
 
-    /// <summary>Descriptions cost one extra request per posting - the list endpoint carries none.</summary>
-    public bool IncludeContentOnPoll { get; set; }
-
     /// <summary>Page size of the posting API (`limit`). SmartRecruiters caps it at 100.</summary>
     public int PageSize { get; set; } = 100;
 
@@ -19,9 +16,6 @@ public sealed class SmartRecruitersOptions
     public int ProbePageSize { get; set; } = 1;
 
     public int MaxSlugGuesses { get; set; } = 8;
-
-    /// <summary>Upper bound on description requests per traversal - the rest of the board is left without them.</summary>
-    public int MaxDescriptionRequests { get; set; } = 100;
 
     // Server-side filters of the posting API - single values, the API does not OR repeated keys.
     public string? Query { get; set; }

@@ -24,6 +24,5 @@ public interface ISuccessFactorsListStrategy
 
     Task<SuccessFactorsFetch<SuccessFactorsListing>> FetchAsync(
         SuccessFactorsBoardConfig config,
-        bool includeDescriptions,
         CancellationToken ct);
 }

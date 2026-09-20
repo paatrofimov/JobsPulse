@@ -306,6 +306,9 @@ loading everything (`CountMatchesByWatchlistAsync` only gives the totals).
 `CountOpenByBoardAsync` and `CountMatchesByBoardAsync` are the two halves of the company list the bot renders: how many
 vacancies a board has at all, and how many of them match one watchlist - counts, so a screen listing 200 companies does
 not load their feeds.
+`CountBoardActivityAsync` is the third such read: how much *moved* on every board since a point in time - see
+`BoardActivity`. It is counted from `seen_vacancy` rather than from `outbox`, which is purged within a day and
+therefore remembers nothing.
 `LoadAllAsync` and `PurgeAllAsync` are admin operations exposed through bot commands, not used by the pipeline;
 `PurgeAllAsync` wipes derived state (vacancies, matches, outbox, registry) and keeps the watchlists, which are
 configuration.
@@ -441,6 +444,18 @@ plan a cycle announces and the coverage it reports back; `TraversalProgress` (wi
 snapshot a reader gets, totals and percentages included. `Percent` treats an empty dataset as complete: nothing to do
 is done, not zero.
 
+## BoardActivity
+
+How much moved on one board inside a window - vacancies opened, changed and closed - plus the length of that window
+in months, so `PerMonth` is comparable between boards. Read from the three stamps `seen_vacancy` already carries
+(`first_seen_at`, `updated_at`, `closed_at`) in one grouped query, so the indicator needs no new table and no history
+of its own.
+
+It is deliberately a count of **events, not posts**: a vacancy that opened and then changed inside the window counts
+twice. A board that keeps rewriting its postings is exactly as interesting to a reader as one that keeps adding them -
+and an implausible rate is usually a source bug, which is the second thing the number is good for. Global to the
+board, not per watchlist: `seen_vacancy` is the shared level.
+
 ## DiscoveryProgress
 
 How much of the crawl dataset is mined - see `IBoardDiscoveryService.GetProgressAsync`.
@@ -494,6 +509,11 @@ Incremental LONG id.
 
 Which watchlist the notification belongs to, denormalized so a delivered message stays readable after the watchlist is
 renamed or deleted. Null only for synthetic items (the `/show_state` dump).
+
+### CreatedAt
+
+When the change was detected and enqueued, not when it is delivered. The telegram sink buckets a batch by it, so
+everything one cycle found within `Delivery:GroupChangesWithinMinutes` reads as a single message.
 
 ### DedupKey
 
