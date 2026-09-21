@@ -66,18 +66,23 @@ registry cycle tests a board against the individual watchlist filters without fe
 
 ### Scheduling
 
-Due-ness is decided by `lastRunByBoard`, an in-memory dictionary keyed by `{source}/{board}` - nothing is persisted,
-so after a restart every board is due at once. A board shared by several watchlists is still one entry there, which is
-what makes the single fetch possible. Interval is the smallest `IntervalMinutesOverride` among the owning watchlists,
-or `PollingIntervalMinutes`. Stamps are written after the whole cycle using the timestamp captured at cycle start, so
-the interval is measured from cycle start and a failed board is not retried earlier than a successful one.
+Due-ness is decided by `board_poll_state` (`IBoardPollStateStorage`), a row per `{source}/{board}` holding when that
+board was last polled. The map is **read from the database at the start of every cycle**, not kept in a field: that
+is what makes a restart continue the schedule instead of finding every board due at once and re-reading the whole
+watchlist. A board shared by several watchlists is still one row there, which is what makes the single fetch
+possible. Interval is the smallest `IntervalMinutesOverride` among the owning watchlists, or
+`PollingIntervalMinutes`.
+
+Stamps are written after the whole cycle, in one statement, using the timestamp captured at cycle start - so the
+interval is measured from cycle start and a failed board is not retried earlier than a successful one. Failures are
+stamped too: an unstamped board would stay the most-overdue one forever and the walk would never get past it.
 
 ### Concurrency and timeouts
 
 `RunCycleAsync` is serialized by a `SemaphoreSlim(1, 1)` - cycles never overlap, a forced wake-up arriving
-mid-cycle waits for the running one. `lastRunByBoard` is therefore touched by one thread at a time.
+mid-cycle waits for the running one. The poll-state map is therefore loaded and stamped by one thread at a time.
 `TryRunCycleAsync` takes the same gate with a zero timeout and returns `CycleRunResult.Busy` instead of queueing -
-it backs the `/force_cycle` bot command. A forced cycle ignores `lastRunByBoard` completely and processes every
+it backs the `/force_cycle` bot command. A forced cycle ignores the poll state completely and processes every
 board, as if the process had just started.
 
 All due boards are started at once and throttled by a `SemaphoreSlim` of `MaxConcurrentEntries`.
@@ -112,8 +117,13 @@ Candidates are enabled watchlists with a **non-empty** filter (`DiscoveredBoardP
 watchlist matching everything would absorb the whole registry, so it is never filled automatically and the skip is
 logged. `AutoAdd = false` and `DryRun` switch promotion off entirely.
 
-The registry is walked round-robin - `BoardsPerCycle` boards per cycle from an in-memory cursor (after a restart
-the walk simply starts over). Concurrency, the per-board pause and the cycle interval are separate options, so the
+The registry is walked **least-recently-polled first** - `BoardsPerCycle` boards per cycle, ordered by their
+`board_poll_state` stamp (a board that has never been polled sorts first, so a fresh discovery is picked up before
+anything else). There is no cursor any more: the order is derived from the stamps, so a restart continues the walk
+where it stopped instead of starting the longest procedure of the installation over again. The whole slice is
+stamped after the fetch pass, failures included, or the same board would be picked every cycle.
+
+Concurrency, the per-board pause and the cycle interval are separate options, so the
 background traffic does not starve the watchlist polling or the discovery crawler. Cycles never overlap
 (`TryRunCycleAsync` with a zero-timeout gate); a board answering 404 is deactivated in the registry
 (`is_active = false`) instead of being deleted.
@@ -276,15 +286,20 @@ One `lock` over a dictionary of a few integers per source: `UnitFinished` is cal
 of a cycle, and a lock is nothing next to the fetch that just finished. A board of a source the plan never mentioned
 is added on the fly - config may have drifted.
 
-In-memory and process-wide, exactly like the scheduling state it mirrors: after a restart nothing is covered yet.
+In-memory and process-wide, but only the *live* half of it is: `IsRunning` and the per-cycle counters start empty
+after a restart, while coverage is computed from `board_poll_state` and therefore survives one. That distinction is
+the whole reason the table exists - the tracker used to mirror in-memory scheduling fields, so a restart reported
+`0 of N boards` and the walk really did begin again.
 
-- `PollingOrchestrator` reports the whole watchlist board set as its dataset, the boards holding a run stamp
-  (`lastRunByBoard`) as the covered part and the due boards as the plan of the cycle. Coverage is sent again after the
-  stamps are written, so it is the post-cycle truth, and an empty or not-due cycle still closes the progress -
-  otherwise the screen would read «still running» forever.
-- `RegistryPollingService` reports the active, unwatched registry as its dataset and the slice as the plan. Its
-  `walkedBySource` counter is cleared when the round-robin cursor wraps, so the percentage means «how much of the
-  registry *this* walk has covered» rather than a number that only ever grows.
+- `PollingOrchestrator` reports the whole watchlist board set as its dataset, the boards carrying a
+  `board_poll_state` stamp as the covered part and the due boards as the plan of the cycle. Coverage is sent again
+  after the stamps are written, so it is the post-cycle truth, and an empty or not-due cycle still closes the
+  progress - otherwise the screen would read «still running» forever.
+- `RegistryPollingService` reports the active, unwatched registry as its dataset and the slice as the plan. Covered
+  there means «stamped within the last full-walk window» - `ceil(boards / BoardsPerCycle) * CycleIntervalMinutes`.
+  The stamps only ever grow, so without that window every board would read as covered forever and the percentage
+  would stop meaning anything after the first walk; with it, it means «how much of the registry the current walk has
+  got through», which is what it meant before - only now across restarts.
 
 ## DeliveryWindow
 
@@ -388,6 +403,16 @@ Kept apart from `IBoardRegistryStorage` because it answers a different question:
 indexes are mined, this one where the current walk stands and what it has accumulated. Implemented in Storage,
 written by `DiscoveryCheckpointTracker` in the discovery project.
 
+## IBoardPollStateStorage
+
+When each board was last polled (`board_poll_state`): `LoadAsync` gives the whole map keyed `{source}/{board}`
+case-insensitively, `StampAsync` writes a batch of `BoardPollStamp` in one upsert. Deliberately the only
+scheduling state of the pipeline, and deliberately not part of `IStateStore`: it is written *outside* the commit
+of a board, after the whole cycle, so a poll that produced no state change still counts as a poll.
+
+The map is loaded whole rather than queried per board - a cycle needs every board's stamp to sort and to report
+coverage anyway, and the table has one narrow row per registry board.
+
 ## ITraversalProgressTracker
 
 Live progress of the two polling cycles - see `TraversalProgressTracker` for why it exists and what «covered» means
@@ -490,6 +515,12 @@ started), whether it is a bootstrap, where it started (`StartedFromCollectionId`
 (`ResumeFromCollectionId`, null once the window is behind it) and the counters accumulated so far. `CollectionsDone`
 counts what the offset has moved past whatever the outcome, `CollectionsProcessed` only the ones that were mined
 whole. `UpdatedAt` is when the offset was last written, so «how stale is this» is answerable from the record alone.
+
+## BoardPollStamp
+
+«This board was polled at this moment» - the unit `IBoardPollStateStorage.StampAsync` takes. A
+`readonly record struct`, because a cycle builds a few hundred of them per sweep and they live for one call;
+`BoardKey` renders the same `{source}/{board}` string the poll-state map is keyed by.
 
 ## WatchlistSubscription / BoardWorkItem
 

@@ -12,6 +12,7 @@ public class JobsPulseDbContext(
     public DbSet<PersistentBoardRegistryEntry> BoardRegistry => Set<PersistentBoardRegistryEntry>();
     public DbSet<PersistentCrawlIndexState> CrawlIndexState => Set<PersistentCrawlIndexState>();
     public DbSet<PersistentDiscoveryCheckpoint> DiscoveryCheckpoints => Set<PersistentDiscoveryCheckpoint>();
+    public DbSet<PersistentBoardPollState> BoardPollState => Set<PersistentBoardPollState>();
     public DbSet<PersistentWatchlist> Watchlists => Set<PersistentWatchlist>();
     public DbSet<PersistentWatchlistEntry> WatchlistEntries => Set<PersistentWatchlistEntry>();
     public DbSet<PersistentWatchlistVacancy> WatchlistVacancies => Set<PersistentWatchlistVacancy>();
@@ -25,6 +26,7 @@ public class JobsPulseDbContext(
         ConfigureBoardRegistry(modelBuilder);
         ConfigureCrawlIndexState(modelBuilder);
         ConfigureDiscoveryCheckpoint(modelBuilder);
+        ConfigureBoardPollState(modelBuilder);
         ConfigureWatchlist(modelBuilder);
         ConfigureWatchlistEntry(modelBuilder);
         ConfigureWatchlistVacancy(modelBuilder);
@@ -102,6 +104,26 @@ public class JobsPulseDbContext(
 
         // ON CONFLICT target - one row per discovery iteration, rewritten while the iteration walks.
         entity.HasIndex(x => x.Iteration)
+            .IsUnique();
+    }
+
+    private static void ConfigureBoardPollState(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentBoardPollState>();
+
+        entity.ToTable("board_poll_state");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // ON CONFLICT target - one row per board, whichever cycle traversed it.
+        entity.HasIndex(x => new
+            {
+                x.SourceId,
+                x.BoardId
+            })
             .IsUnique();
     }
 

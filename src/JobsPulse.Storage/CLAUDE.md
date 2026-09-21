@@ -5,8 +5,9 @@ storage layer as persistent models - conversion happens in `PersistencyExtension
 
 Tables: `seen_vacancy` (current state of a board), `watchlist_vacancy` (which watchlist a vacancy matches),
 `outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `bot_user` (the
-people using the bot), `board_registry` (accumulative list of boards that exist), `crawl_index_state` (which crawl
-indexes were already mined) and `discovery_checkpoint` (where the current discovery walk stands).
+people using the bot), `board_registry` (accumulative list of boards that exist), `board_poll_state` (when each board was last polled),
+`crawl_index_state` (which crawl indexes were already mined) and `discovery_checkpoint` (where the current discovery
+walk stands).
 The watchlist configuration lives here now - there is no JSON watchlist any more.
 
 # Infrastructure
@@ -20,8 +21,8 @@ The watchlist configuration lives here now - there is no JSON watchlist any more
   routines, and a `DbContext` is not thread-safe. Every method creates and disposes its own context.
 - `UseSnakeCaseNamingConvention()` (EFCore.NamingConventions) - C# `PostId` maps to `post_id` automatically, so
   hand-written SQL in `StateStore` matches the EF model without explicit column mappings.
-- `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IWatchlistStorage` and `IBotUserStorage` as singletons;
-  implementations are `internal`.
+- `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IBoardPollStateStorage`, `IWatchlistStorage`,
+  `IDiscoveryCheckpointStorage` and `IBotUserStorage` as singletons; implementations are `internal`.
 
 ## DesignTimeDbContextFactory
 
@@ -38,7 +39,11 @@ all indexes; `20260810175506_AddWatchlists` adds `watchlist`, `watchlist_entry`,
 `watchlist.owner_user_id` (indexed - «my watchlists» is the most frequent read of the bot) and
 `watchlist_entry.worked_at`. Nothing backfills the owner: a migration cannot know who it is, so pre-existing
 watchlists stay system ones. `20260921120000_AddDiscoveryCheckpoint` adds the `discovery_checkpoint` table with its
-unique `iteration` index. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
+unique `iteration` index; `20260921140000_AddBoardPollState` adds `board_poll_state` with its unique
+`(source_id, board_id)` index **and seeds it** from `seen_vacancy` (`MAX(GREATEST(first_seen_at, updated_at,
+closed_at))` per board) - the state it replaces was in memory only, so without the seed the first cycle after the
+upgrade would re-read every board at once, which is exactly the cost the table exists to avoid.
+Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
 
@@ -100,6 +105,17 @@ Table `board_registry` - every board discovery has ever confirmed to exist.
 - `is_active`: reserved for boards that stop answering; nothing flips it yet.
 - `configuration`: `jsonb`, source-specific board parameters for an ATS a single slug cannot address (Workday). The
   upsert `COALESCE`s it, so a discovery pass that could not read one does not erase the stored one.
+
+## PersistentBoardPollState
+
+Table `board_poll_state` - one row per `(source_id, board_id)` (unique, the `ON CONFLICT` target), holding
+`last_polled_at` only. Not a column on `board_registry`, and not part of `seen_vacancy`: a watchlist board may have
+no registry row at all, and «when did we last ask this board» must be recorded even for a poll that found nothing
+and wrote no vacancy.
+
+Kept narrow on purpose - a cycle loads the whole table to sort its slice and to compute coverage, so the row is one
+key plus one stamp and nothing else. Nothing is ever deleted here: a board that comes back keeps its history, and a
+stale row for a board no longer in the registry is simply never joined.
 
 ## PersistentWatchlist / PersistentWatchlistEntry
 
@@ -205,7 +221,8 @@ own: `outbox` is purged within a day and cannot answer this.
 ### LoadAllAsync / PurgeAllAsync
 
 Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and
-title. `PurgeAllAsync` deletes `outbox`, `watchlist_vacancy`, `seen_vacancy`, `board_registry`, `crawl_index_state` and
+title. `PurgeAllAsync` deletes `outbox`, `watchlist_vacancy`, `seen_vacancy`, `board_registry`, `board_poll_state`
+(the schedule of boards that are gone), `crawl_index_state` and
 `discovery_checkpoint` (the offset points into a dataset that no longer exists - a resumed iteration would skip
 collections nothing has mined any more) in one transaction - after it the next cycle refills the boards from scratch. The watchlists themselves are configuration and
 are never purged.
@@ -218,6 +235,12 @@ kind of idempotent upsert keyed by `(source_id, collection_id)`.
 
 `CountBySourceAsync` and `CountProcessedCrawlsBySourceAsync` are single grouped counts - the aggregates the admin
 progress block reads instead of listing the registry it only wants the size of.
+
+## BoardPollStateStorage
+
+Reads via EF into a case-insensitive `{source}/{board}` map, writes via a single raw
+`INSERT ... SELECT FROM unnest(@sources, @boards, @stamps) ... ON CONFLICT DO UPDATE`: a cycle stamps its whole
+slice at once, and a command per board would cost more round trips than the fetch that produced them.
 
 ## DiscoveryCheckpointStorage
 

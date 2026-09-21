@@ -47,6 +47,7 @@ public static class StorageServiceCollectionExtensions
         services.AddSingleton<IOutboxStorage, OutboxStorage>();
         services.AddSingleton<IBoardRegistryStorage, BoardRegistryStorage>();
         services.AddSingleton<IDiscoveryCheckpointStorage, DiscoveryCheckpointStorage>();
+        services.AddSingleton<IBoardPollStateStorage, BoardPollStateStorage>();
         services.AddSingleton<IWatchlistStorage, WatchlistStorage>();
         services.AddSingleton<IBotUserStorage, BotUserStorage>();
 

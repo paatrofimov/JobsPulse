@@ -8,7 +8,7 @@ namespace JobsPulse.Core.Pipeline;
 
 /// <summary>
 /// Secondary polling cycle over the discovered board registry. The watchlist cycle stays the priority feed -
-/// this one walks the registry round-robin, a slice per cycle, with its own throttling.
+/// this one walks the registry least-recently-polled first, a slice per cycle, with its own throttling.
 ///
 /// A registry board belongs to no watchlist, so the sweep itself never notifies: it keeps the global vacancy state
 /// warm (which is what makes /boards useful) and deactivates boards that stopped answering. What it does produce is
@@ -20,21 +20,14 @@ public sealed class RegistryPollingService(
     IWatchlistStorage watchlists,
     BoardProcessor boardProcessor,
     DiscoveredBoardPromoter promoter,
+    IBoardPollStateStorage pollState,
     ITraversalProgressTracker progress,
     IOptionsMonitor<RegistryPollingOptions> options,
+    TimeProvider clock,
     ILog log)
 {
     private readonly ILog ctxLog = log.ForContext<RegistryPollingService>();
     private readonly SemaphoreSlim cycleGate = new(1, 1);
-
-    /// <summary>Round-robin cursor over the registry. In-memory: after a restart the walk simply starts over.</summary>
-    private int cursor;
-
-    /// <summary>
-    /// Boards of the current walk, per source. Reset when the cursor wraps, so the reported percentage is «how much
-    /// of the registry this round has covered» rather than a number that only ever grows.
-    /// </summary>
-    private readonly Dictionary<string, int> walkedBySource = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<CycleRunResult> TryRunCycleAsync(CancellationToken ct)
     {
@@ -81,13 +74,18 @@ public sealed class RegistryPollingService(
             return CycleReport.Empty;
         }
 
-        var slice = TakeSlice(boards, opts.BoardsPerCycle);
+        var now = clock.GetUtcNow();
 
-        progress.CycleStarted(TraversalKind.Registry, Coverage(boards, slice));
+        var polled = new Dictionary<string, DateTimeOffset>(
+            await pollState.LoadAsync(ct), StringComparer.OrdinalIgnoreCase);
+
+        var slice = TakeSlice(boards, polled, opts.BoardsPerCycle);
+
+        progress.CycleStarted(TraversalKind.Registry, Coverage(boards, slice, polled, opts, now));
 
         ctxLog.Info(
-            "Start registry cycle: {Slice} of {Total} boards (cursor {Cursor})",
-            slice.Count, boards.Count, cursor);
+            "Start registry cycle: {Slice} of {Total} boards, {Covered} of them already swept in this walk",
+            slice.Count, boards.Count, Swept(boards, polled, opts, now));
 
         var settings = new BoardProcessSettings(
             opts.SingleEntryProcessTimeoutSeconds,
@@ -110,12 +108,14 @@ public sealed class RegistryPollingService(
             }
         }));
 
-        foreach (var board in slice)
-        {
-            walkedBySource[board.SourceId] = walkedBySource.GetValueOrDefault(board.SourceId) + 1;
-        }
+        // Every board of the slice is stamped, failures included: an unstamped board would stay the
+        // least-recently-polled one forever and the walk would never get past it.
+        await pollState.StampAsync([.. slice.Select(b => new BoardPollStamp(b.SourceId, b.BoardId, now))], ct);
 
-        progress.CycleFinished(TraversalKind.Registry, Coverage(boards, []));
+        foreach (var board in slice)
+            polled[$"{board.SourceId}/{board.BoardId}"] = now;
+
+        progress.CycleFinished(TraversalKind.Registry, Coverage(boards, [], polled, opts, now));
 
         // Promotion is database work only, so it runs after the fetch pass: one writer, and the cap is exact.
         var promoted = await PromoteAsync(results, SelectPromotionCandidates(enabled, opts), opts, ct);
@@ -171,7 +171,7 @@ public sealed class RegistryPollingService(
             if (promoted >= opts.MaxAutoAddedBoardsPerCycle)
             {
                 // A cap that silently swallows work reads as «nothing matched» - say what was left unexamined.
-                // The cursor has already moved past these boards, so they come back only after a full walk.
+                // These boards are already stamped as polled, so they come back only after a full walk.
                 ctxLog.Warn(
                     "Promotion cap of {Cap} boards per cycle is reached — {Left} boards of this slice are not "
                     + "examined for promotion until the registry walk comes round to them again",
@@ -225,13 +225,18 @@ public sealed class RegistryPollingService(
     }
 
     /// <summary>
-    /// The per-source progress units of the sweep: the active registry as the dataset, the boards the current walk
-    /// has already visited as its covered part, and the slice as the plan of this cycle.
+    /// The per-source progress units of the sweep: the active registry as the dataset, the boards swept within the
+    /// current walk as its covered part, and the slice as the plan of this cycle.
     /// </summary>
-    private List<TraversalSourceUnits> Coverage(
+    private static List<TraversalSourceUnits> Coverage(
         IReadOnlyList<RegisteredBoard> boards,
-        IReadOnlyList<RegisteredBoard> slice)
+        IReadOnlyList<RegisteredBoard> slice,
+        IReadOnlyDictionary<string, DateTimeOffset> polled,
+        RegistryPollingOptions opts,
+        DateTimeOffset now)
     {
+        var since = now - WalkLength(boards.Count, opts);
+
         var planned = slice
             .GroupBy(b => b.SourceId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
@@ -245,28 +250,56 @@ public sealed class RegistryPollingService(
                     SourceId = g.Key,
                     Planned = planned.GetValueOrDefault(g.Key),
                     DatasetTotal = g.Count(),
-                    DatasetCovered = walkedBySource.GetValueOrDefault(g.Key)
+                    DatasetCovered = g.Count(b => IsSwept(b, polled, since))
                 })
         ];
     }
 
-    private List<RegisteredBoard> TakeSlice(IReadOnlyList<RegisteredBoard> boards, int size)
+    private static int Swept(
+        IReadOnlyList<RegisteredBoard> boards,
+        IReadOnlyDictionary<string, DateTimeOffset> polled,
+        RegistryPollingOptions opts,
+        DateTimeOffset now)
     {
-        if (cursor >= boards.Count)
-            cursor = 0;
+        var since = now - WalkLength(boards.Count, opts);
 
-        // A fresh walk over the registry starts a fresh coverage count.
-        if (cursor == 0)
-            walkedBySource.Clear();
-
-        var slice = boards.Skip(cursor).Take(size).ToList();
-
-        // The registry is smaller than one slice - wrap around instead of idling.
-        if (slice.Count < size && boards.Count > slice.Count)
-            slice.AddRange(boards.Take(size - slice.Count));
-
-        cursor = boards.Count == 0 ? 0 : (cursor + slice.Count) % boards.Count;
-
-        return slice;
+        return boards.Count(b => IsSwept(b, polled, since));
     }
+
+    private static bool IsSwept(
+        RegisteredBoard board,
+        IReadOnlyDictionary<string, DateTimeOffset> polled,
+        DateTimeOffset since) =>
+        polled.TryGetValue($"{board.SourceId}/{board.BoardId}", out var at) && at >= since;
+
+    /// <summary>
+    /// How long one full walk over the registry takes at the configured pace. Coverage is «swept within this
+    /// window», because the stamps only ever grow: without a window every board would read as covered forever,
+    /// and the percentage would never mean anything again after the first walk.
+    /// </summary>
+    private static TimeSpan WalkLength(int boards, RegistryPollingOptions opts)
+    {
+        var cycles = (int)Math.Ceiling(boards / (double)Math.Max(1, opts.BoardsPerCycle));
+
+        return TimeSpan.FromMinutes((double)Math.Max(1, cycles) * opts.CycleIntervalMinutes);
+    }
+
+    /// <summary>
+    /// The slice of this cycle: the least recently polled boards first. The order is taken from
+    /// `board_poll_state`, so a restart continues the walk where it stopped instead of starting it over, and a
+    /// board that has never been polled (a fresh discovery) is picked up before anything else.
+    /// </summary>
+    private static List<RegisteredBoard> TakeSlice(
+        IReadOnlyList<RegisteredBoard> boards,
+        IReadOnlyDictionary<string, DateTimeOffset> polled,
+        int size) =>
+    [
+        .. boards
+            .OrderBy(b => polled.TryGetValue($"{b.SourceId}/{b.BoardId}", out var at)
+                ? at
+                : DateTimeOffset.MinValue)
+            .ThenBy(b => b.SourceId, StringComparer.Ordinal)
+            .ThenBy(b => b.BoardId, StringComparer.Ordinal)
+            .Take(Math.Max(1, size))
+    ];
 }

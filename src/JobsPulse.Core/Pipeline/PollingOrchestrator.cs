@@ -13,15 +13,13 @@ namespace JobsPulse.Core.Pipeline;
 public sealed class PollingOrchestrator(
     IWatchlistStorage watchlists,
     BoardProcessor boardProcessor,
+    IBoardPollStateStorage pollState,
     ITraversalProgressTracker progress,
     IOptionsMonitor<WatchlistPollingOptions> options,
     TimeProvider clock,
     ILog log)
 {
     private readonly ILog ctxLog = log.ForContext<PollingOrchestrator>();
-
-    /// <summary>Scheduling state is per board, not per watchlist entry - the fetch is what has to be throttled.</summary>
-    private readonly Dictionary<string, DateTimeOffset> lastRunByBoard = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly SemaphoreSlim cycleGate = new(1, 1);
 
@@ -71,20 +69,25 @@ public sealed class PollingOrchestrator(
             return CycleReport.Empty;
         }
 
+        // Read from the database, not from a field: this is what makes a restart continue the schedule instead of
+        // finding every board due at once and re-reading the whole watchlist.
+        var polled = new Dictionary<string, DateTimeOffset>(
+            await pollState.LoadAsync(ct), StringComparer.OrdinalIgnoreCase);
+
         // A forced cycle ignores the scheduling state entirely -- every board is processed as on start-up.
         var due = force
             ? plan.Boards
-            : plan.Boards.Where(b => IsDue(b, opts, now)).ToList();
+            : plan.Boards.Where(b => IsDue(b, polled, opts, now)).ToList();
 
         if (due.Count == 0)
         {
             ctxLog.Debug("No boards are due for traversal (watchlist boards total: {Total})", plan.Boards.Count);
-            progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, []));
+            progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, [], polled));
 
             return CycleReport.Empty;
         }
 
-        progress.CycleStarted(TraversalKind.Watchlist, Coverage(plan.Boards, due));
+        progress.CycleStarted(TraversalKind.Watchlist, Coverage(plan.Boards, due, polled));
 
         ctxLog.Info(
             "Start cycle: {Due} out of {Total} boards to traverse, {Filters} watchlist filters",
@@ -111,11 +114,15 @@ public sealed class PollingOrchestrator(
             }
         }));
 
+        // The stamp is the cycle start time, so the interval is measured from there and a failed board is not
+        // retried earlier than a successful one. It is written for every due board, failures included.
+        await pollState.StampAsync([.. due.Select(b => new BoardPollStamp(b.SourceId, b.BoardId, now))], ct);
+
         foreach (var board in due)
-            lastRunByBoard[board.BoardKey] = now;
+            polled[board.BoardKey] = now;
 
         // Coverage is reported after the stamps are written, so it is the post-cycle truth.
-        progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, []));
+        progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, [], polled));
 
         var report = CycleReport.Aggregate(results);
         ctxLog.Info(
@@ -152,9 +159,10 @@ public sealed class PollingOrchestrator(
     /// The per-source progress units of the cycle: the whole watchlist board set as the dataset, the boards that
     /// already carry a run stamp as its covered part, and the due ones as the plan of this cycle.
     /// </summary>
-    private List<TraversalSourceUnits> Coverage(
+    private static List<TraversalSourceUnits> Coverage(
         IReadOnlyList<BoardWorkItem> boards,
-        IReadOnlyList<BoardWorkItem> due)
+        IReadOnlyList<BoardWorkItem> due,
+        IReadOnlyDictionary<string, DateTimeOffset> polled)
     {
         var planned = due
             .GroupBy(b => b.SourceId, StringComparer.OrdinalIgnoreCase)
@@ -169,14 +177,19 @@ public sealed class PollingOrchestrator(
                     SourceId = g.Key,
                     Planned = planned.GetValueOrDefault(g.Key),
                     DatasetTotal = g.Count(),
-                    DatasetCovered = g.Count(b => lastRunByBoard.ContainsKey(b.BoardKey))
+                    DatasetCovered = g.Count(b => polled.ContainsKey(b.BoardKey))
                 })
         ];
     }
 
-    private bool IsDue(BoardWorkItem board, WatchlistPollingOptions opts, DateTimeOffset now)
+    private static bool IsDue(
+        BoardWorkItem board,
+        IReadOnlyDictionary<string, DateTimeOffset> polled,
+        WatchlistPollingOptions opts,
+        DateTimeOffset now)
     {
         var interval = TimeSpan.FromMinutes(board.IntervalMinutesOverride ?? opts.PollingIntervalMinutes);
-        return !lastRunByBoard.TryGetValue(board.BoardKey, out var last) || now - last >= interval;
+
+        return !polled.TryGetValue(board.BoardKey, out var last) || now - last >= interval;
     }
 }

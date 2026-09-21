@@ -16,7 +16,7 @@ public sealed class RegistryPollingOptions
 
     [Range(1, 1440)] public int StartDelayMinutes { get; set; } = 5;
 
-    /// <summary>How many registry boards one cycle takes. The registry is walked round-robin across cycles.</summary>
+    /// <summary>How many registry boards one cycle takes, least recently polled first.</summary>
     [Range(1, 1000)] public int BoardsPerCycle { get; set; } = 50;
 
     [Range(1, 8)] public int MaxConcurrentBoards { get; set; } = 2;
