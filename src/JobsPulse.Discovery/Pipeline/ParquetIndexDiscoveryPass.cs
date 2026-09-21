@@ -22,6 +22,7 @@ public sealed class ParquetIndexDiscoveryPass(
     IEnumerable<IBoardUrlParser> parsers,
     IBoardRegistryStorage registry,
     BoardTokenSink sink,
+    DiscoveryCheckpointTracker checkpoints,
     TimeProvider clock,
     ILog log)
 {
@@ -68,6 +69,10 @@ public sealed class ParquetIndexDiscoveryPass(
             if (pendingSources.Count == 0)
             {
                 ctxLog.Debug("Collection {Collection} is already processed for every source", collection.Id);
+
+                // Nothing to do here, but the offset still moves - a restart must not stop on it again.
+                await checkpoints.CollectionFinishedAsync(collection, BoardDiscoveryReport.Empty, ct);
+
                 continue;
             }
 
@@ -90,9 +95,13 @@ public sealed class ParquetIndexDiscoveryPass(
             if (!scan.Completed)
                 stage.Outcome("gave up");
 
-            totals = DiscoveryReports.Merge(
-                totals,
-                await StoreAsync(collection, scan, pendingSources, state, opts, ct));
+            var stored = await StoreAsync(collection, scan, pendingSources, state, opts, ct);
+
+            totals = DiscoveryReports.Merge(totals, stored);
+
+            // The collection is behind the walk for every source that needed it, whatever its outcome - a failed
+            // one stays pending in `crawl_index_state` and is picked up by the next iteration, not by a restart.
+            await checkpoints.CollectionFinishedAsync(collection, stored, ct);
 
             if (scan.Failed)
             {

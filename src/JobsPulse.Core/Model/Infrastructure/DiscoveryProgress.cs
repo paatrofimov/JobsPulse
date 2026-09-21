@@ -12,4 +12,10 @@ public sealed record DiscoveryProgress
 
     public IReadOnlyDictionary<string, int> ProcessedBySource { get; init; } =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The iteration being walked right now, or the last one that ran. Null before the first run.</summary>
+    public DiscoveryCheckpoint? Current { get; init; }
+
+    /// <summary>The iteration before it - what «last time» did, so the current numbers have something to mean.</summary>
+    public DiscoveryCheckpoint? Previous { get; init; }
 }

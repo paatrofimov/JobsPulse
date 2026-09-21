@@ -365,6 +365,14 @@ on the discovery project. `GetProgressAsync` answers how much of the crawl datas
 the ones recorded per source - and never throws: an index that does not answer is reported as «total unknown», because
 the number is nice to have and not worth failing a screen over.
 
+## IDiscoveryCheckpointStorage
+
+The discovery offset (`discovery_checkpoint`), one row per iteration: `GetLatestAsync(count)` newest first and
+`SaveAsync`, an upsert on the iteration number - the same row is rewritten every few minutes while a run walks.
+Kept apart from `IBoardRegistryStorage` because it answers a different question: that one records which crawl
+indexes are mined, this one where the current walk stands and what it has accumulated. Implemented in Storage,
+written by `DiscoveryCheckpointTracker` in the discovery project.
+
 ## ITraversalProgressTracker
 
 Live progress of the two polling cycles - see `TraversalProgressTracker` for why it exists and what «covered» means
@@ -456,9 +464,17 @@ twice. A board that keeps rewriting its postings is exactly as interesting to a 
 and an implausible rate is usually a source bug, which is the second thing the number is good for. Global to the
 board, not per watchlist: `seen_vacancy` is the shared level.
 
-## DiscoveryProgress
+## DiscoveryProgress / DiscoveryCheckpoint
 
-How much of the crawl dataset is mined - see `IBoardDiscoveryService.GetProgressAsync`.
+`DiscoveryProgress` is how much of the crawl dataset is mined - see `IBoardDiscoveryService.GetProgressAsync` - plus
+the `Current` and `Previous` iterations, which is what lets the admin screen say how the running walk compares to
+the last one.
+
+`DiscoveryCheckpoint` is one iteration: its ordinal (`Iteration` - how many discovery runs the installation has ever
+started), whether it is a bootstrap, where it started (`StartedFromCollectionId`), where a restart continues from
+(`ResumeFromCollectionId`, null once the window is behind it) and the counters accumulated so far. `CollectionsDone`
+counts what the offset has moved past whatever the outcome, `CollectionsProcessed` only the ones that were mined
+whole. `UpdatedAt` is when the offset was last written, so «how stale is this» is answerable from the record alone.
 
 ## WatchlistSubscription / BoardWorkItem
 

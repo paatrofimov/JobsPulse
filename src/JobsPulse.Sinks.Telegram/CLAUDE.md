@@ -212,7 +212,13 @@ part of a rendered vacancy. A company longer than one screen is continued under 
 The admin answer to «how far has the walk got». `ProgressReporter` gathers the three sources of truth - the in-memory
 `ITraversalProgressTracker`, `IBoardDiscoveryService.GetProgressAsync` and the registry row counts - and
 `ProgressFormatter` renders them: per traversal, the state of the current cycle (`done of planned`, errors) and the
-dataset coverage (`covered of total`, percent), per source and in total, plus the mined share of the crawl indexes. A
+dataset coverage (`covered of total`, percent), per source and in total, plus the mined share of the crawl indexes.
+
+The crawl block leads with the **discovery iteration** (`DiscoveryCheckpoint`): which one it is by count, whether it
+is a bootstrap, when and from which crawl index it started, where its offset stands now (`done of total`), what it
+has accumulated - urls, tokens, new boards - and the same line for the previous iteration, so the current numbers
+have something to be read against. Those counters are written every `Discovery:CheckpointIntervalMinutes`, and «offset
+saved Nm ago» says how stale they are rather than pretending they are live. A
 source that exists only in the registry is named as «not swept yet» rather than left out - a missing row reads as
 nothing to do.
 

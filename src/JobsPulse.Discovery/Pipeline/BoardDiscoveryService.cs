@@ -19,6 +19,7 @@ public sealed class BoardDiscoveryService(
     IBoardRegistryStorage registry,
     ParquetIndexDiscoveryPass parquetPass,
     HttpIndexDiscoveryPass httpPass,
+    DiscoveryCheckpointTracker checkpoints,
     IOptionsMonitor<DiscoveryOptions> options,
     TimeProvider clock,
     ILog log) : IBoardDiscoveryService
@@ -38,6 +39,9 @@ public sealed class BoardDiscoveryService(
         }
         finally
         {
+            // A shutdown or a failure must not throw the walk away - whatever the offset stands at is written.
+            await checkpoints.FlushAsync(true, CancellationToken.None);
+
             runGate.Release();
         }
     }
@@ -47,11 +51,14 @@ public sealed class BoardDiscoveryService(
         // A run in progress holds the gate - the same trick the run itself uses to refuse a second one.
         var running = runGate.CurrentCount == 0;
         var processed = await registry.CountProcessedCrawlsBySourceAsync(ct);
+        var (current, previous) = await checkpoints.ReadAsync(ct);
 
         return new DiscoveryProgress
         {
             IsRunning = running,
-            ProcessedBySource = processed
+            ProcessedBySource = processed,
+            Current = current,
+            Previous = previous
         };
     }
 
@@ -86,10 +93,22 @@ public sealed class BoardDiscoveryService(
             "Discovery window: {Count} of {Total} collections ({First} … {Last})",
             window.Count, collections.Count, window.FirstOrDefault()?.Id, window.LastOrDefault()?.Id);
 
+        // The offset of the iteration decides where the walk actually starts - a restart continues the window it
+        // was cut short in instead of re-reading everything the last process had already got through.
+        var checkpoint = await checkpoints.BeginAsync(full, window, opts, ct);
+        var remaining = Resume(window, checkpoint);
+
+        if (remaining.Count < window.Count)
+        {
+            ctxLog.Info(
+                "Iteration {Iteration} continues from {Resume}: {Remaining} of {Total} collections are left",
+                checkpoint.Iteration, checkpoint.ResumeFromCollectionId, remaining.Count, window.Count);
+        }
+
         var report = BoardDiscoveryReport.Empty;
 
         if (opts.Mode.HasFlag(DiscoveryMode.Parquet))
-            report = DiscoveryReports.Merge(report, await parquetPass.RunAsync(window, full, opts, ct));
+            report = DiscoveryReports.Merge(report, await parquetPass.RunAsync(remaining, full, opts, ct));
 
         // The http pass reads `crawl_index_state`, so whatever parquet has finished is skipped here for free -
         // both when http is a mode of its own and when it is only the fallback for a failed parquet collection.
@@ -110,8 +129,10 @@ public sealed class BoardDiscoveryService(
                 report = report with { CollectionsPending = 0 };
             }
 
-            report = DiscoveryReports.Merge(report, await httpPass.RunAsync(window, full, opts, ct));
+            report = DiscoveryReports.Merge(report, await httpPass.RunAsync(remaining, full, opts, ct));
         }
+
+        await checkpoints.CompleteAsync(ct);
 
         ctxLog.Info(
             "Discovery finished in {Elapsed}: {Collections} indexes scanned, {Failed} failed, {Pending} left pending, "
@@ -120,6 +141,26 @@ public sealed class BoardDiscoveryService(
             report.RecordsSeen, report.TokensFound, report.BoardsAdded);
 
         return report;
+    }
+
+    /// <summary>
+    /// Drops everything the iteration has already walked. An offset naming a collection the window no longer holds
+    /// is ignored rather than guessed at - the whole window is walked again and `crawl_index_state` keeps that cheap.
+    /// </summary>
+    private static IReadOnlyList<CrawlCollection> Resume(
+        IReadOnlyList<CrawlCollection> window,
+        DiscoveryCheckpoint checkpoint)
+    {
+        if (checkpoint.ResumeFromCollectionId is not { } resume)
+            return window;
+
+        var index = window
+            .Select((c, i) => (c.Id, Index: i))
+            .Where(x => string.Equals(x.Id, resume, StringComparison.OrdinalIgnoreCase))
+            .Select(x => (int?)x.Index)
+            .FirstOrDefault();
+
+        return index is null ? window : window.Skip(index.Value).ToList();
     }
 
     /// <summary>Bootstrap takes the union of the last N years; an incremental run takes only fresh indexes.</summary>

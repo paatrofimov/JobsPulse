@@ -11,6 +11,7 @@ public class JobsPulseDbContext(
     public DbSet<PersistentOutboxItem> Outbox => Set<PersistentOutboxItem>();
     public DbSet<PersistentBoardRegistryEntry> BoardRegistry => Set<PersistentBoardRegistryEntry>();
     public DbSet<PersistentCrawlIndexState> CrawlIndexState => Set<PersistentCrawlIndexState>();
+    public DbSet<PersistentDiscoveryCheckpoint> DiscoveryCheckpoints => Set<PersistentDiscoveryCheckpoint>();
     public DbSet<PersistentWatchlist> Watchlists => Set<PersistentWatchlist>();
     public DbSet<PersistentWatchlistEntry> WatchlistEntries => Set<PersistentWatchlistEntry>();
     public DbSet<PersistentWatchlistVacancy> WatchlistVacancies => Set<PersistentWatchlistVacancy>();
@@ -23,6 +24,7 @@ public class JobsPulseDbContext(
         ConfigureOutbox(modelBuilder);
         ConfigureBoardRegistry(modelBuilder);
         ConfigureCrawlIndexState(modelBuilder);
+        ConfigureDiscoveryCheckpoint(modelBuilder);
         ConfigureWatchlist(modelBuilder);
         ConfigureWatchlistEntry(modelBuilder);
         ConfigureWatchlistVacancy(modelBuilder);
@@ -84,6 +86,22 @@ public class JobsPulseDbContext(
                 x.SourceId,
                 x.CollectionId
             })
+            .IsUnique();
+    }
+
+    private static void ConfigureDiscoveryCheckpoint(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentDiscoveryCheckpoint>();
+
+        entity.ToTable("discovery_checkpoint");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // ON CONFLICT target - one row per discovery iteration, rewritten while the iteration walks.
+        entity.HasIndex(x => x.Iteration)
             .IsUnique();
     }
 

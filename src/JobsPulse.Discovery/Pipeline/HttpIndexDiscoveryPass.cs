@@ -18,6 +18,7 @@ public sealed class HttpIndexDiscoveryPass(
     IEnumerable<IBoardUrlParser> parsers,
     IBoardRegistryStorage registry,
     BoardTokenSink sink,
+    DiscoveryCheckpointTracker checkpoints,
     TimeProvider clock,
     ILog log)
 {
@@ -130,7 +131,7 @@ public sealed class HttpIndexDiscoveryPass(
                     collection.Id, scan.Status, scan.Records, scan.Tokens.Count, added);
             }
 
-            totals = DiscoveryReports.Merge(totals, new BoardDiscoveryReport(
+            var collectionReport = new BoardDiscoveryReport(
                 true,
                 scan.Completed ? 1 : 0,
                 scan.Records,
@@ -138,7 +139,13 @@ public sealed class HttpIndexDiscoveryPass(
                 scan.Tokens.Count,
                 added,
                 scan.Failed ? 1 : 0,
-                scan.Completed ? 0 : 1));
+                scan.Completed ? 0 : 1);
+
+            totals = DiscoveryReports.Merge(totals, collectionReport);
+
+            // Counters only: this pass is source-major, so the window has not moved - the next source still has
+            // to walk this very collection.
+            await checkpoints.CountersAdvancedAsync(collectionReport, ct);
 
             if (scan.Failed)
             {

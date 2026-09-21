@@ -64,4 +64,10 @@ public sealed class DiscoveryOptions
 
     /// <summary>`collinfo.json` changes a few times a year - re-reading it on every run is wasted traffic.</summary>
     public int CollectionsCacheMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// How often the discovery offset is written to `discovery_checkpoint`. A restart costs at most this much of
+    /// the walk, and it is also the granularity the bot shows the accumulated counters at.
+    /// </summary>
+    public int CheckpointIntervalMinutes { get; set; } = 5;
 }

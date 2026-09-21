@@ -5,8 +5,8 @@ storage layer as persistent models - conversion happens in `PersistencyExtension
 
 Tables: `seen_vacancy` (current state of a board), `watchlist_vacancy` (which watchlist a vacancy matches),
 `outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `bot_user` (the
-people using the bot), `board_registry` (accumulative list of boards that exist) and `crawl_index_state` (which crawl
-indexes were already mined).
+people using the bot), `board_registry` (accumulative list of boards that exist), `crawl_index_state` (which crawl
+indexes were already mined) and `discovery_checkpoint` (where the current discovery walk stands).
 The watchlist configuration lives here now - there is no JSON watchlist any more.
 
 # Infrastructure
@@ -37,7 +37,8 @@ all indexes; `20260810175506_AddWatchlists` adds `watchlist`, `watchlist_entry`,
 `watchlist_entry.origin` and `outbox.discovered`; `AddBotUsersAndOwnership` adds the `bot_user` table,
 `watchlist.owner_user_id` (indexed - «my watchlists» is the most frequent read of the bot) and
 `watchlist_entry.worked_at`. Nothing backfills the owner: a migration cannot know who it is, so pre-existing
-watchlists stay system ones. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
+watchlists stay system ones. `20260921120000_AddDiscoveryCheckpoint` adds the `discovery_checkpoint` table with its
+unique `iteration` index. Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
 
@@ -136,6 +137,16 @@ every incoming update; `language` is a setting and is only ever written by the u
 Table `crawl_index_state` - one row per `(source_id, collection_id)`. A crawl index is written here only after it
 has been fully scanned, so an interrupted run re-reads it, and a finished one is never read again.
 
+## PersistentDiscoveryCheckpoint
+
+Table `discovery_checkpoint` - one row per discovery iteration, unique on `iteration` (the `ON CONFLICT` target: the
+row of a running iteration is rewritten every few minutes). Unlike `crawl_index_state` it is written *while* the
+walk runs, which is the whole point - `resume_from_collection_id` is where a restarted process picks the window up,
+and the counter columns accumulate across restarts instead of beginning again. An unfinished row (`finished_at IS
+NULL`) is the mark of a process that died mid-walk; a finished one is never resumed.
+
+`is_full` rather than `full`: the latter is a reserved word in SQL.
+
 ## PersistentOutboxStatus
 
 - Intermediate
@@ -194,8 +205,9 @@ own: `outbox` is purged within a day and cannot answer this.
 ### LoadAllAsync / PurgeAllAsync
 
 Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and
-title. `PurgeAllAsync` deletes `outbox`, `watchlist_vacancy`, `seen_vacancy`, `board_registry` and `crawl_index_state` in one
-transaction - after it the next cycle refills the boards from scratch. The watchlists themselves are configuration and
+title. `PurgeAllAsync` deletes `outbox`, `watchlist_vacancy`, `seen_vacancy`, `board_registry`, `crawl_index_state` and
+`discovery_checkpoint` (the offset points into a dataset that no longer exists - a resumed iteration would skip
+collections nothing has mined any more) in one transaction - after it the next cycle refills the boards from scratch. The watchlists themselves are configuration and
 are never purged.
 
 ## BoardRegistryStorage
@@ -206,6 +218,12 @@ kind of idempotent upsert keyed by `(source_id, collection_id)`.
 
 `CountBySourceAsync` and `CountProcessedCrawlsBySourceAsync` are single grouped counts - the aggregates the admin
 progress block reads instead of listing the registry it only wants the size of.
+
+## DiscoveryCheckpointStorage
+
+Reads via EF (the last N iterations, newest first), writes via a raw `ON CONFLICT (iteration) DO UPDATE` upsert -
+the row of the running iteration is rewritten on every checkpoint, and an insert-or-update is one round trip
+instead of a read plus a write.
 
 ## WatchlistStorage
 

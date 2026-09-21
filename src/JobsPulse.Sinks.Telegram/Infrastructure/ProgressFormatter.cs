@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using JobsPulse.Core.Model.Infrastructure;
 
@@ -30,7 +31,7 @@ public static class ProgressFormatter
             });
         }
 
-        sb.Append(RenderDiscovery(discovery));
+        sb.Append(RenderDiscovery(discovery, now));
 
         return sb.ToString();
     }
@@ -87,10 +88,12 @@ public static class ProgressFormatter
         return sb.Append("</p>").ToString();
     }
 
-    private static string RenderDiscovery(DiscoveryProgress discovery)
+    private static string RenderDiscovery(DiscoveryProgress discovery, DateTimeOffset now)
     {
         var sb = new StringBuilder(
             $"<p><b>Crawl indexes</b> — {(discovery.IsRunning ? "mining now" : "idle")}<br>");
+
+        sb.Append(RenderIteration(discovery.Current, discovery.Previous, now));
 
         if (discovery.ProcessedBySource.Count == 0)
         {
@@ -107,6 +110,60 @@ public static class ProgressFormatter
 
         return sb.Append("</p>").ToString();
     }
+
+    /// <summary>
+    /// The discovery iteration: which one it is, where it started, where the offset stands and what it has added
+    /// up so far against what the previous one managed. The accumulated numbers are written every
+    /// <c>Discovery:CheckpointIntervalMinutes</c>, so they may be that much behind a running walk.
+    /// </summary>
+    private static string RenderIteration(
+        DiscoveryCheckpoint? current,
+        DiscoveryCheckpoint? previous,
+        DateTimeOffset now)
+    {
+        if (current is null)
+            return string.Empty;
+
+        var kind = current.Full ? "bootstrap" : "incremental";
+
+        var sb = new StringBuilder(
+            $"iteration <b>#{current.Iteration}</b> ({kind}), started {Stamp(current.StartedAt)} "
+            + $"from <code>{MessageFormatter.Escape(current.StartedFromCollectionId ?? "—")}</code><br>");
+
+        var position = current.ResumeFromCollectionId is { } resume
+            ? $"now at <code>{MessageFormatter.Escape(resume)}</code>"
+            : "the whole window is behind it";
+
+        sb.Append($"{position} — <b>{current.CollectionsDone}</b> of {current.CollectionsTotal} indexes<br>");
+
+        sb.Append($"this iteration: {Mined(current)}<br>");
+
+        sb.Append(current.FinishedAt is { } finished
+            ? $"finished {Stamp(finished)} ({Elapsed(now - finished)} ago)<br>"
+            : $"offset saved {Elapsed(now - current.UpdatedAt)} ago<br>");
+
+        if (previous is not null)
+            sb.Append($"previous <b>#{previous.Iteration}</b>: {Mined(previous)}<br>");
+
+        return sb.ToString();
+    }
+
+    /// <summary>What one iteration has mined - the same shape for the current one and the previous one.</summary>
+    private static string Mined(DiscoveryCheckpoint checkpoint)
+    {
+        var sb = new StringBuilder(
+            $"<b>{checkpoint.CollectionsProcessed}</b> indexes processed, "
+            + $"{checkpoint.RecordsSeen:N0} urls, {checkpoint.TokensFound:N0} tokens, "
+            + $"<b>{checkpoint.BoardsAdded:N0}</b> new boards");
+
+        if (checkpoint.CollectionsFailed > 0)
+            sb.Append($", {checkpoint.CollectionsFailed} failed");
+
+        return sb.ToString();
+    }
+
+    private static string Stamp(DateTimeOffset moment) =>
+        moment.ToUniversalTime().ToString("dd MMM HH:mm", CultureInfo.InvariantCulture) + " UTC";
 
     /// <summary>«running for 2m», «finished 3m ago», or «never run» - the first thing an operator looks at.</summary>
     private static string State(TraversalProgress traversal, DateTimeOffset now)

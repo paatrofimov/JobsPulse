@@ -61,6 +61,7 @@ public static class DiscoveryServiceCollectionExtensions
 
         services.AddSingleton<IParquetIndexClient, ParquetIndexClient>();
 
+        services.AddSingleton<DiscoveryCheckpointTracker>();
         services.AddSingleton<BoardTokenSink>();
         services.AddSingleton<ParquetIndexDiscoveryPass>();
         services.AddSingleton<HttpIndexDiscoveryPass>();

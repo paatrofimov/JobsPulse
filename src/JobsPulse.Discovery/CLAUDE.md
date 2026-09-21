@@ -139,6 +139,29 @@ few whole-domain targets. Kept apart from the passes because both readers need t
 `IsTransient` / `Describe` - one place that decides «the index did not answer» versus «the code is broken», used by
 both clients and both passes. `OperationCanceledException` is never transient, so a shutdown always propagates.
 
+## DiscoveryCheckpointTracker
+
+The offset of the running iteration, kept in memory and written to `discovery_checkpoint`
+(`IDiscoveryCheckpointStorage`) every `CheckpointIntervalMinutes`. It exists because `crawl_index_state` answers a
+different question: that table records a collection only once it is finished for every source, so a process killed
+inside a collection that takes an hour lost the hour. The offset is the position in the window plus the counters the
+iteration has added up - both survive a restart, and the counters keep growing instead of starting from zero.
+
+- `BeginAsync` opens an iteration, or picks the unfinished one up. Resuming needs the stored run to be unfinished,
+  of the same kind (a bootstrap and an incremental run do not walk the same window) and to name a collection the
+  current window still holds; anything else closes the stale row and starts iteration `n+1`.
+- `CollectionFinishedAsync` moves the offset past a collection - only the collection-major parquet pass may say
+  this, and it says it for a failed collection too: a failure stays pending in `crawl_index_state` and belongs to
+  the next *iteration*, not to a restart of this one. The offset never walks backwards.
+- `CountersAdvancedAsync` is what the http pass calls instead: it is source-major, so a collection it has finished
+  says nothing about the window - the next source still has to walk it.
+- `CompleteAsync` closes the iteration and clears the offset, which is what makes it non-resumable. `CollectionsDone`
+  is left as the walk left it, so a run that gave up on a failing index reads as the partial cover it was.
+- `FlushAsync(force)` is the write itself - due-time only, unless forced by the end of a run or a shutdown. A failed
+  write is logged and re-marks the state dirty: bookkeeping must never break the run it describes.
+- `ReadAsync` is the read side for the bot - the last two iterations, with the in-memory one preferred over the
+  stored row, which may be a whole interval behind.
+
 ## StageTimer / DiscoveryPause / DiscoveryReports
 
 A discovery stage takes minutes and produces nothing until it is over, so the log is the only progress bar there is:
@@ -148,7 +171,7 @@ gave up does not read as one that succeeded). `DiscoveryPause` is the polite pau
 
 ## DiscoveryServiceCollectionExtensions
 
-`AddBoardDiscovery(config)` registers both named HttpClients (`common-crawl-index` for the cdx api with a 10 minute
+`AddBoardDiscovery(config)` registers the checkpoint tracker, both named HttpClients (`common-crawl-index` for the cdx api with a 10 minute
 timeout - pages are streamed - and `common-crawl-data` for the parquet path listings), both index clients, both
 passes, the token sink, `IBoardDiscoveryService` and the background worker.
 
@@ -167,9 +190,16 @@ which index is read and in what order; the reading is in the passes.
 Runs never overlap - a zero-timeout `SemaphoreSlim(1, 1)`, the same trick as `PollingOrchestrator`. A busy service
 returns `BoardDiscoveryReport.Busy`.
 
+The window is walked from the **offset**, not from its start: `DiscoveryCheckpointTracker.BeginAsync` opens (or
+resumes) the iteration and `Resume` drops everything already behind it. An offset naming a collection the window no
+longer holds is ignored rather than guessed at - the whole window is walked and `crawl_index_state` keeps that cheap.
+`CompleteAsync` closes the iteration at the end of a run, and the `finally` of `RunAsync` force-writes the offset, so
+a shutdown or a failure leaves the position on disk instead of throwing the walk away.
+
 `GetProgressAsync` is the read side for the bot: the same gate tells whether a run is in progress, the cached
-collection list gives the total and `crawl_index_state` gives what is mined per source. A crawl index that does not
-answer costs the total only - the call never throws, because it is rendered into an admin screen.
+collection list gives the total, `crawl_index_state` gives what is mined per source and the checkpoint tracker gives
+the current iteration and the one before it. A crawl index that does not answer costs the total only - the call never
+throws, because it is rendered into an admin screen.
 
 ## ParquetIndexDiscoveryPass
 
@@ -215,6 +245,11 @@ Index requests fail all the time, so a failure is never fatal for the run - it o
 Tokens found before a failure are still validated and upserted - the upsert is idempotent, so nothing is lost by
 storing them early.
 
+The two progress tables answer two different questions and neither replaces the other: `crawl_index_state` is *what
+is mined* and is consulted to skip work, `discovery_checkpoint` is *where the walk is* and is consulted to resume
+one. A restart continues the iteration from its offset; a collection left pending is picked up by the next
+iteration, not by the restart.
+
 `crawl_index_state` is written only for a `Completed` collection: no failed request, no truncation. A collection
 that failed, or that was cut short by `MaxNewTokensPerRun`, stays pending and the next run walks it again - which is
 the whole point of the state table. `MaxPagesPerCollection` and `Parquet:MaxFilesPerCollection` are the one
@@ -239,4 +274,5 @@ actually started, so a failed first attempt is retried as a bootstrap.
 # Options
 
 `Discovery` section - see `DiscoveryOptions`, `DiscoveryMode` and the nested `Discovery:Parquet`
-(`ParquetIndexOptions`).
+(`ParquetIndexOptions`). `CheckpointIntervalMinutes` (5) is both how much of a walk a restart may cost and the
+granularity the bot sees the accumulated counters at.

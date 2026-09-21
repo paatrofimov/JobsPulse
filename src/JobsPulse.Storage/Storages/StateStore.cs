@@ -313,17 +313,22 @@ internal class StateStore(
         var vacanciesDeleted = await ExecuteAsync(connection, tx, "DELETE FROM seen_vacancy", ct);
         var boardsDeleted = await ExecuteAsync(connection, tx, "DELETE FROM board_registry", ct);
         var crawIndexStateDeleted = await ExecuteAsync(connection, tx, "DELETE FROM crawl_index_state", ct);
+        // The discovery offset points into a dataset that no longer exists - a resumed iteration would skip
+        // collections nothing has mined any more, so the walk starts from iteration one again.
+        var checkpointsDeleted = await ExecuteAsync(connection, tx, "DELETE FROM discovery_checkpoint", ct);
 
         await tx.CommitAsync(ct);
 
         ctxLog.Warn(
             "Purged state: {Vacancies} seen_vacancy rows, {Matches} watchlist_vacancy rows, {Outbox} outbox rows, "
-            + "{Boards} board_registry rows, {CrawlIndexState} crawl_index_state rows",
+            + "{Boards} board_registry rows, {CrawlIndexState} crawl_index_state rows, "
+            + "{Checkpoints} discovery_checkpoint rows",
             vacanciesDeleted,
             matchesDeleted,
             outboxDeleted,
             boardsDeleted,
-            crawIndexStateDeleted);
+            crawIndexStateDeleted,
+            checkpointsDeleted);
 
         return new PurgeResult(vacanciesDeleted, outboxDeleted, boardsDeleted, crawIndexStateDeleted, matchesDeleted);
     }
