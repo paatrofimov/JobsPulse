@@ -10,6 +10,7 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
     // Read and set 'lease' status to 'pending' messages ready for delivery
     public async Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(
         int max,
+        DateTimeOffset createdBefore,
         CancellationToken ct)
     {
         var now = clock.GetUtcNow();
@@ -20,7 +21,12 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
         var entities = await dbContext.Outbox
             .Where(x =>
                 x.Status == PersistentOutboxStatus.Pending &&
+                x.CreatedAt < createdBefore &&
                 (x.NextAttemptAt == null || x.NextAttemptAt <= now))
+            // Oldest first: a backlog has to be drained window by window, or a capped read would take an
+            // arbitrary slice of several windows and split every one of them across messages.
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Id)
             .Take(max)
             .ToListAsync(ct);
 
@@ -31,6 +37,20 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
         await tx.CommitAsync(ct);
 
         return [.. entities.Select(x => x.ToDomainModel())];
+    }
+
+    public async Task<int> CountPendingAsync(CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+
+        await using var dbContext = await factory.CreateDbContextAsync(ct);
+
+        return await dbContext.Outbox
+            .AsNoTracking()
+            .CountAsync(
+                x => x.Status == PersistentOutboxStatus.Pending
+                     && (x.NextAttemptAt == null || x.NextAttemptAt <= now),
+                ct);
     }
 
     public async Task MarkDeliveredAsync(IReadOnlyList<long> ids, CancellationToken ct)

@@ -252,8 +252,10 @@ resolved by re-reading - the unique index decides, not the method.
 
 ## OutboxStorage
 
-Pure EF. `ReadAndLease` selects due `Pending` items and flips them to `Leased` inside a transaction, so two
-dispatchers cannot pick the same item. Terminal transitions use `ExecuteUpdate` - single round trip, and
+Pure EF. `ReadAndLease` selects due `Pending` items enqueued before the caller's cutoff and flips them to `Leased`
+inside a transaction, so two dispatchers cannot pick the same item. The rows are ordered by `created_at` (then `id`):
+a capped read of a backlog has to take whole delivery windows, and an unordered `Take` split every one of them
+across messages. `CountPendingAsync` counts the same due set without leasing anything. Terminal transitions use `ExecuteUpdate` - single round trip, and
 `Attempts + 1` is computed by the database, so concurrent failures cannot lose an increment.
 
 `PurgeDeliveredAsync` drops `Delivered` rows sent before a threshold - single `ExecuteDelete`, retention is decided

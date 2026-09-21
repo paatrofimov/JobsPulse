@@ -286,6 +286,13 @@ In-memory and process-wide, exactly like the scheduling state it mirrors: after 
   `walkedBySource` counter is cleared when the round-robin cursor wraps, so the percentage means «how much of the
   registry *this* walk has covered» rather than a number that only ever grows.
 
+## DeliveryWindow
+
+The delivery window - `Of(minutes)` and `Floor(time, window)`, epoch-aligned. Two things must agree on where a
+window ends and they live in different projects: `OutboxDispatcher` holds a notification back until its window is
+closed, `MessageFormatter` groups the batch by the same boundary. Keeping the floor in one place is what rules out
+the failure the split caused before it existed - a window delivered in halves, every half carrying the same header.
+
 ## PollingTrigger
 
 Latching wake-up signal between `WatchService` and the polling routine. `RequestImmediateRun` is a no-op when a
@@ -312,6 +319,14 @@ therefore remembers nothing.
 `LoadAllAsync` and `PurgeAllAsync` are admin operations exposed through bot commands, not used by the pipeline;
 `PurgeAllAsync` wipes derived state (vacancies, matches, outbox, registry) and keeps the watchlists, which are
 configuration.
+
+## IOutboxStorage
+
+The notification queue. `ReadAndLeaseAsync(max, createdBefore)` takes a **cutoff** rather than just a size: an item
+enqueued into the delivery window still being filled must stay pending, or the window is sent in pieces. Reads are
+oldest-first, so a backlog is drained window by window instead of an arbitrary slice of several.
+`CountPendingAsync` is what lets the dispatcher decide that an open window is already too big to be worth waiting
+for. The rest is retry bookkeeping - lease, deliver, fail with a backoff, dead-letter, purge.
 
 ## IBotUserStorage
 

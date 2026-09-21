@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
@@ -79,13 +80,13 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     /// </summary>
     private IEnumerable<Section> Sections(IReadOnlyList<OutboxItem> batch)
     {
-        var window = TimeSpan.FromMinutes(Math.Max(1, deliveryOptions.CurrentValue.GroupChangesWithinMinutes));
+        var window = DeliveryWindow.Of(deliveryOptions.CurrentValue.GroupChangesWithinMinutes);
         var now = clock.GetUtcNow();
 
         // A synthetic item (the `/show_state` dump) is never stored and carries no stamp - it happens now.
         return batch
             .GroupBy(item => (
-                Window: Floor(item.CreatedAt == default ? now : item.CreatedAt, window),
+                Window: DeliveryWindow.Floor(item.CreatedAt == default ? now : item.CreatedAt, window),
                 item.WatchlistName))
             .OrderBy(g => g.Key.Window)
             .ThenBy(g => g.Key.WatchlistName, StringComparer.OrdinalIgnoreCase)
@@ -107,14 +108,6 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
             .OrderBy(c => c.Discovered)
             .ThenByDescending(c => c.Items.Max(PublishedAt) ?? DateTimeOffset.MinValue)
             .ThenBy(c => c.Company, StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>The start of the window an instant falls into - windows are aligned to the epoch, not to the batch.</summary>
-    private static DateTimeOffset Floor(DateTimeOffset time, TimeSpan window)
-    {
-        var ticks = time.UtcDateTime.Ticks / window.Ticks * window.Ticks;
-
-        return new DateTimeOffset(ticks, TimeSpan.Zero);
-    }
 
     private static InputRichMessage ToRichMessage(StringBuilder sb) =>
         new()

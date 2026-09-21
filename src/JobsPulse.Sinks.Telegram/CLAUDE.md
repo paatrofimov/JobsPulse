@@ -265,6 +265,11 @@ The unit is a **time window**, not a change. Everything the pipeline found withi
 cycle that walked forty boards produced forty two-line messages; the window is split per watchlist because the same
 vacancy legitimately arrives for several, and the reader has to see which list a notification belongs to.
 
+The grouping only works on a batch that actually holds a whole window, and that is **not** this class's job:
+`OutboxDispatcher` holds a notification back until its window is closed (`DeliveryWindow`, shared so both agree on
+the boundary). Without that cutoff the formatter did exactly what it is told, once per board commit - forty
+correctly-grouped messages that all carried the same `17:10–17:15` header.
+
 Inside a window every company is **one collapsed `<details>` block**, exactly like the browsable lists: the message
 opens as the list of company headers and unfolding one shows its vacancies. A block mixes the three change kinds, so
 the summary counts them (`🏢 Acme · 🆕 3 · ✏️ 1`) and every line carries its own glyph. Blocks are ordered **manual

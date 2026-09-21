@@ -21,8 +21,13 @@ public sealed class DeliveryOptions
     // Vacancies published within this window are highlighted in messages
     [Range(0, 365)] public int FreshVacancyDays { get; set; } = 3;
 
-    // Changes detected within one such window are delivered as a single message instead of one per company
+    // Changes detected within one such window are delivered as a single message instead of one per company.
+    // Nothing of the window being filled right now is sent until it closes - see DeliveryWindow.
     [Range(1, 1440)] public int GroupChangesWithinMinutes { get; set; } = 5;
+
+    // The open window is sent early once this many changes are waiting: that is already more than one message,
+    // so there is nothing left to wait for
+    [Range(1, 1000)] public int FlushWindowAfterChanges { get; set; } = 50;
 
     // How far back the company activity indicator looks - see BoardActivity
     [Range(7, 730)] public int ActivityWindowDays { get; set; } = 90;
