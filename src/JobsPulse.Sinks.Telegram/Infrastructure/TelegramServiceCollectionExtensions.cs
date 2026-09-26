@@ -1,7 +1,6 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Sinks.Telegram.Pipeline;
 using JobsPulse.Sinks.Telegram.Pipeline.Screens;
-using JobsPulse.Sinks.Telegram.Routines;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
@@ -43,8 +42,6 @@ public static class TelegramServiceCollectionExtensions
         // Admin surface: raw ids and json, gated on Telegram:AdminUsernames.
         services.AddSingleton<PendingSelectionStore>();
         services.AddSingleton<CommandRouter>();
-
-        services.AddHostedService<TelegramBotListener>();
 
         return services;
     }

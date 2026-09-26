@@ -1,0 +1,14 @@
+name: cleanup
+
+on:
+  schedule:
+    - cron: "47 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    uses: ./.github/workflows/_run-job.yml
+    with:
+      role: cleanup
+      timeout-minutes: 15
+    secrets: inherit

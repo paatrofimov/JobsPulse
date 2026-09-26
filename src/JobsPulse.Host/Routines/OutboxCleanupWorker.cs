@@ -1,14 +1,13 @@
-using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Options;
+using JobsPulse.Host.Pipeline;
 using Microsoft.Extensions.Options;
 using Vostok.Logging.Abstractions;
 
-namespace JobsPulse.Host.Rouitines;
+namespace JobsPulse.Host.Routines;
 
 public sealed class OutboxCleanupWorker(
-    IOutboxStorage outboxStorage,
+    OutboxDelivery delivery,
     IOptionsMonitor<DeliveryOptions> options,
-    TimeProvider clock,
     ILog log) : BackgroundService
 {
     private readonly ILog ctxLog = log.ForContext<OutboxCleanupWorker>();
@@ -17,15 +16,9 @@ public sealed class OutboxCleanupWorker(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var opts = options.CurrentValue;
-
             try
             {
-                var threshold = clock.GetUtcNow().AddHours(-opts.DeliveredRetentionHours);
-                var deleted = await outboxStorage.PurgeDeliveredAsync(threshold, stoppingToken);
-
-                if (deleted > 0)
-                    ctxLog.Info("Removed {Deleted} delivered outbox notifications older than {Threshold}", deleted, threshold);
+                await delivery.PurgeDeliveredAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -39,7 +32,7 @@ public sealed class OutboxCleanupWorker(
 
             try
             {
-                await Task.Delay(TimeSpan.FromMinutes(opts.CleanupIntervalMinutes), stoppingToken);
+                await Task.Delay(TimeSpan.FromMinutes(options.CurrentValue.CleanupIntervalMinutes), stoppingToken);
             }
             catch (OperationCanceledException)
             {

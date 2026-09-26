@@ -4,7 +4,6 @@ using JobsPulse.Core.Infrastructure;
 using JobsPulse.Discovery.Abstractions;
 using JobsPulse.Discovery.Options;
 using JobsPulse.Discovery.Pipeline;
-using JobsPulse.Discovery.Routines;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -67,7 +66,7 @@ public static class DiscoveryServiceCollectionExtensions
         services.AddSingleton<HttpIndexDiscoveryPass>();
 
         services.AddSingleton<IBoardDiscoveryService, BoardDiscoveryService>();
-        services.AddHostedService<BoardDiscoveryWorker>();
+        services.AddSingleton<DiscoveryBootstrapPolicy>();
 
         return services;
     }
