@@ -1,0 +1,14 @@
+# Temporary: checks whether scheduled runs fire at all in this repository. Delete once answered.
+name: schedule-probe
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "event=${{ github.event_name }} actor=${{ github.actor }} at $(date -u)"
