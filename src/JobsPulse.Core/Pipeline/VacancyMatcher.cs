@@ -21,7 +21,10 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
         if (f.LocationNoneOf.Count > 0 && AnyMatch(v.Location, f.LocationNoneOf, f.MatchMode))
             return false;
 
-        if (f.DescriptionNoneOf.Count > 0 && AnyMatch(v.Description, f.DescriptionNoneOf, f.MatchMode))
+        // A known vacancy whose detail could not be read has no description; the caller keeps its previous verdict.
+        var checkDescription = !v.DescriptionUnavailable;
+
+        if (checkDescription && f.DescriptionNoneOf.Count > 0 && AnyMatch(v.Description, f.DescriptionNoneOf, f.MatchMode))
             return false;
 
         if (f.TitleAnyOf.Count > 0 && !AnyMatch(v.Title, f.TitleAnyOf, f.MatchMode))
@@ -35,30 +38,40 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
                 return false;
         }
 
-        if (f.DescriptionAnyOf.Count > 0 &&
+        if (checkDescription && f.DescriptionAnyOf.Count > 0 &&
             !AnyMatch(v.Description, f.DescriptionAnyOf, f.MatchMode))
             return false;
 
-        if (f.PostedWithinDays is { } days)
-        {
-            var since = v.FirstSeenAt ?? v.UpdatedAt;
-            if (since < clock.GetUtcNow().AddDays(-days))
-                return false;
-        }
-
-        return true;
+        return IsRecent(v, f);
     }
 
     /// <summary>
-    /// The title part of <see cref="Matches"/> only. Location, description and date may still be filled in by a
-    /// detail request, so this is the one check a list-only vacancy can fail for good.
+    /// The title and date parts of <see cref="Matches"/>. Location, description and - for Workday - the date may still
+    /// be filled in by a detail request, so these are the checks a list-only vacancy can fail for good.
     /// </summary>
-    public bool MatchesTitle(Vacancy v, FilterSpec f)
+    public bool MayMatchListed(Vacancy v, FilterSpec f)
     {
         if (f.TitleNoneOf.Count > 0 && AnyMatch(v.Title, f.TitleNoneOf, f.MatchMode))
             return false;
 
-        return f.TitleAnyOf.Count == 0 || AnyMatch(v.Title, f.TitleAnyOf, f.MatchMode);
+        if (f.TitleAnyOf.Count > 0 && !AnyMatch(v.Title, f.TitleAnyOf, f.MatchMode))
+            return false;
+
+        return IsRecent(v, f);
+    }
+
+    /// <summary>
+    /// `PostedWithinDays` against the board's publication date. `FirstSeenAt` is only the fallback for a source that
+    /// reports none: it is our own stamp, so on the first poll of a board it made every old vacancy look new.
+    /// </summary>
+    private bool IsRecent(Vacancy v, FilterSpec f)
+    {
+        if (f.PostedWithinDays is not { } days)
+            return true;
+
+        var since = v.FirstPublishedAt ?? v.FirstSeenAt ?? v.UpdatedAt;
+
+        return !(since < clock.GetUtcNow().AddDays(-days));
     }
 
     public IReadOnlyList<Vacancy> Apply(IReadOnlyList<Vacancy> source, FilterSpec f)

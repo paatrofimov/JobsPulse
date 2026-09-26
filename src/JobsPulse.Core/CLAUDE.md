@@ -56,7 +56,7 @@ registry cycle tests a board against the individual watchlist filters without fe
 ### Flow:
 
 - load the global seen vacancies of the board - handed to the source as `SourceTarget.Known`, together with
-  `NeedsDescription` (a storage filter reads descriptions) and `MayBeStored` (`VacancyMatcher.MatchesTitle` against
+  `NeedsDescription` (a storage filter reads descriptions) and `MayBeStored` (`VacancyMatcher.MayMatchListed` against
   the storage filters), so the source can skip detail requests - see `DetailSelector`
 - traverse the board once
 - load its match layer (skipped when nothing is subscribed)
@@ -203,7 +203,10 @@ no longer passes that watchlist's filter, whatever the reason).
 Two consequences worth remembering:
 
 - a vacancy that stops matching a watchlist filter is reported as closed to that watchlist and stays alive for the
-  others;
+  others - except when it is still on the board and fails only `PostedWithinDays`: aging out of the window is not a
+  closure, so that match is removed silently;
+- a vacancy marked `DescriptionUnavailable` (its detail request failed) keeps its previous verdict per watchlist: it
+  stays in a watchlist it matched, and cannot enter one it did not;
 - the present-set is built from post-dedup upserts - a duplicate post that loses deduplication is closed too.
 
 The closed `Vacancy` is rebuilt from the stored row, not from the source (the post is gone), and reuses the stored
@@ -215,8 +218,9 @@ SHA-256 truncated to 32 hex chars. `Compute` hashes the fields listed in `Vacanc
 
 ## VacancyMatcher
 
-Applies filter to a list of vacancies. `MatchesTitle` is the title part alone - the one check a list-only vacancy
-can fail for good, since location, description and date may still come from a detail request.
+Applies filter to a list of vacancies. `MayMatchListed` is the title and date parts alone - the checks a list-only
+vacancy can fail for good, since location, description and (for Workday) the date may still come from a detail
+request. Description rules are skipped for a vacancy marked `DescriptionUnavailable`.
 
 ## WatchService
 
@@ -322,7 +326,7 @@ For sources whose list lacks descriptions and part of the hashed fields (SmartRe
 posting whether the per-posting detail endpoint is asked (`DetailDecision`):
 
 - `Fetch` for everything when `IncludeContentOnPoll` is set (the old, slow behaviour);
-- `ListOnly` for a posting no storage filter can accept by title (`MayBeStored`);
+- `ListOnly` for a posting no storage filter can accept by title and publication date (`MayBeStored`);
 - `Fetch` for every remaining posting when `NeedsDescription` - descriptions are not stored, so a description filter
   needs a fresh one each poll, and without a budget: a stored vacancy mapped without its description would fail the
   filter and be closed;
@@ -461,7 +465,9 @@ text could not be read never passes `DescriptionAnyOf` and always passes `Descri
 
 ### PostedWithinDays
 
-Truncate old vacancies (null - no truncation).
+Truncate old vacancies (null - no truncation). Age is `FirstPublishedAt` (the board's date), falling back to
+`FirstSeenAt` only for a source that reports none: `FirstSeenAt` is our own stamp, so judging by it made every old
+vacancy of a board look new on its first poll.
 
 ### MatchMode
 
@@ -586,6 +592,13 @@ internal_job_id' for greenhouse.
 ### ContentHash
 
 UpdatedAt can be changed on any cosmetic changes. So hash is calculated on each db upsert by important fields instead.
+
+### DescriptionUnavailable
+
+Set by a source when the detail request of a stored (`SourceTarget.Known`) posting failed while a filter reads
+descriptions. The vacancy then carries the stored fields and no description; `VacancyMatcher` skips description rules
+and `ChangeDetector` keeps its previous watchlist verdict, so a transient HTTP error neither closes nor adds a match.
+Not persisted, not serialized.
 
 ## OutboxItem
 

@@ -102,7 +102,12 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
 
         var matchedNow = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var vacancy in fetched.Where(v => matcher.Matches(v, subscription.Filter)))
+        // Without its description a vacancy cannot enter a watchlist, only stay in one it already matched.
+        var matching = fetched.Where(v =>
+            matcher.Matches(v, subscription.Filter)
+            && (!v.DescriptionUnavailable || previous.ContainsKey(v.PostId)));
+
+        foreach (var vacancy in matching)
         {
             var hash = hashes[vacancy.PostId];
             matchedNow.Add(vacancy.PostId);
@@ -127,10 +132,18 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
         if (!input.Traverse.IsComplete)
             return;
 
+        var present = fetched.ToDictionary(v => v.PostId, StringComparer.Ordinal);
+        var ageless = subscription.Filter with { PostedWithinDays = null };
+
         foreach (var (postId, reported) in previous.Where(p => !matchedNow.Contains(p.Key)))
         {
             matchRemovals.Add(new WatchlistMatchKey(
                 subscription.WatchlistId, input.SourceId, input.BoardId, postId));
+
+            // Still open and still matching everything but `PostedWithinDays` - it aged out of the window, it did not
+            // close, so the match is dropped silently.
+            if (present.TryGetValue(postId, out var current) && matcher.Matches(current, ageless))
+                continue;
 
             // The post is gone from the board (or from the filter) - the notification is rebuilt from stored state.
             if (input.Seen.TryGetValue(postId, out var stored))

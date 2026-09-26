@@ -33,4 +33,7 @@ public sealed record Vacancy
     // excluded from db storage
     // no need to store vacancies' descriptions which can be too large
     [JsonIgnore] public string? Description { get; init; }
+
+    // The detail request of a known vacancy failed - description rules keep the previous verdict instead of failing
+    [JsonIgnore] public bool DescriptionUnavailable { get; init; }
 }

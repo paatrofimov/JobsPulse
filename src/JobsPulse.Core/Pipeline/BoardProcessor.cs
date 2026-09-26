@@ -50,7 +50,7 @@ public sealed class BoardProcessor(
                     Configuration = board.Configuration,
                     Known = seen,
                     NeedsDescription = storageFilters.Any(f => f.UsesDescription),
-                    MayBeStored = v => storageFilters.Any(f => matcher.MatchesTitle(v, f))
+                    MayBeStored = v => storageFilters.Any(f => matcher.MayMatchListed(v, f))
                 },
                 timeout.Token);
         }

@@ -20,7 +20,7 @@ public sealed record SourceTarget
     public bool NeedsDescription { get; init; }
 
     /// <summary>
-    /// Whether a list-only vacancy can pass the storage filters by its title. Null means «maybe» for everything.
+    /// Whether a list-only vacancy can pass the storage filters by its title and publication date. Null means «maybe».
     /// </summary>
     public Func<Vacancy, bool>? MayBeStored { get; init; }
 }
