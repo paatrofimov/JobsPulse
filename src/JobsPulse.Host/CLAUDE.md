@@ -60,7 +60,8 @@ so Telegram does not redeliver it forever.
 
 ## JobRunner
 
-One iteration of a role: `polling` (filter maintenance + `RunCycleAsync`), `registry` (`TryRunCycleAsync`),
+One iteration of a role: `polling` (filter maintenance + `RunCycleAsync`), `registry` (`TryRunSweepAsync` until
+`Job:MaxRunMinutes`, a single `TryRunCycleAsync` without one),
 `discovery` (`DiscoveryBootstrapPolicy` decides bootstrap vs incremental), `cleanup` (purge). Reaching
 `Job:MaxRunMinutes` is a success - all routines keep their progress in the database.
 

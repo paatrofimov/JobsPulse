@@ -17,6 +17,8 @@ public sealed class SmartRecruitersBoardSource(
 {
     private readonly ILog ctxLog = log.ForContext<SmartRecruitersBoardSource>();
 
+    public bool SelectsDetails => true;
+
     public async Task<SourceTraverseResult> TraverseTargetAsync(SourceTarget target, CancellationToken ct)
     {
         var opts = options.CurrentValue;
@@ -100,20 +102,23 @@ public sealed class SmartRecruitersBoardSource(
         {
             vacancies.Add(decisions[i] switch
             {
-                DetailDecision.Fetch when details[i] is { } detail => mapper.ToVacancy(postings[i], target.BoardId, detail),
+                DetailDecision.Fetch when details[i] is { } detail =>
+                    DetailSelector.Detailed(mapper.ToVacancy(postings[i], target.BoardId, detail), listed[i]),
                 // A failed detail of a stored posting keeps its stored fields instead of flipping its hash and matches.
                 DetailDecision.Fetch when target.Known.TryGetValue(listed[i].PostId, out var known) =>
                     SmartRecruitersMapper.Reuse(listed[i], known) with { DescriptionUnavailable = target.NeedsDescription },
                 DetailDecision.Reuse => SmartRecruitersMapper.Reuse(listed[i], target.Known[listed[i].PostId]),
+                DetailDecision.Rejected => DetailSelector.Rejected(listed[i]),
                 _ => listed[i]
             });
         }
 
         ctxLog.Debug(
-            "Board {Board}: {Fetched} details requested, {Reused} reused, {ListOnly} list-only",
+            "Board {Board}: {Fetched} details requested, {Reused} reused, {Rejected} known rejected, {ListOnly} list-only",
             target.BoardId,
             decisions.Count(d => d == DetailDecision.Fetch),
             decisions.Count(d => d == DetailDecision.Reuse),
+            decisions.Count(d => d == DetailDecision.Rejected),
             decisions.Count(d => d == DetailDecision.ListOnly));
 
         return vacancies;

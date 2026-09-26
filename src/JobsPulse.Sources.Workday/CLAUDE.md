@@ -116,7 +116,8 @@ Details are asked through `DetailSelector` (Core): only for new postings and pos
 every posting a title filter accepts when a filter reads descriptions. `WorkdayMapper.ListUnchanged` compares the title only - the list location is a count for
 multi-site postings and lacks the remote marker, so a location-only change goes unnoticed. `Reuse` takes `GroupId`,
 `Location`, `Offices`, `Url` and `FirstPublishedAt` from the stored vacancy - also for a stored posting whose detail
-request failed (marked `DescriptionUnavailable` when a filter reads descriptions).
+request failed (marked `DescriptionUnavailable` when a filter reads descriptions). A posting rejected before with the
+same list data is not asked again (`SelectsDetails`, `DetailDecision.Rejected`).
 
 ## WorkdayBoardResolver
 

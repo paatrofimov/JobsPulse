@@ -143,7 +143,7 @@ public sealed class OutboxDelivery(
         if (result.Success)
         {
             await outboxStorage.MarkDeliveredAsync(ids, ct);
-            ctxLog.Info("Sent {Count} messages", items.Count);
+            ctxLog.Info("Sent {Count} notifications", items.Count);
             return new OutboxDispatchResult(items.Count, null);
         }
 

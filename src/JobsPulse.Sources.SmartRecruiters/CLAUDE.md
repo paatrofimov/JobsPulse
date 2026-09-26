@@ -27,7 +27,8 @@ not fetch.
 Details are asked through `DetailSelector` (Core): only for new or changed postings, at most `MaxDetailsPerPoll`
 per traversal, `DetailConcurrency` at a time; every posting when `IncludeContentOnPoll` is set, every posting a
 title filter accepts when a filter reads descriptions. Unchanged postings reuse the stored `Url` and `GroupId`; so does
-a stored posting whose detail request failed (marked `DescriptionUnavailable` when a filter reads descriptions).
+a stored posting whose detail request failed (marked `DescriptionUnavailable` when a filter reads descriptions). A posting rejected before with the
+same list data is not asked again (`SelectsDetails`, `DetailDecision.Rejected`).
 
 ## SmartRecruitersBoardResolver
 

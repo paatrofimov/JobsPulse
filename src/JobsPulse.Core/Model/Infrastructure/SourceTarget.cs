@@ -16,6 +16,12 @@ public sealed record SourceTarget
     /// <summary>Open vacancies already stored for the board, by post id - lets a source skip unchanged details.</summary>
     public IReadOnlyDictionary<string, Vacancy> Known { get; init; } = new Dictionary<string, Vacancy>();
 
+    /// <summary>
+    /// Postings the current storage filters rejected after reading their detail, by post id, valued by the
+    /// fingerprint of their list data. A posting whose list data still has that fingerprint is not asked again.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Rejected { get; init; } = new Dictionary<string, string>();
+
     /// <summary>Some filter reads descriptions, so every posting needs its detail.</summary>
     public bool NeedsDescription { get; init; }
 

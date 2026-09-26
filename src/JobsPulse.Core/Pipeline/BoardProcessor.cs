@@ -14,6 +14,7 @@ namespace JobsPulse.Core.Pipeline;
 public sealed class BoardProcessor(
     ISourceCatalog sourceCatalog,
     IStateStore stateStore,
+    IRejectedPostingStorage rejectedPostings,
     ChangeDetector changeDetector,
     VacancyMatcher matcher,
     ILog log)
@@ -36,6 +37,11 @@ public sealed class BoardProcessor(
         var seen = await stateStore.LoadSeenAsync(board.SourceId, board.BoardId, ct);
         var storageFilters = settings.StorageFilters;
 
+        // Only a source that reads details can skip one, so only then is the rejection memory worth a query.
+        var rejected = source.SelectsDetails
+            ? await rejectedPostings.LoadAsync(board.SourceId, board.BoardId, ct)
+            : new Dictionary<string, RejectedPosting>();
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds));
 
@@ -49,6 +55,9 @@ public sealed class BoardProcessor(
                     BoardId = board.BoardId,
                     Configuration = board.Configuration,
                     Known = seen,
+                    Rejected = rejected.Values
+                        .Where(r => r.FilterHash == settings.StorageFilterHash)
+                        .ToDictionary(r => r.PostId, r => r.ListHash, StringComparer.Ordinal),
                     NeedsDescription = storageFilters.Any(f => f.UsesDescription),
                     MayBeStored = v => storageFilters.Any(f => matcher.MayMatchListed(v, f))
                 },
@@ -56,7 +65,7 @@ public sealed class BoardProcessor(
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            ctxLog.Warn("Board traversal timeout {Company} ({Board})", board.CompanyName, board.BoardId);
+            ctxLog.Warn("Board traversal timeout {Board} ({Company})", board.BoardKey, board.CompanyName);
             return BoardProcessResult.Failed();
         }
 
@@ -65,7 +74,9 @@ public sealed class BoardProcessor(
 
         if (!traverse.IsComplete)
         {
-            ctxLog.Warn("Incomplete traversal {Company}: {Error}. Changes are not applied", board.CompanyName, traverse.Error);
+            ctxLog.Warn(
+                "Incomplete traversal {Board} ({Company}): {Error}. Changes are not applied",
+                board.BoardKey, board.CompanyName, traverse.Error);
             return BoardProcessResult.Failed();
         }
 
@@ -116,13 +127,53 @@ public sealed class BoardProcessor(
                 detected.VacanciesChanges.Count(c => c.Kind == VacancyChangeKind.New));
         }
 
+        if (source.SelectsDetails)
+            await SaveRejectedAsync(board, traverse, settings, rejected, ct);
+
         var report = new BoardReport(
             Fetched: traverse.Vacancies.Count,
+            Stored: detected.VacanciesUpserts.Count,
             Matched: detected.MatchUpserts.Count,
             Changes: notifications.Count,
             Failed: false);
 
         return new BoardProcessResult(report, false, detected.VacanciesUpserts);
+    }
+
+    /// <summary>
+    /// Remembers the postings whose detail was read (or skipped as known rejected) and that pass no storage filter.
+    /// Only the difference to the stored set is written, so an unchanged board costs no round trip. Evaluated here,
+    /// not taken from what was not upserted: a duplicate dropped by deduplication was not rejected.
+    /// </summary>
+    private async Task SaveRejectedAsync(
+        BoardWorkItem board,
+        SourceTraverseResult traverse,
+        BoardProcessSettings settings,
+        IReadOnlyDictionary<string, RejectedPosting> stored,
+        CancellationToken ct)
+    {
+        var current = new Dictionary<string, RejectedPosting>(StringComparer.Ordinal);
+
+        foreach (var vacancy in traverse.Vacancies)
+        {
+            if (vacancy.ListHash is null || vacancy.DescriptionUnavailable)
+                continue;
+
+            if (!vacancy.KnownRejected && settings.StorageFilters.Any(f => matcher.Matches(vacancy, f)))
+                continue;
+
+            current[vacancy.PostId] = new RejectedPosting(vacancy.PostId, vacancy.ListHash, settings.StorageFilterHash);
+        }
+
+        var upserts = current.Values
+            .Where(r => !stored.TryGetValue(r.PostId, out var old) || old != r)
+            .ToList();
+
+        var removals = stored.Keys
+            .Where(postId => !current.ContainsKey(postId))
+            .ToList();
+
+        await rejectedPostings.SaveAsync(board.SourceId, board.BoardId, upserts, removals, ct);
     }
 
     /// <summary>Mirrors the `content_hash IS DISTINCT FROM` guard of the seen_vacancy upsert.</summary>

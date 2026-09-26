@@ -126,7 +126,12 @@ public sealed class JobRunner(
             return;
         }
 
-        await registryPolling.TryRunCycleAsync(ct);
+        // Without a time box there is no budget to fill, so the job stays a single slice.
+        var minutes = jobOptions.CurrentValue.MaxRunMinutes;
+        if (minutes > 0)
+            await registryPolling.TryRunSweepAsync(DateTimeOffset.UtcNow.AddMinutes(minutes), ct);
+        else
+            await registryPolling.TryRunCycleAsync(ct);
     }
 
     private async Task RunDiscoveryAsync(CancellationToken ct)

@@ -14,6 +14,7 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: registry
-      timeout-minutes: 45
-      max-run-minutes: 35
+      timeout-minutes: 40
+      # Slices are walked until this budget is spent; below the 30 minute cadence, so runs do not queue up.
+      max-run-minutes: 25
     secrets: inherit

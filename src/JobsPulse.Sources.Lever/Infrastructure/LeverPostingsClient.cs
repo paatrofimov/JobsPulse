@@ -41,6 +41,9 @@ public sealed class LeverPostingsClient(
         if (lookup.Error is { } error)
             return LeverFetch<List<PostingDto>>.Failure(error);
 
+        if (lookup.Missing)
+            return LeverFetch<List<PostingDto>>.Missing();
+
         if (lookup.Region is null)
         {
             ctxLog.Debug("Lever site '{Site}' has no postings on any known instance", site);
@@ -60,27 +63,49 @@ public sealed class LeverPostingsClient(
     private async Task<RegionLookup> LookupRegionAsync(string site, CancellationToken ct)
     {
         if (regions.TryGet(site, out var known))
-            return new RegionLookup(known, null);
+            return new RegionLookup(known, null, false);
 
         string? lastError = null;
+        var empty = new List<LeverRegion>();
+        var missing = 0;
+        var enabled = EnabledRegions();
 
-        // One unfiltered posting is enough: an unknown site answers `200 []`, so emptiness is the «not here» signal.
-        foreach (var region in EnabledRegions())
+        // One unfiltered posting is enough: the home instance of a site with postings is the one that answers them.
+        foreach (var region in enabled)
         {
             var response = await GetAsync(region, site, skip: 0, limit: 1, applyFilters: false, ct);
 
             if (response.Success && response.Value!.Count > 0)
             {
                 regions.Set(site, region);
-                return new RegionLookup(region, null);
+                return new RegionLookup(region, null, false);
             }
 
             // A real failure is remembered but does not stop the search - the site may live on the other instance.
-            if (!response.Success && !response.NotFound)
+            if (response.Success)
+                empty.Add(region);
+            else if (response.NotFound)
+                missing++;
+            else
                 lastError = response.Error;
         }
 
-        return new RegionLookup(null, lastError);
+        if (lastError is not null)
+            return new RegionLookup(null, lastError, false);
+
+        // No instance knows the site at all - a dead board, reported as missing so it gets disabled.
+        if (missing == enabled.Count)
+            return new RegionLookup(null, null, true);
+
+        // An empty board on exactly one instance while the others answer 404 - that one is its home. Remembered, or
+        // every poll of an empty board would probe all instances again.
+        if (empty.Count == 1)
+        {
+            regions.Set(site, empty[0]);
+            return new RegionLookup(empty[0], null, false);
+        }
+
+        return new RegionLookup(null, null, false);
     }
 
     private IReadOnlyList<LeverRegion> EnabledRegions()
@@ -89,6 +114,8 @@ public sealed class LeverPostingsClient(
             .Select(LeverRegion.Find)
             .Where(r => r is not null)
             .Select(r => r!)
+            // The configuration binder appends configured items to the default list instead of replacing it.
+            .Distinct()
             .ToList();
 
         // An empty or broken configuration must not silently disable the source.
@@ -165,5 +192,5 @@ public sealed class LeverPostingsClient(
 
     /// <param name="Region">The instance the site lives on, null when no instance knows it.</param>
     /// <param name="Error">Set when an instance could not be asked at all.</param>
-    private readonly record struct RegionLookup(LeverRegion? Region, string? Error);
+    private readonly record struct RegionLookup(LeverRegion? Region, string? Error, bool Missing);
 }

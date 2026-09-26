@@ -36,4 +36,11 @@ public sealed record Vacancy
 
     // The detail request of a known vacancy failed - description rules keep the previous verdict instead of failing
     [JsonIgnore] public bool DescriptionUnavailable { get; init; }
+
+    // Fingerprint of the list data this vacancy was mapped from - set only when its detail was read or skipped as
+    // known rejected, so a rejection can be remembered against it
+    [JsonIgnore] public string? ListHash { get; init; }
+
+    // Rejected before with the same list data and filters - its detail is not read and it is not evaluated again
+    [JsonIgnore] public bool KnownRejected { get; init; }
 }

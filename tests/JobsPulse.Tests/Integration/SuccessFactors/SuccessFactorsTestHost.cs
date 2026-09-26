@@ -26,6 +26,7 @@ public sealed class SuccessFactorsTestHost : IDisposable
 
         services = new ServiceCollection()
             .AddSingleton<ILog>(new ConsoleLog())
+            .AddSingleton(TimeProvider.System)
             .AddSuccessFactorsSource(config)
             .BuildServiceProvider();
     }

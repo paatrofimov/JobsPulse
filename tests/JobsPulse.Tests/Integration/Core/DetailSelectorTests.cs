@@ -7,8 +7,9 @@ using NUnit.Framework;
 namespace JobsPulse.Tests.Integration.Core;
 
 /// <summary>
-/// Which postings cost a detail request. The point is that a steady board asks for nothing, and that a first sight of
-/// a big board is capped instead of timing out on every cycle.
+/// Which postings cost a detail request. The point is that a steady board asks for nothing, that a posting rejected
+/// once is not read again while its list data stays the same, and that a first sight of a big board is capped instead
+/// of timing out on every cycle.
 /// </summary>
 public sealed class DetailSelectorTests
 {
@@ -72,6 +73,35 @@ public sealed class DetailSelectorTests
             target, false, 0, SameTitle);
 
         decisions.Should().Equal(DetailDecision.Fetch, DetailDecision.Fetch, DetailDecision.ListOnly);
+    }
+
+    [Test]
+    public void Select_should_skip_postings_rejected_with_the_same_list_data()
+    {
+        var rejected = Vacancy("1", "Engineer");
+        var target = Target() with
+        {
+            NeedsDescription = true,
+            Rejected = new Dictionary<string, string> { ["1"] = DetailSelector.ListHash(rejected) }
+        };
+
+        var decisions = DetailSelector.Select([rejected], target, false, 0, SameTitle);
+
+        decisions.Should().Equal(DetailDecision.Rejected);
+    }
+
+    [Test]
+    public void Select_should_fetch_a_rejected_posting_again_when_its_list_data_changed()
+    {
+        var target = Target() with
+        {
+            NeedsDescription = true,
+            Rejected = new Dictionary<string, string> { ["1"] = DetailSelector.ListHash(Vacancy("1", "Engineer")) }
+        };
+
+        var decisions = DetailSelector.Select([Vacancy("1", "Senior Engineer")], target, false, 0, SameTitle);
+
+        decisions.Should().Equal(DetailDecision.Fetch);
     }
 
     [Test]

@@ -6,6 +6,7 @@ storage layer as persistent models - conversion happens in `PersistencyExtension
 Tables: `seen_vacancy` (current state of a board), `watchlist_vacancy` (which watchlist a vacancy matches),
 `outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `bot_user` (the
 people using the bot), `board_registry` (accumulative list of boards that exist), `board_poll_state` (when each board was last polled),
+`rejected_posting` (postings whose detail was read and that no filter stored),
 `crawl_index_state` (which crawl indexes were already mined) and `discovery_checkpoint` (where the current discovery
 walk stands).
 The watchlist configuration lives here now - there is no JSON watchlist any more.
@@ -49,6 +50,7 @@ unique `iteration` index; `20260921140000_AddBoardPollState` adds `board_poll_st
 `(source_id, board_id)` index **and seeds it** from `seen_vacancy` (`MAX(GREATEST(first_seen_at, updated_at,
 closed_at))` per board) - the state it replaces was in memory only, so without the seed the first cycle after the
 upgrade would re-read every board at once, which is exactly the cost the table exists to avoid.
+`20260926190129_AddRejectedPosting` adds `rejected_posting` with its unique `(source_id, board_id, post_id)` index.
 Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
@@ -122,6 +124,13 @@ and wrote no vacancy.
 Kept narrow on purpose - a cycle loads the whole table to sort its slice and to compute coverage, so the row is one
 key plus one stamp and nothing else. Nothing is ever deleted here: a board that comes back keeps its history, and a
 stale row for a board no longer in the registry is simply never joined.
+
+## PersistentRejectedPosting
+
+Table `rejected_posting` - one row per `(source_id, board_id, post_id)` (unique, the `ON CONFLICT` target and the
+per-board read): `list_hash` and `filter_hash` are what the rejection holds for, `rejected_at` is when it was last
+written. Rows of a posting that left the board are deleted by the next complete traversal; a board that is never
+traversed again keeps its rows, which are small and never read.
 
 ## PersistentWatchlist / PersistentWatchlistEntry
 
@@ -247,6 +256,11 @@ progress block reads instead of listing the registry it only wants the size of.
 Reads via EF into a case-insensitive `{source}/{board}` map, writes via a single raw
 `INSERT ... SELECT FROM unnest(@sources, @boards, @stamps) ... ON CONFLICT DO UPDATE`: a cycle stamps its whole
 slice at once, and a command per board would cost more round trips than the fetch that produced them.
+
+## RejectedPostingStorage
+
+Reads a board via EF, writes a difference in one transaction: a `DELETE ... ANY(@post_ids)` for the removals and a
+batched upsert for the rest. Nothing to write returns before opening a connection.
 
 ## DiscoveryCheckpointStorage
 
