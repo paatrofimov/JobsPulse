@@ -342,7 +342,8 @@ posting whether the per-posting detail endpoint is asked (`DetailDecision`):
 Latching wake-up signal between `WatchService` and the polling routine. `RequestImmediateRun` is a no-op when a
 request is already pending, so repeated adds do not queue extra cycles; a request raised while the cycle is running
 is not lost - the next `WaitAsync` returns immediately. `WaitAsync` returns on the wake-up or after the period,
-whichever comes first.
+whichever comes first. `IsRemote` is false: the cycle runs in this process. `IPollingTrigger.IsRemote` is true for the
+host's `GitHubWorkflowTrigger`, whose cycle runs in GitHub Actions.
 
 # Abstractions
 

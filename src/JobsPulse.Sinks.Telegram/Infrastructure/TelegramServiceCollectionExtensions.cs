@@ -1,4 +1,5 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Sinks.Telegram.Options;
 using JobsPulse.Sinks.Telegram.Pipeline;
 using JobsPulse.Sinks.Telegram.Pipeline.Screens;
 using Microsoft.Extensions.Configuration;
@@ -16,6 +17,10 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(token));
 
         services.AddSingleton<TelegramClientFacade>();
+        services.AddSingleton<BotMenuPublisher>();
+
+        services.Configure<TelegramWebhookOptions>(config.GetSection(TelegramWebhookOptions.SectionName));
+        services.AddSingleton<WebhookRegistrar>();
 
         services.AddSingleton<IVacancySink, TelegramSink>();
         services.AddSingleton<MessageFormatter>();

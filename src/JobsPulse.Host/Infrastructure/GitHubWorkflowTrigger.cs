@@ -19,6 +19,9 @@ public sealed class GitHubWorkflowTrigger(
     private readonly Lock sync = new();
 
     private DateTimeOffset lastDispatch = DateTimeOffset.MinValue;
+    private Task inFlight = Task.CompletedTask;
+
+    public bool IsRemote => true;
 
     public void RequestImmediateRun()
     {
@@ -31,9 +34,20 @@ public sealed class GitHubWorkflowTrigger(
                 return;
 
             lastDispatch = now;
+            inFlight = DispatchAsync();
         }
+    }
 
-        _ = DispatchAsync();
+    /// <summary>
+    /// The last dispatch, finished or not. A webhook host awaits it before answering: Cloud Run throttles the CPU
+    /// once the response is sent, and a fire-and-forget request would then never leave.
+    /// </summary>
+    public Task PendingAsync()
+    {
+        lock (sync)
+        {
+            return inFlight;
+        }
     }
 
     // The polling cycle lives in GitHub Actions in this role - nothing in-process waits on the trigger.

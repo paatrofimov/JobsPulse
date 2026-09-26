@@ -88,7 +88,15 @@ dotnet run
 `dotnet run` runs everything in one process. In production the routines are one-shot GitHub Actions jobs
 (`--role polling | registry | discovery | cleanup`, see `.github/workflows`), started by
 [cron-job.org](https://cron-job.org) via `workflow_dispatch`, because GitHub does not fire their own `schedule:`
-here. The Telegram bot (`--role bot`) is a long-living process from the root `Dockerfile`.
+here. The Telegram bot runs as a webhook on Google Cloud Run (`--role webhook`, scales to zero), deployed by
+`.github/workflows/deploy-bot.yml` on every push to `master`; `--role bot` (long polling) remains for a
+long-living host.
+
+Cloud Run setup, once: a Google Cloud project with billing, the Cloud Run and Artifact Registry APIs enabled, and a
+service account with **Cloud Run Admin**, **Artifact Registry Administrator** and **Service Account User** roles.
+Repository variable `GCP_PROJECT_ID` (optional `GCP_REGION`, default `europe-west3` - next to a Frankfurt database);
+secrets `GCP_SA_KEY` (the account's JSON key), `TELEGRAM_WEBHOOK_SECRET` (random, letters, digits, `_` and `-`) and
+`GH_DISPATCH_TOKEN` (fine-grained, **Actions: read and write**, lets the bot start polling after a company is added).
 
 Needed: an external PostgreSQL, repository secrets `POSTGRES` and `TELEGRAM_BOT_TOKEN`, and a fine-grained token with
 **Actions: read and write** for cron-job.org (`POST .../actions/workflows/<workflow>.yml/dispatches`,

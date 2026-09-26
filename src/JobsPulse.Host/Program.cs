@@ -20,6 +20,8 @@ using JobsPulse.Sources.SuccessFactors.Infrastructure;
 using JobsPulse.Sources.Workday.Infrastructure;
 using JobsPulse.Storage.Infrastructure;
 using JobsPulse.Storage.Storages;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Console;
 using Vostok.Logging.Abstractions;
@@ -27,13 +29,18 @@ using Vostok.Logging.Console;
 using Vostok.Logging.File;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
-var builder = Host.CreateApplicationBuilder(args);
-
 // `--role <name>`: `all` (default) runs every routine in one long-living process, `bot` only the Telegram listener,
-// the rest are one-shot jobs for a scheduler such as GitHub Actions.
-var role = ParseRole(builder.Configuration["role"]);
+// `webhook` serves Telegram updates over HTTP (Cloud Run), the rest are one-shot jobs for a scheduler such as
+// GitHub Actions. Parsed before the builder, because the webhook role needs a web host.
+var role = ParseRole(new ConfigurationBuilder().AddCommandLine(args).Build()["role"]);
 
-ConfigureLogging(builder);
+var webBuilder = role == HostRole.Webhook ? WebApplication.CreateBuilder(args) : null;
+IHostApplicationBuilder builder = (IHostApplicationBuilder?)webBuilder ?? Host.CreateApplicationBuilder(args);
+
+// Cloud Run tells the container which port to listen on.
+webBuilder?.WebHost.UseUrls($"http://0.0.0.0:{Environment.GetEnvironmentVariable("PORT") ?? "8080"}");
+
+ConfigureLogging(builder, role);
 
 // The watchlist configuration lives in PostgreSQL - the config file only carries infrastructure settings.
 // Secrets: locally — user-secrets (Telegram:BotToken), prod — env variables (Telegram__BotToken).
@@ -69,7 +76,7 @@ builder.Services.Configure<JobOptions>(builder.Configuration.GetSection(JobOptio
 builder.Services.Configure<GitHubDispatchOptions>(builder.Configuration.GetSection(GitHubDispatchOptions.SectionName));
 
 // Without an in-process polling loop the bot asks GitHub Actions for an immediate run instead.
-if (role == HostRole.Bot && !string.IsNullOrWhiteSpace(builder.Configuration["GitHubDispatch:Token"]))
+if (role is HostRole.Bot or HostRole.Webhook && !string.IsNullOrWhiteSpace(builder.Configuration["GitHubDispatch:Token"]))
 {
     builder.Services.AddHttpClient(GitHubWorkflowTrigger.HttpClientName);
     builder.Services.AddSingleton<IPollingTrigger, GitHubWorkflowTrigger>();
@@ -100,11 +107,22 @@ builder.Services.AddTelegramSink(builder.Configuration);
 
 AddRoutines(builder.Services, role);
 
-var host = builder.Build();
+IHost host;
+
+if (webBuilder is not null)
+{
+    var app = webBuilder.Build();
+    TelegramWebhookEndpoint.Map(app);
+    host = app;
+}
+else
+{
+    host = ((HostApplicationBuilder)builder).Build();
+}
 
 await PrepareStorage(host);
 
-if (role is HostRole.All or HostRole.Bot)
+if (role is HostRole.All or HostRole.Bot or HostRole.Webhook)
 {
     await host.RunAsync();
     return 0;
@@ -173,13 +191,16 @@ async Task PrepareStorage(IHost h)
         CancellationToken.None);
 }
 
-void ConfigureLogging(HostApplicationBuilder hostApplicationBuilder)
+void ConfigureLogging(IHostApplicationBuilder hostApplicationBuilder, HostRole hostRole)
 {
+    // Cloud Run keeps the container filesystem in memory and collects stdout itself - no file log there.
     hostApplicationBuilder.Services.AddSingleton<ILog>(
-        new CompositeLog(
-            new ConsoleLog(),
-            FileLogProvider.Create("main-log")
-        )
+        hostRole == HostRole.Webhook
+            ? new ConsoleLog()
+            : new CompositeLog(
+                new ConsoleLog(),
+                FileLogProvider.Create("main-log")
+            )
     );
     hostApplicationBuilder.Logging.AddFilter<ConsoleLoggerProvider>(
         "Microsoft.Hosting",
@@ -189,7 +210,11 @@ void ConfigureLogging(HostApplicationBuilder hostApplicationBuilder)
         "Microsoft.Extensions.Hosting",
         LogLevel.None);
 
-    builder.Logging.AddFilter(
+    hostApplicationBuilder.Logging.AddFilter(
         "Microsoft.Extensions.Http",
+        LogLevel.Warning);
+
+    hostApplicationBuilder.Logging.AddFilter(
+        "Microsoft.AspNetCore",
         LogLevel.Warning);
 }

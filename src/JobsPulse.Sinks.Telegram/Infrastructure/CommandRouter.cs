@@ -18,6 +18,7 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 public sealed class CommandRouter(
     WatchService watch,
     PollingOrchestrator orchestrator,
+    IPollingTrigger pollingTrigger,
     IStateStore stateStore,
     IBoardRegistryStorage boardRegistry,
     IBoardDiscoveryService discovery,
@@ -361,6 +362,13 @@ public sealed class CommandRouter(
 
     private async Task<string> HandleForceCycleAsync(CancellationToken ct)
     {
+        // The bot is not where cycles run: a webhook host lives for one request, so the cycle goes to GitHub Actions.
+        if (pollingTrigger.IsRemote)
+        {
+            pollingTrigger.RequestImmediateRun();
+            return "<p>🚀 Polling is requested in GitHub Actions — changes arrive as notifications.</p>";
+        }
+
         var result = await orchestrator.TryRunCycleAsync(ct);
 
         if (!result.Started)

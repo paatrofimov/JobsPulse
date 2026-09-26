@@ -11,6 +11,7 @@ namespace JobsPulse.Sinks.Telegram.Routines;
 public sealed class TelegramBotListener(
     TelegramClientFacade client,
     BotUpdateHandler handler,
+    BotMenuPublisher menuPublisher,
     IOptions<TelegramOptions> options,
     ILog log) : BackgroundService
 {
@@ -39,13 +40,19 @@ public sealed class TelegramBotListener(
                 : "Bot is restricted to {Count} allowed users",
             opts.AllowedUserIds.Count);
 
-        // The client menu is published per language, so a Russian client shows Russian descriptions.
-        foreach (var (_, code, commands) in BotCommandCatalog.All())
+        // Telegram refuses getUpdates while a webhook is set. Taking over by deleting it would silently cut off the
+        // deployed webhook host - e.g. a local run with the production token - so long polling steps aside instead.
+        var webhook = await client.GetWebhookUrlAsync(stoppingToken);
+        if (!string.IsNullOrEmpty(webhook))
         {
-            var menu = await client.SetCommandsAsync(commands, stoppingToken, code);
-            if (!menu.Success)
-                ctxLog.Warn("Failed to publish the '{Code}' command menu: {Error}", code, menu.Error);
+            ctxLog.Warn(
+                "A webhook is registered ({Url}) — long polling is not started. Updates go to the webhook host; "
+                + "call deleteWebhook to switch this bot back to long polling",
+                webhook);
+            return;
         }
+
+        await menuPublisher.PublishAsync(stoppingToken);
 
         ctxLog.Info("Listening for updates");
 

@@ -5,12 +5,18 @@
 - `all` (default) - every routine in one long-living process, the local development setup;
 - `bot` - only `TelegramBotListener`; no traversal and no outbox dispatch. With `GitHubDispatch:Token` set,
   `IPollingTrigger` is `GitHubWorkflowTrigger`;
+- `webhook` - the same bot served over HTTP (`TelegramWebhookEndpoint`) on a `WebApplication` listening on `$PORT`
+  (8080 by default), for Cloud Run: scales to zero between messages, one instance at most, console log only.
+  Deployed by `.github/workflows/deploy-bot.yml`;
+- `webhooksetup` - one-shot: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and publishes the
+  command menu. The deploy workflow runs it in the freshly built image;
 - `polling`, `registry`, `discovery`, `cleanup` - one-shot jobs run by `JobRunner`, scheduled by the GitHub Actions
   workflows in `.github/workflows` (`_run-job.yml` builds and runs, the rest hold the cron). The process exits with
   the job's code; SIGINT/SIGTERM from a cancelled workflow stop it gracefully.
 
 Every role migrates the database first. Hosted services are registered here only - `AddBoardDiscovery` and
-`AddTelegramSink` no longer register their workers. The repository root holds a `Dockerfile` for the `bot` role.
+`AddTelegramSink` no longer register their workers. The repository root holds a `Dockerfile` (ASP.NET runtime,
+ReadyToRun) that serves every role; its default is `bot`, Cloud Run overrides it with `--role webhook`.
 
 # Infrastructure
 
@@ -26,9 +32,17 @@ the file is dead weight - the database is the only source of truth and the bot i
 
 ## GitHubWorkflowTrigger
 
-`IPollingTrigger` of the `bot` role: `RequestImmediateRun` fires a `workflow_dispatch` of `GitHubDispatch:Workflow`,
-at most once per `CooldownSeconds`. Failures are only logged. The workflow's concurrency group queues the run behind
-a cycle that is already walking.
+`IPollingTrigger` of the `bot` and `webhook` roles (`IsRemote`): `RequestImmediateRun` fires a `workflow_dispatch` of
+`GitHubDispatch:Workflow`, at most once per `CooldownSeconds`. Failures are only logged. The workflow's concurrency
+group queues the run behind a cycle that is already walking. `PendingAsync` is the dispatch still in flight - the
+webhook endpoint awaits it, because Cloud Run throttles the CPU once the response is sent.
+
+## TelegramWebhookEndpoint
+
+`POST {TelegramWebhook:Path}` (`/telegram`) and `GET /healthz`. A request without the right
+`X-Telegram-Bot-Api-Secret-Token` (compared in constant time) is 401, an unreadable body 400. The update is handled
+before the response - the container has CPU only while a request is open - and a failing update still answers 200,
+so Telegram does not redeliver it forever.
 
 # Models
 

@@ -31,8 +31,9 @@ Registered by the host (roles `all` and `bot`), not by `AddTelegramSink` - one-s
 Long-polls `getUpdates` for `Message` and `CallbackQuery` and hands each update to `BotUpdateHandler`. One failing
 update is logged and skipped - the offset has already moved, so retrying it forever would wedge the loop.
 
-On start it publishes the user command menu once per language (`setMyCommands` takes a language code), so a Russian
-client shows Russian descriptions.
+On start it checks `getWebhookInfo`: while a webhook is registered Telegram refuses `getUpdates`, and deleting the
+webhook would silently cut off the deployed webhook host (a local run with the production token), so the listener
+logs a warning and does not start. Otherwise it publishes the command menu (`BotMenuPublisher`) and polls.
 
 # Pipeline
 
@@ -301,7 +302,23 @@ publish the command menu, poll for updates. «Message is not modified» from an 
 same button twice is not an error. A failure to answer a callback query is swallowed: it must never break the screen
 that was just rendered.
 
+`SetWebhookAsync` / `GetWebhookUrlAsync` serve the webhook mode.
+
+## BotMenuPublisher
+
+Publishes the user command menu once per language (`setMyCommands` takes a language code), so a Russian client shows
+Russian descriptions. Shared by the long-polling listener and `WebhookRegistrar`.
+
+## WebhookRegistrar
+
+`setWebhook` to `TelegramWebhook:PublicUrl` + `Path` with `SecretToken`, for `Message` and `CallbackQuery`, then the
+command menu. Run once per deploy (`--role webhooksetup`), not on every start of a host that scales to zero.
+`TelegramWebhookOptions` is bound from the `TelegramWebhook` section.
+
 ## CommandRouter
+
+`/force_cycle` runs the cycle in-process only when `IPollingTrigger` is local; with a remote trigger (bot and webhook
+roles) it requests a GitHub Actions run and answers at once - a webhook request cannot live for a whole cycle.
 
 The **administrator** surface, unchanged in substance and reachable only from `Telegram:AdminUsernames`: raw ids, filter
 json, the board registry and the pipeline. `AdminCommandCatalog` lists it; it is kept out of the telegram command menu

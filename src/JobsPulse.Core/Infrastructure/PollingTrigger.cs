@@ -8,6 +8,8 @@ public sealed class PollingTrigger : IPollingTrigger
     private TaskCompletionSource signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool pending;
 
+    public bool IsRemote => false;
+
     public void RequestImmediateRun()
     {
         TaskCompletionSource toComplete;
