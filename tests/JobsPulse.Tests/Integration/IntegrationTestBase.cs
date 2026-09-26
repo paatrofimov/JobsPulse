@@ -10,6 +10,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Vostok.Logging.Abstractions;
+using Vostok.Logging.Console;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace JobsPulse.Tests.Integration;
 
@@ -35,6 +38,7 @@ public abstract partial class IntegrationTestBase : IDisposable
             .SetMinimumLevel(LogLevel.Debug));
 
         services
+            .AddSingleton<ILog>(new ConsoleLog())
             .AddSingleton(TimeProvider.System)
             .AddSingleton<VacancyMatcher>()
             .AddGreenhouseSource(config)

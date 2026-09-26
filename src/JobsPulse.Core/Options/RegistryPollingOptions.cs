@@ -24,7 +24,7 @@ public sealed class RegistryPollingOptions
     /// <summary>Pause after every board - a soft rate limit shared with the discovery validation traffic.</summary>
     [Range(0, 60000)] public int DelayBetweenBoardsMs { get; set; } = 500;
 
-    [Range(5, 600)] public int SingleEntryProcessTimeoutSeconds { get; set; } = 30;
+    [Range(5, 600)] public int SingleEntryProcessTimeoutSeconds { get; set; } = 180;
 
     /// <summary>Upper bound of the registry slice held in memory per cycle.</summary>
     [Range(1, 100000)] public int MaxRegistryBoards { get; set; } = 20000;

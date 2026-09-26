@@ -80,7 +80,8 @@ public sealed class StateStoreTests : IntegrationTestBase
         updatedVacancy.ContentHash.Should().NotBeEquivalentTo(firstVacancy.ContentHash);
         updatedVacancy.ContentHash.Should().BeEquivalentTo(VacancyHasher.Compute(updatedVacancy));
 
-        updatedVacancy.UpdatedAt!.Value.Should().BeAfter(firstVacancy.UpdatedAt!.Value);
+        // `updated_at` is the board's own stamp, written as the source reported it.
+        updatedVacancy.UpdatedAt.Should().Be(firstVacancy.UpdatedAt);
 
         var allOutboxes = await ReadAllOutboxesAsync();
         var vacancyOutboxes = allOutboxes.Where(o => o.Vacancy.Key == firstVacancy.Key).ToArray();
@@ -173,5 +174,21 @@ public sealed class StateStoreTests : IntegrationTestBase
 
         var dict3 = await LoadSeenVacanciesAsync();
         dict3.Values.Should().HaveCount(1);
+    }
+
+    [Test]
+    public async Task Should_reopen_closed_vacancy_with_unchanged_content()
+    {
+        var (_, vacancies, __) = await InsertVacanciesAsync(take: 1, changeKind: VacancyChangeKind.New);
+        var vacancy = vacancies[0];
+
+        await CommitAsync(BuildStateCommit(notifications: [], vacancies: [], closed: [vacancy.PostId]));
+        (await LoadSeenVacanciesAsync()).Should().BeEmpty();
+
+        // Back on the board with the same content hash - the upsert must still clear closed_at.
+        var commitResult = await CommitAsync(BuildStateCommit(notifications: [], vacancies: [vacancy], closed: []));
+
+        commitResult.UpsertVacanciesAffectedRows.Should().Be(1);
+        (await LoadSeenVacanciesAsync()).Keys.Should().ContainSingle(k => k == vacancy.PostId);
     }
 }

@@ -24,6 +24,12 @@ The watchlist configuration lives here now - there is no JSON watchlist any more
 - `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IBoardPollStateStorage`, `IWatchlistStorage`,
   `IDiscoveryCheckpointStorage` and `IBotUserStorage` as singletons; implementations are `internal`.
 
+## NpgsqlBatchExecutor
+
+Runs one parameterized statement per row as an `NpgsqlBatch`, 500 statements per round trip, and returns the total
+affected rows. Row-by-row commands cost a network round trip each, which dominated a commit against a remote
+database (~170 ms from GitHub runners to Neon in Frankfurt).
+
 ## DesignTimeDbContextFactory
 
 Only for `dotnet ef migrations` - the tool needs a context without the host and without a reachable database. The
@@ -191,11 +197,11 @@ FROM` and `post_id = ANY(@post_ids)`, which EF cannot express, and it needs the 
 Upserts, closures and outbox inserts run in one explicit transaction on one connection - a notification must never
 be enqueued without the state change that produced it, and vice versa.
 
-- Upsert: per-vacancy command in a loop, parameters re-bound each iteration. The `WHERE content_hash IS DISTINCT
-  FROM` guard turns unchanged vacancies into zero-row no-ops, so the returned count is the number of real changes
-  and unchanged rows are not touched.
+- Upsert: one statement per vacancy, sent through `NpgsqlBatchExecutor`. The `WHERE content_hash IS DISTINCT FROM
+  ... OR closed_at IS NOT NULL` guard turns unchanged open vacancies into zero-row no-ops, so the returned count is
+  the number of real changes; a closed vacancy that comes back is reopened even with an unchanged hash.
 - Close: single statement over `ANY(@post_ids)`, guarded by `closed_at IS NULL` so re-closing is a no-op.
-- Enqueue: per-item insert with `ON CONFLICT (dedup_key) DO NOTHING`.
+- Enqueue: per-item insert with `ON CONFLICT (dedup_key) DO NOTHING`, batched the same way.
 
 An empty commit short-circuits before opening a connection.
 

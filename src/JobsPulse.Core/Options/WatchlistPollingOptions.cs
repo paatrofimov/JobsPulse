@@ -10,7 +10,7 @@ public sealed class WatchlistPollingOptions
 
     [Range(1, 32)] public int MaxConcurrentEntries { get; set; } = 4;
 
-    [Range(5, 600)] public int SingleEntryProcessTimeoutSeconds { get; set; } = 30;
+    [Range(5, 600)] public int SingleEntryProcessTimeoutSeconds { get; set; } = 180;
 
     // Notifications are not sent
     public bool DryRun { get; set; }

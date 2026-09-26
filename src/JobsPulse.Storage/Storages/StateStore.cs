@@ -4,6 +4,7 @@ using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
+using JobsPulse.Storage.Infrastructure;
 using JobsPulse.Storage.PersistentModels;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -383,10 +384,7 @@ internal class StateStore(
         if (commit.Upserts.Count == 0)
             return 0;
 
-        await using var cmd = connection.CreateCommand();
-        cmd.Transaction = tx;
-
-        cmd.CommandText =
+        const string sql =
             """
             INSERT INTO seen_vacancy
                 (source_id, board_id, post_id, group_id, content_hash, filter_hash,
@@ -410,40 +408,30 @@ internal class StateStore(
                     seen_vacancy.first_published_at,
                     EXCLUDED.first_published_at)
             WHERE seen_vacancy.content_hash IS DISTINCT FROM EXCLUDED.content_hash
+               OR seen_vacancy.closed_at IS NOT NULL
             """;
 
-        var affectedRowsTotal = 0;
-
-        foreach (var vacancy in commit.Upserts)
+        var affectedRowsTotal = await NpgsqlBatchExecutor.ExecuteAsync(connection, tx, sql, commit.Upserts, (p, vacancy) =>
         {
-            cmd.Parameters.Clear();
-
-            cmd.Parameters.AddWithValue("source", vacancy.SourceId);
-            cmd.Parameters.AddWithValue("board", vacancy.BoardId);
-            cmd.Parameters.AddWithValue("post", vacancy.PostId);
-            cmd.Parameters.AddWithValue("group", (object?)vacancy.GroupId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("hash", VacancyHasher.Compute(vacancy));
-            cmd.Parameters.AddWithValue("filter_hash", (object?)commit.FilterHash ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("title", vacancy.Title);
-            cmd.Parameters.AddWithValue("location", (object?)vacancy.Location ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("url", vacancy.Url);
+            p.AddWithValue("source", vacancy.SourceId);
+            p.AddWithValue("board", vacancy.BoardId);
+            p.AddWithValue("post", vacancy.PostId);
+            p.AddWithValue("group", (object?)vacancy.GroupId ?? DBNull.Value);
+            p.AddWithValue("hash", VacancyHasher.Compute(vacancy));
+            p.AddWithValue("filter_hash", (object?)commit.FilterHash ?? DBNull.Value);
+            p.AddWithValue("title", vacancy.Title);
+            p.AddWithValue("location", (object?)vacancy.Location ?? DBNull.Value);
+            p.AddWithValue("url", vacancy.Url);
             // `first_seen_at` is ours, not the board's: a source that did not stamp it is first seen right now.
-            cmd.Parameters.AddWithValue("first_seen_at", vacancy.FirstSeenAt ?? now);
-            cmd.Parameters.AddWithValue(
-                "first_published_at",
-                (object?)vacancy.FirstPublishedAt ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("updated_at", (object?)vacancy.UpdatedAt ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("offices", vacancy.Offices.ToArray());
+            p.AddWithValue("first_seen_at", vacancy.FirstSeenAt ?? now);
+            p.AddWithValue("first_published_at", (object?)vacancy.FirstPublishedAt ?? DBNull.Value);
+            p.AddWithValue("updated_at", (object?)vacancy.UpdatedAt ?? DBNull.Value);
+            p.AddWithValue("offices", vacancy.Offices.ToArray());
+        }, ct);
 
-            var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
-
-            ctxLog.Debug(
-                "Upsertion to seen_vacancy table of vacancy '{VacancyKey}' affected {Affected} rows",
-                vacancy.Key,
-                affectedRows);
-
-            affectedRowsTotal += affectedRows;
-        }
+        ctxLog.Debug(
+            "Upsertion of {Count} vacancies of board {Source}/{Board} to seen_vacancy affected {Affected} rows",
+            commit.Upserts.Count, commit.SourceId, commit.BoardId, affectedRowsTotal);
 
         return affectedRowsTotal;
     }
@@ -496,10 +484,7 @@ internal class StateStore(
         if (commit.MatchUpserts.Count == 0)
             return 0;
 
-        await using var cmd = connection.CreateCommand();
-        cmd.Transaction = tx;
-
-        cmd.CommandText =
+        const string sql =
             """
             INSERT INTO watchlist_vacancy
                 (watchlist_id, source_id, board_id, post_id, content_hash, filter_hash, matched_at)
@@ -513,24 +498,16 @@ internal class StateStore(
                OR watchlist_vacancy.filter_hash IS DISTINCT FROM EXCLUDED.filter_hash
             """;
 
-        var affectedRowsTotal = 0;
-
-        foreach (var match in commit.MatchUpserts)
+        return await NpgsqlBatchExecutor.ExecuteAsync(connection, tx, sql, commit.MatchUpserts, (p, match) =>
         {
-            cmd.Parameters.Clear();
-
-            cmd.Parameters.AddWithValue("watchlist", match.WatchlistId);
-            cmd.Parameters.AddWithValue("source", match.SourceId);
-            cmd.Parameters.AddWithValue("board", match.BoardId);
-            cmd.Parameters.AddWithValue("post", match.PostId);
-            cmd.Parameters.AddWithValue("hash", match.ContentHash);
-            cmd.Parameters.AddWithValue("filter_hash", match.FilterHash);
-            cmd.Parameters.AddWithValue("matched_at", now);
-
-            affectedRowsTotal += await cmd.ExecuteNonQueryAsync(ct);
-        }
-
-        return affectedRowsTotal;
+            p.AddWithValue("watchlist", match.WatchlistId);
+            p.AddWithValue("source", match.SourceId);
+            p.AddWithValue("board", match.BoardId);
+            p.AddWithValue("post", match.PostId);
+            p.AddWithValue("hash", match.ContentHash);
+            p.AddWithValue("filter_hash", match.FilterHash);
+            p.AddWithValue("matched_at", now);
+        }, ct);
     }
 
     private async Task<int> RemoveMatchesAsync(
@@ -588,10 +565,7 @@ internal class StateStore(
         if (commit.Notifications.Count == 0)
             return 0;
 
-        await using var cmd = connection.CreateCommand();
-        cmd.Transaction = tx;
-
-        cmd.CommandText =
+        const string sql =
             """
             INSERT INTO outbox
             (
@@ -622,41 +596,20 @@ internal class StateStore(
             ON CONFLICT (dedup_key) DO NOTHING
             """;
 
-        var affectedRowsTotal = 0;
-
-        foreach (var item in commit.Notifications)
+        return await NpgsqlBatchExecutor.ExecuteAsync(connection, tx, sql, commit.Notifications, (p, item) =>
         {
-            cmd.Parameters.Clear();
-
-            cmd.Parameters.AddWithValue("dedup", item.DedupKey);
-            cmd.Parameters.AddWithValue("kind", (int)item.ChangeKind);
-            cmd.Parameters.AddWithValue("company", item.CompanyName);
-            cmd.Parameters.AddWithValue("watchlist", (object?)item.WatchlistId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("watchlist_name", (object?)item.WatchlistName ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("discovered", item.Discovered);
-
-            cmd.Parameters.Add(
-                new NpgsqlParameter("payload", NpgsqlDbType.Jsonb)
-                {
-                    Value = JsonSerializer.Serialize(item.Vacancy, JsonSerializerOptionsFactory.Instance)
-                });
-
-            cmd.Parameters.AddWithValue(
-                "status",
-                (int)PersistentOutboxStatus.Pending);
-
-            cmd.Parameters.AddWithValue("now", now);
-
-            var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
-
-            ctxLog.Debug(
-                "Insertion to outbox table of vacancy '{VacancyKey}' affected {Affected} rows",
-                item.Vacancy.Key,
-                affectedRows);
-
-            affectedRowsTotal += affectedRows;
-        }
-
-        return affectedRowsTotal;
+            p.AddWithValue("dedup", item.DedupKey);
+            p.AddWithValue("kind", (int)item.ChangeKind);
+            p.AddWithValue("company", item.CompanyName);
+            p.AddWithValue("watchlist", (object?)item.WatchlistId ?? DBNull.Value);
+            p.AddWithValue("watchlist_name", (object?)item.WatchlistName ?? DBNull.Value);
+            p.AddWithValue("discovered", item.Discovered);
+            p.Add(new NpgsqlParameter("payload", NpgsqlDbType.Jsonb)
+            {
+                Value = JsonSerializer.Serialize(item.Vacancy, JsonSerializerOptionsFactory.Instance)
+            });
+            p.AddWithValue("status", (int)PersistentOutboxStatus.Pending);
+            p.AddWithValue("now", now);
+        }, ct);
     }
 }

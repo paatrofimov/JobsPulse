@@ -66,6 +66,9 @@ registry cycle tests a board against the individual watchlist filters without fe
     - upsert seen vacancies, close the ones that are gone
     - upsert and delete match rows
     - enqueue outbox
+- seen vacancies and match rows whose hashes equal the stored ones are dropped from the commit first - they mirror
+  the storage guards, so the database result is the same, but an unchanged board commits nothing and costs no round
+  trip. `BoardProcessResult.Relevant` still carries every vacancy that passed the storage filters.
 
 ### Scheduling
 
@@ -89,7 +92,8 @@ it backs the `/force_cycle` bot command. A forced cycle ignores the poll state c
 board, as if the process had just started.
 
 All due boards are started at once and throttled by a `SemaphoreSlim` of `MaxConcurrentEntries`.
-Each board gets its own linked CTS with `SingleEntryProcessTimeoutSeconds`; a cancellation is treated as a timeout
+Each board gets its own linked CTS with `SingleEntryProcessTimeoutSeconds` (180: a board of ~5000 postings with a
+description filter - Bosch on SmartRecruiters - needs about a minute); a cancellation is treated as a timeout
 only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and must propagate.
 
 ### Bail-outs (no commit at all)
@@ -604,3 +608,11 @@ everything one cycle found within `Delivery:GroupChangesWithinMinutes` reads as 
 - Idempotency key. Single change won't be enqueued twice.
 - Format: {Vacancy.Key}|{WatchlistId}|{ChangeKind}|{ContentHash} - the watchlist is part of the key because the same
   vacancy legitimately produces one notification per watchlist.
+
+# Options
+
+- `WatchlistPollingOptions` - section `WatchlistPolling`: `PollingIntervalMinutes`, `MaxConcurrentEntries`,
+  `SingleEntryProcessTimeoutSeconds`, `DryRun`. The keys must match the property names: `appsettings.json` once
+  carried a `Polling` section with other names, and nothing in it was ever applied.
+- `RegistryPollingOptions` - section `RegistryPolling`, see the class.
+- `DeliveryOptions` - section `Delivery`, see the class.
