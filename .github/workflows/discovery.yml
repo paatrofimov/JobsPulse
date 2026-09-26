@@ -18,6 +18,8 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: discovery
+      # Started by cron-job.org every day; healthchecks.io alerts after three missed runs.
+      cadence-minutes: 1440
       # GitHub kills a job at 360 minutes; the run stops itself earlier so the checkpoint is written.
       timeout-minutes: 355
       max-run-minutes: ${{ fromJSON(inputs.max-run-minutes || '330') }}

@@ -12,7 +12,10 @@
   command menu. The deploy workflow runs it in the freshly built image;
 - `polling`, `registry`, `discovery`, `cleanup` - one-shot jobs run by `JobRunner`, scheduled by the GitHub Actions
   workflows in `.github/workflows` (`_run-job.yml` builds and runs, the rest hold the cron). The process exits with
-  the job's code; SIGINT/SIGTERM from a cancelled workflow stop it gracefully.
+  the job's code; SIGINT/SIGTERM from a cancelled workflow stop it gracefully. After every run, whatever its result,
+  `_run-job.yml` upserts the healthchecks.io check `jobspulse-<role>` (secret `HEALTHCHECKS_API_KEY`, read-write) with
+  period = the caller's `cadence-minutes` and grace = twice that, then pings it - an email alert comes only when a job
+  has not run for three cadences. Failures are left to GitHub's own failure emails.
 
 Every role migrates the database first. Hosted services are registered here only - `AddBoardDiscovery` and
 `AddTelegramSink` no longer register their workers. The repository root holds a `Dockerfile` (ASP.NET runtime,

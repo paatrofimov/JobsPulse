@@ -71,6 +71,7 @@ button tap to the Cloud Run service, which starts the container on demand and sc
 | Integrations | Greenhouse, Lever, SmartRecruiters, Ashby, Workday, SuccessFactors careers APIs; Common Crawl (DuckDB over remote Parquet) |
 | Routines | `Microsoft.Extensions.Hosting`, transactional outbox, bounded concurrency |
 | Hosting | GitHub Actions (routines, started by cron-job.org), Google Cloud Run (bot, Docker image in Artifact Registry) |
+| Monitoring | healthchecks.io — a dead man's switch per job, alerts by email |
 | Logging | Vostok, console and file |
 | Testing | NUnit, FluentAssertions, FakeItEasy |
 
@@ -83,6 +84,7 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 | Routines | GitHub Actions | one-shot jobs, started on a schedule by cron-job.org |
 | Telegram bot | Google Cloud Run | webhook container, started by incoming messages, scales to zero |
 | Database | Neon | managed PostgreSQL |
+| Monitoring | healthchecks.io | every finished run resets its job's check; an email alert comes only when a job has not run for three of its intervals |
 
 | Job | Runs | What it does |
 |---|---|---|
