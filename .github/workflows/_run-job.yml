@@ -45,7 +45,6 @@ jobs:
           ConnectionStrings__Postgres: ${{ secrets.POSTGRES }}
           Telegram__BotToken: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           Telegram__EnableCommands: "false"
-          Sources__HeadHunter__AccessToken: ${{ secrets.HH_ACCESS_TOKEN }}
           WatchlistPolling__DryRun: ${{ vars.POLLING_DRY_RUN || 'false' }}
           RegistryPolling__DryRun: ${{ vars.REGISTRY_DRY_RUN || 'false' }}
           Job__MaxRunMinutes: ${{ inputs.max-run-minutes }}
