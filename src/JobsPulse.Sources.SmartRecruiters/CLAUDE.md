@@ -24,6 +24,10 @@ Pages with `offset`/`limit` until `totalFound` is covered or a short page arrive
 hitting it returns an incomplete traversal, so the orchestrator drops the batch instead of closing everything it did
 not fetch.
 
+Details are asked through `DetailSelector` (Core): only for new or changed postings, at most `MaxDetailsPerPoll`
+per traversal, `DetailConcurrency` at a time; every posting when `IncludeContentOnPoll` is set, every posting a
+title filter accepts when a filter reads descriptions. Unchanged postings reuse the stored `Url` and `GroupId`.
+
 ## SmartRecruitersBoardResolver
 
 Name resolution reuses `CompanySlugGuesser`; url resolution takes the company out of a `smartrecruiters.com` link or
@@ -47,4 +51,5 @@ company in the path (`www.smartrecruiters.com` is a marketing site), and reserve
 `PostingDto` to `Vacancy`. `releasedDate` becomes `FirstPublishedAt`; `UpdatedAt` stays null, so change detection
 relies on the content hash alone. `GroupId` is the detail's `jobId` and is null without a detail request, which
 means postings pass deduplication through. `Location` prefers `fullLocation` and falls back to city/region/country,
-marked `(remote)` or `(hybrid)`; the job ad sections are concatenated into one description.
+marked `(remote)` or `(hybrid)`; the job ad sections are concatenated into one description. `ListUnchanged` compares
+title and location - the list's part of the hash; `Reuse` completes a list-only mapping with the stored detail fields.

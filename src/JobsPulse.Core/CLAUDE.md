@@ -55,8 +55,11 @@ registry cycle tests a board against the individual watchlist filters without fe
 
 ### Flow:
 
+- load the global seen vacancies of the board - handed to the source as `SourceTarget.Known`, together with
+  `NeedsDescription` (a storage filter reads descriptions) and `MayBeStored` (`VacancyMatcher.MatchesTitle` against
+  the storage filters), so the source can skip detail requests - see `DetailSelector`
 - traverse the board once
-- load the global seen vacancies of the board and its match layer (the latter is skipped when nothing is subscribed)
+- load its match layer (skipped when nothing is subscribed)
 - `ChangeDetector` produces both levels in one pass
 - build outbox notifications - one per change, so one per watchlist
 - update state as a single transaction:
@@ -208,7 +211,8 @@ SHA-256 truncated to 32 hex chars. `Compute` hashes the fields listed in `Vacanc
 
 ## VacancyMatcher
 
-Applies filter to a list of vacancies.
+Applies filter to a list of vacancies. `MatchesTitle` is the title part alone - the one check a list-only vacancy
+can fail for good, since location, description and date may still come from a detail request.
 
 ## WatchService
 
@@ -307,6 +311,24 @@ The delivery window - `Of(minutes)` and `Floor(time, window)`, epoch-aligned. Tw
 window ends and they live in different projects: `OutboxDispatcher` holds a notification back until its window is
 closed, `MessageFormatter` groups the batch by the same boundary. Keeping the floor in one place is what rules out
 the failure the split caused before it existed - a window delivered in halves, every half carrying the same header.
+
+## DetailSelector
+
+For sources whose list lacks descriptions and part of the hashed fields (SmartRecruiters, Workday), decides per
+posting whether the per-posting detail endpoint is asked (`DetailDecision`):
+
+- `Fetch` for everything when `IncludeContentOnPoll` is set (the old, slow behaviour);
+- `ListOnly` for a posting no storage filter can accept by title (`MayBeStored`);
+- `Fetch` for every remaining posting when `NeedsDescription` - descriptions are not stored, so a description filter
+  needs a fresh one each poll, and without a budget: a stored vacancy mapped without its description would fail the
+  filter and be closed;
+- `Reuse` for a known posting whose list data did not move (the source's `ListUnchanged`) - the stored vacancy
+  supplies the detail fields, so the content hash stays put;
+- `Fetch` for new or changed postings up to the source's `MaxDetailsPerPoll`, `ListOnly` past it - a big board seen
+  for the first time finishes instead of timing out every cycle. Such a posting keeps its list-only fields until its
+  list data changes; it is never backfilled.
+
+`FetchAsync` runs the selected requests with `DetailConcurrency` in parallel.
 
 ## PollingTrigger
 

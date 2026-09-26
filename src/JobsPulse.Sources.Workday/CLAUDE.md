@@ -111,6 +111,12 @@ the reported total being reached, or `MaxPages`. Only the last of those is an in
 that is really the tenant's own cap still counts as complete, because treating it otherwise would mean never
 committing state for a large board.
 
+Details are asked through `DetailSelector` (Core): only for new postings and postings whose title changed, at most
+`MaxDetailsPerPoll` per traversal, `DetailConcurrency` at a time; every posting when `IncludeContentOnPoll` is set,
+every posting a title filter accepts when a filter reads descriptions. `WorkdayMapper.ListUnchanged` compares the title only - the list location is a count for
+multi-site postings and lacks the remote marker, so a location-only change goes unnoticed. `Reuse` takes `GroupId`,
+`Location`, `Offices`, `Url` and `FirstPublishedAt` from the stored vacancy.
+
 ## WorkdayBoardResolver
 
 `ResolveByUrlAsync` is the way a board is added: normalize the url, confirm tenant and site against the careers page,

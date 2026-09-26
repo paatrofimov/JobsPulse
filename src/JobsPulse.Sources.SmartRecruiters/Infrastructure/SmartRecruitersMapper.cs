@@ -30,6 +30,18 @@ public class SmartRecruitersMapper(TimeProvider clock)
         };
     }
 
+    /// <summary>Title and location are the list's part of the content hash - equal means the detail has nothing new.</summary>
+    public static bool ListUnchanged(Vacancy listed, Vacancy known)
+    {
+        return listed.Title == known.Title && listed.Location == known.Location;
+    }
+
+    /// <summary>A list-only mapping completed with what the stored vacancy once got from the detail.</summary>
+    public static Vacancy Reuse(Vacancy listed, Vacancy known)
+    {
+        return listed with { GroupId = known.GroupId, Url = known.Url };
+    }
+
     private static string? Location(PostingLocationDto? location)
     {
         if (location is null)

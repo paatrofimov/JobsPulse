@@ -1,4 +1,5 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sources.SmartRecruiters.Models;
@@ -75,24 +76,42 @@ public sealed class SmartRecruitersBoardSource(
         SmartRecruitersOptions opts,
         CancellationToken ct)
     {
+        var listed = postings.Select(p => mapper.ToVacancy(p, target.BoardId)).ToList();
+
+        var decisions = DetailSelector.Select(
+            listed, target, opts.IncludeContentOnPoll, opts.MaxDetailsPerPoll, SmartRecruitersMapper.ListUnchanged);
+
+        var details = await DetailSelector.FetchAsync(decisions, opts.DetailConcurrency, async (i, token) =>
+        {
+            var response = await client.GetPostingAsync(target.BoardId, postings[i].Id, token);
+            if (response.Success)
+                return response.Value;
+
+            ctxLog.Debug(
+                "Posting {Posting} of {Board} has no readable detail ({Error})",
+                postings[i].Id, target.BoardId, response.Error);
+
+            return null;
+        }, ct);
+
         var vacancies = new List<Vacancy>(postings.Count);
 
-        foreach (var posting in postings)
+        for (var i = 0; i < postings.Count; i++)
         {
-            ct.ThrowIfCancellationRequested();
-
-            PostingDetailDto? detail = null;
-
-            var response = await client.GetPostingAsync(target.BoardId, posting.Id, ct);
-            if (response.Success)
-                detail = response.Value;
-            else
-                ctxLog.Debug(
-                    "Posting {Posting} of {Board} has no readable detail ({Error})",
-                    posting.Id, target.BoardId, response.Error);
-
-            vacancies.Add(mapper.ToVacancy(posting, target.BoardId, detail));
+            vacancies.Add(decisions[i] switch
+            {
+                DetailDecision.Fetch when details[i] is { } detail => mapper.ToVacancy(postings[i], target.BoardId, detail),
+                DetailDecision.Reuse => SmartRecruitersMapper.Reuse(listed[i], target.Known[listed[i].PostId]),
+                _ => listed[i]
+            });
         }
+
+        ctxLog.Debug(
+            "Board {Board}: {Fetched} details requested, {Reused} reused, {ListOnly} list-only",
+            target.BoardId,
+            decisions.Count(d => d == DetailDecision.Fetch),
+            decisions.Count(d => d == DetailDecision.Reuse),
+            decisions.Count(d => d == DetailDecision.ListOnly));
 
         return vacancies;
     }

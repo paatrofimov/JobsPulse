@@ -17,6 +17,14 @@ public sealed class SmartRecruitersOptions
 
     public int MaxSlugGuesses { get; set; } = 8;
 
+    /// <summary>Ask the detail endpoint for every posting on every poll, as if a filter read descriptions.</summary>
+    public bool IncludeContentOnPoll { get; set; }
+
+    /// <summary>Detail requests per board traversal for new or changed postings; the rest are mapped list-only.</summary>
+    public int MaxDetailsPerPoll { get; set; } = 100;
+
+    public int DetailConcurrency { get; set; } = 4;
+
     // Server-side filters of the posting API - single values, the API does not OR repeated keys.
     public string? Query { get; set; }
     public string? Country { get; set; }

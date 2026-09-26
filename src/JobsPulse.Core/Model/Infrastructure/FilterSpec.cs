@@ -24,6 +24,8 @@ public sealed record FilterSpec
         DescriptionAnyOf.Count == 0 && DescriptionNoneOf.Count == 0 &&
         PostedWithinDays is null;
 
+    public bool UsesDescription => DescriptionAnyOf.Count > 0 || DescriptionNoneOf.Count > 0;
+
 
     public override string ToString()
     {
