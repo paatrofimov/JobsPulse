@@ -2,7 +2,8 @@ name: polling
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Hourly, off the top of the hour: GitHub delays and drops scheduled runs at :00 under load.
+    - cron: "3 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -14,6 +15,6 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: polling
-      timeout-minutes: 45
-      max-run-minutes: 35
+      timeout-minutes: 60
+      max-run-minutes: 50
     secrets: inherit
