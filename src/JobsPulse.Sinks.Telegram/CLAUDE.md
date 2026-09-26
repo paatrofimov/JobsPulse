@@ -27,6 +27,7 @@ screen cannot forget the check.
 
 ## TelegramBotListener
 
+Registered by the host (roles `all` and `bot`), not by `AddTelegramSink` - one-shot jobs only deliver.
 Long-polls `getUpdates` for `Message` and `CallbackQuery` and hands each update to `BotUpdateHandler`. One failing
 update is logged and skipped - the offset has already moved, so retrying it forever would wedge the loop.
 

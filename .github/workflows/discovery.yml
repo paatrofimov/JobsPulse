@@ -1,0 +1,24 @@
+name: discovery
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      max-run-minutes:
+        description: "Stop and save the checkpoint after N minutes"
+        default: "330"
+
+concurrency:
+  group: discovery
+  cancel-in-progress: false
+
+jobs:
+  discovery:
+    uses: ./.github/workflows/_run-job.yml
+    with:
+      role: discovery
+      # GitHub kills a job at 360 minutes; the run stops itself earlier so the checkpoint is written.
+      timeout-minutes: 355
+      max-run-minutes: ${{ fromJSON(inputs.max-run-minutes || '330') }}
+    secrets: inherit

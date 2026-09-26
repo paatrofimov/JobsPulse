@@ -81,3 +81,15 @@ dotnet user-secrets set "ConnectionStrings:Postgres" \
 # Migrations are applied on start
 dotnet run
 ```
+
+## Deploying with GitHub Actions
+
+`dotnet run` starts everything in one process (`--role all`). In production the routines are split:
+
+- `--role polling | registry | discovery | cleanup` - one-shot jobs, scheduled by `.github/workflows`;
+- `--role bot` - the Telegram listener, a long-living process built from the root `Dockerfile`.
+
+Both need an external PostgreSQL. Repository secrets: `POSTGRES`, `TELEGRAM_BOT_TOKEN`, optional `HH_ACCESS_TOKEN`;
+repository variable `POLLING_DRY_RUN=true` stops enqueueing notifications for test runs. The bot takes the same settings as
+environment variables (see `.env.example`); `GitHubDispatch__Token` lets it start the polling workflow right after a
+company is added.

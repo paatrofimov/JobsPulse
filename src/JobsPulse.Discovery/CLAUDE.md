@@ -173,7 +173,8 @@ gave up does not read as one that succeeded). `DiscoveryPause` is the polite pau
 
 `AddBoardDiscovery(config)` registers the checkpoint tracker, both named HttpClients (`common-crawl-index` for the cdx api with a 10 minute
 timeout - pages are streamed - and `common-crawl-data` for the parquet path listings), both index clients, both
-passes, the token sink, `IBoardDiscoveryService` and the background worker.
+passes, the token sink, `IBoardDiscoveryService` and `DiscoveryBootstrapPolicy`. `BoardDiscoveryWorker` is registered by
+the host, only in its long-living `all` role.
 
 # Pipeline
 
@@ -263,13 +264,19 @@ by all collections; the collections left behind are reported as pending.
 `BoardDiscoveryReport` counts `CollectionsProcessed` (marked processed), `CollectionsFailed` and
 `CollectionsPending`, so the log line tells a finished run from a run that mostly fought the index.
 
+## DiscoveryBootstrapPolicy
+
+`IsBootstrapDueAsync` - a bootstrap is due while the registry is empty or the latest `discovery_checkpoint` is an
+unfinished bootstrap. The second case lets a restart or a time-boxed job (`--role discovery`) resume the bootstrap
+instead of starting an incremental walk over the whole crawl history.
+
 # Routines
 
 ## BoardDiscoveryWorker
 
-Starts after `StartDelayMinutes`, then runs every `RunIntervalHours`. The very first run is a full bootstrap when
-the registry is empty; everything after that is incremental. The bootstrap flag is cleared only after a run that
-actually started, so a failed first attempt is retried as a bootstrap.
+Starts after `StartDelayMinutes`, then runs every `RunIntervalHours`. The first run is a bootstrap when
+`DiscoveryBootstrapPolicy` says so; everything after that is incremental. The bootstrap flag is cleared only after a
+run that actually started, so a failed first attempt is retried as a bootstrap.
 
 # Options
 

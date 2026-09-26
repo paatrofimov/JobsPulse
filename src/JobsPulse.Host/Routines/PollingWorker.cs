@@ -4,7 +4,7 @@ using JobsPulse.Core.Pipeline;
 using Microsoft.Extensions.Options;
 using Vostok.Logging.Abstractions;
 
-namespace JobsPulse.Host.Rouitines;
+namespace JobsPulse.Host.Routines;
 
 public sealed class PollingWorker(
     PollingOrchestrator orchestrator,

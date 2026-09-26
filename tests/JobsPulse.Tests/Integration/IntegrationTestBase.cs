@@ -1,6 +1,6 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Pipeline;
-using JobsPulse.Host.Rouitines;
+using JobsPulse.Host.Routines;
 using JobsPulse.Sinks.Telegram.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Infrastructure;
 using JobsPulse.Sources.Greenhouse.Options;

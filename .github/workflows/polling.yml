@@ -1,0 +1,19 @@
+name: polling
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: polling
+  cancel-in-progress: false
+
+jobs:
+  polling:
+    uses: ./.github/workflows/_run-job.yml
+    with:
+      role: polling
+      timeout-minutes: 45
+      max-run-minutes: 35
+    secrets: inherit

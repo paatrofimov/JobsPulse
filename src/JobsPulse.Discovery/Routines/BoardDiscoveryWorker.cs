@@ -1,5 +1,6 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Discovery.Options;
+using JobsPulse.Discovery.Pipeline;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Vostok.Logging.Abstractions;
@@ -8,7 +9,7 @@ namespace JobsPulse.Discovery.Routines;
 
 public sealed class BoardDiscoveryWorker(
     IBoardDiscoveryService discovery,
-    IBoardRegistryStorage registry,
+    DiscoveryBootstrapPolicy bootstrapPolicy,
     IOptionsMonitor<DiscoveryOptions> options,
     ILog log) : BackgroundService
 {
@@ -31,9 +32,8 @@ public sealed class BoardDiscoveryWorker(
             return;
         }
 
-        // An empty registry means the bootstrap has never run - only then the whole history is worth reading.
-        var counts = await registry.CountBySourceAsync(stoppingToken);
-        var full = counts.Values.Sum() == 0;
+        // Only an empty registry or an unfinished bootstrap makes the whole history worth reading.
+        var full = await bootstrapPolicy.IsBootstrapDueAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
