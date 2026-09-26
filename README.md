@@ -92,6 +92,17 @@ here. The Telegram bot runs as a webhook on Google Cloud Run (`--role webhook`, 
 `.github/workflows/deploy-bot.yml` on every push to `master`; `--role bot` (long polling) remains for a
 long-living host.
 
+| Workflow | Cadence (UTC) | What it does |
+|---|---|---|
+| `polling` | hourly, :05 | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
+| `registry` | :17 and :47 | Background sweep of the discovered board registry: the 50 least recently polled boards per run; a board whose vacancies match a watchlist filter is added to it (🔎, up to 5 per run). |
+| `discovery` | daily, 03:23 | Mines Common Crawl indexes for ATS board urls to fill the registry. Stops after 330 minutes and continues from its checkpoint on the next run. |
+| `cleanup` | daily, 04:53 | Deletes delivered notifications older than 24 hours from the outbox. |
+| `deploy-bot` | on push to `master` | Builds the image, deploys the webhook bot to Cloud Run and registers the webhook. |
+
+`_run-job.yml` is the shared build-and-run step of the first four; `schedule-probe` is a temporary check of GitHub's
+own `schedule:`.
+
 Cloud Run setup, once: a Google Cloud project with billing, the Cloud Run and Artifact Registry APIs enabled, and a
 service account with **Cloud Run Admin**, **Artifact Registry Administrator** and **Service Account User** roles.
 Repository variable `GCP_PROJECT_ID` (optional `GCP_REGION`, default `europe-west3` - next to a Frankfurt database);
