@@ -1,17 +1,17 @@
 # JobsPulse
 
-A self-hosted vacancy monitoring service. It polls the careers pages of companies you pick and reports every change —
+A vacancy monitoring service. It polls the careers pages of companies you pick and reports every change —
 new, updated or closed vacancy — filtered by your own rules. It talks to the ATS behind each careers page
 (Greenhouse, Lever, Workday, …) rather than to a job aggregator, so postings arrive as the company publishes them.
 
-The service is a .NET host with background routines and a PostgreSQL database; a Telegram bot is its user interface —
-buttons, no commands.
+The state lives in PostgreSQL, the routines run as one-shot GitHub Actions jobs, and the user interface is a Telegram
+bot — buttons, no commands — served as a webhook on Google Cloud Run.
 
 ---
 
 ## Getting started
 
-1. Open the bot in Telegram — [@JobsPulseBot](https://t.me/JobsPulseBot), or your own instance — and press **/start**.
+1. Open [@JobsPulseBot](https://t.me/JobsPulseBot) in Telegram and press **/start**.
 2. **📋 My watchlists → ➕ New watchlist.** A watchlist is a named set of companies plus one filter.
 3. **➕ Add company** — type a company name or paste a link to its careers page. The service resolves the board
    itself; you never see an ATS name or a board id.
@@ -39,76 +39,56 @@ Interface and notifications are available in English and Russian, switchable per
 ## Architecture
 
 ```
- ATS APIs ─────> polling cycle ─────> database ─────> dispatcher ─────> Telegram bot
-                                                                            ^
- Common Crawl ─> discovery ─> board registry ─> registry sweep              └── screens, buttons
+ cron-job.org ─ workflow_dispatch ─> GitHub Actions, one-shot jobs
+                                       polling    watchlist boards (ATS APIs) ─┐
+                                       registry   registry boards (ATS APIs) ──┼─> PostgreSQL ─> outbox ─> Telegram
+                                       discovery  Common Crawl ─> registry ────┘
+                                       cleanup    delivered outbox rows
+
+ Telegram ─ webhook ─> bot on Cloud Run ─> PostgreSQL      (adding a company starts `polling`)
 ```
 
-A background cycle walks every board of every enabled watchlist, compares what it fetched against stored state and
-produces changes. A board is fetched once per cycle however many watchlists want it, and a vacancy matching no
-enabled filter is never stored, which is what keeps the workload bounded while a second, slower sweep walks the
+Every routine is a job that runs one iteration and exits. The polling cycle walks every board of every enabled
+watchlist, compares what it fetched against stored state and produces changes. A board is fetched once per cycle
+however many watchlists want it, a vacancy matching no enabled filter is never stored, and per-vacancy detail requests
+are made only for new or changed postings — which keeps the workload bounded while the registry sweep walks the
 thousands of boards discovery has found.
 
 Delivery goes through a transactional outbox: the state change and the notification it produced are written in one
-transaction, so neither can exist without the other, and the dispatcher retries with backoff on its own schedule
-without touching the polling cycle. The bot only renders — every screen reads the database and every button writes
-to it.
+transaction, so neither can exist without the other. The job that walks the boards also sends the notifications, in
+5-minute windows while the cycle runs, drains the rest at the end and retries with backoff.
+
+The bot only renders — every screen reads the database and every button writes to it. Telegram sends each message and
+button tap to the Cloud Run service, which starts the container on demand and scales back to zero when nobody uses it.
 
 ## Tech stack
 
 | Area | Used |
 |---|---|
 | Language, runtime | C# 13, .NET 9 |
-| Data | PostgreSQL 16, EF Core 9, Npgsql |
-| Bot | `Telegram.Bot` |
+| Data | PostgreSQL (Neon in production), EF Core 9, Npgsql |
+| Bot | `Telegram.Bot`; webhook on ASP.NET Core minimal API |
 | Integrations | Greenhouse, Lever, SmartRecruiters, Ashby, Workday, SuccessFactors careers APIs; Common Crawl (DuckDB over remote Parquet) |
-| Runtime | `Microsoft.Extensions.Hosting` background services, transactional outbox, rate limiting |
-| Scheduling | GitHub Actions one-shot jobs, started by cron-job.org via `workflow_dispatch` |
+| Routines | `Microsoft.Extensions.Hosting`, transactional outbox, bounded concurrency |
+| Hosting | GitHub Actions (routines, started by cron-job.org), Google Cloud Run (bot, Docker image in Artifact Registry) |
 | Logging | Vostok, console and file |
 | Testing | NUnit, FluentAssertions, FakeItEasy |
 
-## Running it yourself
-
-```bash
-# PostgreSQL
-docker run -d --name jobspulse-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
-
-# A bot token from @BotFather
-cd src/JobsPulse.Host
-dotnet user-secrets set "Telegram:BotToken" "<token>"
-dotnet user-secrets set "ConnectionStrings:Postgres" \
-  "Host=localhost;Database=jobspulse;Username=postgres;Password=postgres"
-
-# Migrations are applied on start
-dotnet run
-```
-
 ## Deployment
 
-`dotnet run` runs everything in one process. In production the routines are one-shot GitHub Actions jobs
-(`--role polling | registry | discovery | cleanup`, see `.github/workflows`), started by
-[cron-job.org](https://cron-job.org) via `workflow_dispatch`, because GitHub does not fire their own `schedule:`
-here. The Telegram bot runs as a webhook on Google Cloud Run (`--role webhook`, scales to zero), deployed by
-`.github/workflows/deploy-bot.yml` on every push to `master`; `--role bot` (long polling) remains for a
-long-living host.
+Nothing is always on — every part runs on a free tier and wakes up only when there is work:
 
-| Workflow | Cadence (UTC) | What it does |
+| Part | Where | How it runs |
 |---|---|---|
-| `polling` | hourly, :05 | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
-| `registry` | :17 and :47 | Background sweep of the discovered board registry, least recently polled first, 50 boards per slice and slice after slice for up to 25 minutes; a board whose vacancies match a watchlist filter is added to it (🔎, up to 5 per slice). |
-| `discovery` | daily, 03:23 | Mines Common Crawl indexes for ATS board urls to fill the registry. Stops after 330 minutes and continues from its checkpoint on the next run. |
-| `cleanup` | daily, 04:53 | Deletes delivered notifications older than 24 hours from the outbox. |
-| `deploy-bot` | on push to `master` | Builds the image, deploys the webhook bot to Cloud Run and registers the webhook. |
+| Routines | GitHub Actions | one-shot jobs, started on a schedule by cron-job.org |
+| Telegram bot | Google Cloud Run | webhook container, started by incoming messages, scales to zero |
+| Database | Neon | managed PostgreSQL |
 
-`_run-job.yml` is the shared build-and-run step of the first four; `schedule-probe` is a temporary check of GitHub's
-own `schedule:`.
+| Job | Runs | What it does |
+|---|---|---|
+| `polling` | hourly | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
+| `registry` | twice an hour | Sweeps the discovered board registry, least recently polled boards first; a board whose vacancies match a watchlist filter is added to it (🔎). |
+| `discovery` | daily | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
+| `cleanup` | daily | Deletes delivered notifications from the outbox. |
 
-Cloud Run setup, once: a Google Cloud project with billing, the Cloud Run and Artifact Registry APIs enabled, and a
-service account with **Cloud Run Admin**, **Artifact Registry Administrator** and **Service Account User** roles.
-Repository variable `GCP_PROJECT_ID` (optional `GCP_REGION`, default `europe-west3` - next to a Frankfurt database);
-secrets `GCP_SA_KEY` (the account's JSON key), `TELEGRAM_WEBHOOK_SECRET` (random, letters, digits, `_` and `-`) and
-`GH_DISPATCH_TOKEN` (fine-grained, **Actions: read and write**, lets the bot start polling after a company is added).
-
-Needed: an external PostgreSQL, repository secrets `POSTGRES` and `TELEGRAM_BOT_TOKEN`, and a fine-grained token with
-**Actions: read and write** for cron-job.org (`POST .../actions/workflows/<workflow>.yml/dispatches`,
-body `{"ref":"master"}`).
+Every push to `master` rebuilds the bot image and redeploys it to Cloud Run.
