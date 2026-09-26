@@ -2,7 +2,7 @@ name: cleanup
 
 on:
   schedule:
-    - cron: "47 4 * * *"
+    - cron: "53 4 * * *"
   workflow_dispatch:
 
 jobs:
