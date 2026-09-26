@@ -84,7 +84,7 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 | Routines | GitHub Actions | one-shot jobs, started on a schedule by cron-job.org |
 | Telegram bot | Google Cloud Run | webhook container, started by incoming messages, scales to zero |
 | Database | Neon | managed PostgreSQL |
-| Monitoring | healthchecks.io | every job reports start and result; a missed or failed run raises an email alert |
+| Monitoring | healthchecks.io | every finished run resets its job's check; an email alert comes only when a job has not run for three of its intervals |
 
 | Job | Runs | What it does |
 |---|---|---|

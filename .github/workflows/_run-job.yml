@@ -13,6 +13,10 @@ on:
       max-run-minutes:
         type: number
         default: 0
+      # How often the job is started; healthchecks.io alerts after three cadences without a run. 0 - no heartbeat.
+      cadence-minutes:
+        type: number
+        default: 0
 
 jobs:
   run:
@@ -21,15 +25,9 @@ jobs:
     env:
       DOTNET_NOLOGO: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-      # healthchecks.io dead man's switch, one check per role (`jobspulse-<role>`). Empty until the secret is set.
-      HC_URL: ${{ secrets.HEALTHCHECKS_PING_KEY && format('https://hc-ping.com/{0}/jobspulse-{1}', secrets.HEALTHCHECKS_PING_KEY, inputs.role) || '' }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Secrets cannot be tested in a step condition, their presence can.
+      HC_ENABLED: ${{ secrets.HEALTHCHECKS_API_KEY != '' && inputs.cadence-minutes > 0 }}
     steps:
-      # A start signal lets healthchecks tell a hung job (started, never finished) from one that never ran.
-      - name: Signal start
-        if: env.HC_URL != ''
-        run: curl -fsS -m 10 --retry 3 -o /dev/null --data-raw "$RUN_URL" "$HC_URL/start?create=1" || true
-
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
@@ -66,9 +64,24 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
-      # Success pings the check, anything else (a failed step, a cancel, the job timeout) reports a failure at once.
-      - name: Signal result
-        if: always() && env.HC_URL != ''
+      # A dead man's switch, not a failure alert: every finished run - failed ones too, GitHub emails those - resets
+      # the check, and healthchecks.io emails only when no run has happened for three cadences (cron-job.org or
+      # GitHub stopped starting the job). The check is upserted with that schedule, so it is configured here.
+      - name: Report the run to healthchecks.io
+        if: always() && env.HC_ENABLED == 'true'
+        env:
+          HC_API_KEY: ${{ secrets.HEALTHCHECKS_API_KEY }}
+          CHECK: jobspulse-${{ inputs.role }}
+          CADENCE: ${{ inputs.cadence-minutes }}
+          STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          suffix=$([ "${{ job.status }}" = "success" ] && echo "" || echo "/fail")
-          curl -fsS -m 10 --retry 3 -o /dev/null --data-raw "${{ job.status }}: $RUN_URL" "$HC_URL$suffix?create=1" || true
+          body=$(jq -n --arg name "$CHECK" --argjson cadence "$CADENCE" \
+            '{name: $name, slug: $name, timeout: ($cadence * 60), grace: ($cadence * 120), unique: ["name"], channels: "*"}')
+          ping_url=$(curl -fsS -m 20 --retry 3 -X POST https://healthchecks.io/api/v3/checks/ \
+            -H "X-Api-Key: $HC_API_KEY" -H 'Content-Type: application/json' -d "$body" | jq -r .ping_url) || true
+          if [ -n "$ping_url" ] && [ "$ping_url" != null ]; then
+            curl -fsS -m 10 --retry 3 -o /dev/null --data-raw "$STATUS: $RUN_URL" "$ping_url" || true
+          else
+            echo "::warning::healthchecks.io check $CHECK could not be upserted"
+          fi
