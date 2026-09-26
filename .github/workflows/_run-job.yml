@@ -21,7 +21,15 @@ jobs:
     env:
       DOTNET_NOLOGO: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      # healthchecks.io dead man's switch, one check per role (`jobspulse-<role>`). Empty until the secret is set.
+      HC_URL: ${{ secrets.HEALTHCHECKS_PING_KEY && format('https://hc-ping.com/{0}/jobspulse-{1}', secrets.HEALTHCHECKS_PING_KEY, inputs.role) || '' }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      # A start signal lets healthchecks tell a hung job (started, never finished) from one that never ran.
+      - name: Signal start
+        if: env.HC_URL != ''
+        run: curl -fsS -m 10 --retry 3 -o /dev/null --data-raw "$RUN_URL" "$HC_URL/start?create=1" || true
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
@@ -57,3 +65,10 @@ jobs:
           path: out/logs/
           retention-days: 3
           if-no-files-found: ignore
+
+      # Success pings the check, anything else (a failed step, a cancel, the job timeout) reports a failure at once.
+      - name: Signal result
+        if: always() && env.HC_URL != ''
+        run: |
+          suffix=$([ "${{ job.status }}" = "success" ] && echo "" || echo "/fail")
+          curl -fsS -m 10 --retry 3 -o /dev/null --data-raw "${{ job.status }}: $RUN_URL" "$HC_URL$suffix?create=1" || true
