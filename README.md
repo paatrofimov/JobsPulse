@@ -63,6 +63,7 @@ to it.
 | Bot | `Telegram.Bot` |
 | Integrations | Greenhouse, Lever, SmartRecruiters, Ashby, Workday, SuccessFactors careers APIs; Common Crawl (DuckDB over remote Parquet) |
 | Runtime | `Microsoft.Extensions.Hosting` background services, transactional outbox, rate limiting |
+| Scheduling | GitHub Actions one-shot jobs, started by cron-job.org via `workflow_dispatch` |
 | Logging | Vostok, console and file |
 | Testing | NUnit, FluentAssertions, FakeItEasy |
 
@@ -82,14 +83,13 @@ dotnet user-secrets set "ConnectionStrings:Postgres" \
 dotnet run
 ```
 
-## Deploying with GitHub Actions
+## Deployment
 
-`dotnet run` starts everything in one process (`--role all`). In production the routines are split:
+`dotnet run` runs everything in one process. In production the routines are one-shot GitHub Actions jobs
+(`--role polling | registry | discovery | cleanup`, see `.github/workflows`), started by
+[cron-job.org](https://cron-job.org) via `workflow_dispatch`, because GitHub does not fire their own `schedule:`
+here. The Telegram bot (`--role bot`) is a long-living process from the root `Dockerfile`.
 
-- `--role polling | registry | discovery | cleanup` - one-shot jobs, scheduled by `.github/workflows`;
-- `--role bot` - the Telegram listener, a long-living process built from the root `Dockerfile`.
-
-Both need an external PostgreSQL. Repository secrets: `POSTGRES`, `TELEGRAM_BOT_TOKEN`;
-repository variable `POLLING_DRY_RUN=true` stops enqueueing notifications for test runs. The bot takes the same settings as
-environment variables (see `.env.example`); `GitHubDispatch__Token` lets it start the polling workflow right after a
-company is added.
+Needed: an external PostgreSQL, repository secrets `POSTGRES` and `TELEGRAM_BOT_TOKEN`, and a fine-grained token with
+**Actions: read and write** for cron-job.org (`POST .../actions/workflows/<workflow>.yml/dispatches`,
+body `{"ref":"master"}`).
