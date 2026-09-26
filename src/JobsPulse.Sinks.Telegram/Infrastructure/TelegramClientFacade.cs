@@ -113,6 +113,38 @@ public sealed class TelegramClientFacade(ITelegramBotClient client)
         }
     }
 
+    public async Task<TelegramResult> SetWebhookAsync(string url, string secretToken, CancellationToken ct)
+    {
+        try
+        {
+            await client.SetWebhook(
+                url,
+                secretToken: secretToken,
+                allowedUpdates: [UpdateType.Message, UpdateType.CallbackQuery],
+                cancellationToken: ct);
+
+            return TelegramResult.Ok;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return TelegramResult.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>The registered webhook url, empty when there is none. Null when the question could not be answered.</summary>
+    public async Task<string?> GetWebhookUrlAsync(CancellationToken ct)
+    {
+        try
+        {
+            var info = await client.GetWebhookInfo(ct);
+            return info.Url;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
     public async Task<IReadOnlyList<Update>> GetUpdatesAsync(
         int offset,
         int timeoutSeconds,

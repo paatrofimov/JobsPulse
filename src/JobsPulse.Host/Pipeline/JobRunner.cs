@@ -5,6 +5,7 @@ using JobsPulse.Discovery.Options;
 using JobsPulse.Discovery.Pipeline;
 using JobsPulse.Host.Models;
 using JobsPulse.Host.Options;
+using JobsPulse.Sinks.Telegram.Infrastructure;
 using Microsoft.Extensions.Options;
 using Vostok.Logging.Abstractions;
 
@@ -17,6 +18,7 @@ public sealed class JobRunner(
     IBoardDiscoveryService discovery,
     DiscoveryBootstrapPolicy bootstrapPolicy,
     OutboxDelivery outbox,
+    WebhookRegistrar webhookRegistrar,
     IOptionsMonitor<WatchlistPollingOptions> pollingOptions,
     IOptionsMonitor<RegistryPollingOptions> registryOptions,
     IOptionsMonitor<DiscoveryOptions> discoveryOptions,
@@ -94,6 +96,9 @@ public sealed class JobRunner(
                 break;
             case HostRole.Discovery:
                 await RunDiscoveryAsync(ct);
+                break;
+            case HostRole.WebhookSetup:
+                await webhookRegistrar.RegisterAsync(ct);
                 break;
             case HostRole.Cleanup:
                 await outbox.PurgeDeliveredAsync(ct);

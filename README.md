@@ -88,7 +88,26 @@ dotnet run
 `dotnet run` runs everything in one process. In production the routines are one-shot GitHub Actions jobs
 (`--role polling | registry | discovery | cleanup`, see `.github/workflows`), started by
 [cron-job.org](https://cron-job.org) via `workflow_dispatch`, because GitHub does not fire their own `schedule:`
-here. The Telegram bot (`--role bot`) is a long-living process from the root `Dockerfile`.
+here. The Telegram bot runs as a webhook on Google Cloud Run (`--role webhook`, scales to zero), deployed by
+`.github/workflows/deploy-bot.yml` on every push to `master`; `--role bot` (long polling) remains for a
+long-living host.
+
+| Workflow | Cadence (UTC) | What it does |
+|---|---|---|
+| `polling` | hourly, :05 | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
+| `registry` | :17 and :47 | Background sweep of the discovered board registry: the 50 least recently polled boards per run; a board whose vacancies match a watchlist filter is added to it (🔎, up to 5 per run). |
+| `discovery` | daily, 03:23 | Mines Common Crawl indexes for ATS board urls to fill the registry. Stops after 330 minutes and continues from its checkpoint on the next run. |
+| `cleanup` | daily, 04:53 | Deletes delivered notifications older than 24 hours from the outbox. |
+| `deploy-bot` | on push to `master` | Builds the image, deploys the webhook bot to Cloud Run and registers the webhook. |
+
+`_run-job.yml` is the shared build-and-run step of the first four; `schedule-probe` is a temporary check of GitHub's
+own `schedule:`.
+
+Cloud Run setup, once: a Google Cloud project with billing, the Cloud Run and Artifact Registry APIs enabled, and a
+service account with **Cloud Run Admin**, **Artifact Registry Administrator** and **Service Account User** roles.
+Repository variable `GCP_PROJECT_ID` (optional `GCP_REGION`, default `europe-west3` - next to a Frankfurt database);
+secrets `GCP_SA_KEY` (the account's JSON key), `TELEGRAM_WEBHOOK_SECRET` (random, letters, digits, `_` and `-`) and
+`GH_DISPATCH_TOKEN` (fine-grained, **Actions: read and write**, lets the bot start polling after a company is added).
 
 Needed: an external PostgreSQL, repository secrets `POSTGRES` and `TELEGRAM_BOT_TOKEN`, and a fine-grained token with
 **Actions: read and write** for cron-job.org (`POST .../actions/workflows/<workflow>.yml/dispatches`,

@@ -4,6 +4,8 @@ public enum HostRole
 {
     All,
     Bot,
+    Webhook,
+    WebhookSetup,
     Polling,
     Registry,
     Discovery,
