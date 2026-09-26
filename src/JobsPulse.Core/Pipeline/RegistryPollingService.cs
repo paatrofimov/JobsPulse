@@ -26,6 +26,8 @@ public sealed class RegistryPollingService(
     TimeProvider clock,
     ILog log)
 {
+    private static readonly TimeSpan PaceWindow = TimeSpan.FromDays(1);
+
     private readonly ILog ctxLog = log.ForContext<RegistryPollingService>();
     private readonly SemaphoreSlim cycleGate = new(1, 1);
 
@@ -36,7 +38,7 @@ public sealed class RegistryPollingService(
 
         try
         {
-            return CycleRunResult.Completed(await RunCycleCoreAsync(ct));
+            return CycleRunResult.Completed(await RunCycleCoreAsync(DateTimeOffset.MaxValue, ct));
         }
         finally
         {
@@ -44,7 +46,57 @@ public sealed class RegistryPollingService(
         }
     }
 
-    private async Task<CycleReport> RunCycleCoreAsync(CancellationToken ct)
+    /// <summary>
+    /// Cycle after cycle until <paramref name="until"/> or until every board has been swept once in this call - the
+    /// one-shot job, which would otherwise spend seconds of a half-hour budget on one slice. A new cycle is started
+    /// only while the longest one so far still fits, so the deadline rarely cuts a slice before it is stamped.
+    /// </summary>
+    public async Task<CycleRunResult> TryRunSweepAsync(DateTimeOffset until, CancellationToken ct)
+    {
+        if (!await cycleGate.WaitAsync(0, ct))
+            return CycleRunResult.Busy;
+
+        try
+        {
+            var started = clock.GetUtcNow();
+            var cycles = new List<CycleReport>();
+            var longest = TimeSpan.Zero;
+
+            while (true)
+            {
+                var cycleStarted = clock.GetUtcNow();
+                var report = await RunCycleCoreAsync(started, ct);
+
+                if (report.BoardsProcessed == 0)
+                    break;
+
+                cycles.Add(report);
+
+                var now = clock.GetUtcNow();
+                longest = TimeSpan.FromTicks(Math.Max(longest.Ticks, (now - cycleStarted).Ticks));
+
+                if (now + longest * 1.5 > until)
+                    break;
+            }
+
+            var total = CycleReport.Combine(cycles);
+            ctxLog.Info(
+                "Registry sweep finished: cycles {Cycles}, boards {Boards}, fetched {Fetched}, stored {Stored}, "
+                + "errors {Failed} in {Elapsed}",
+                cycles.Count, total.BoardsProcessed, total.VacanciesFetched, total.VacanciesStored, total.Failed,
+                clock.GetUtcNow() - started);
+
+            return CycleRunResult.Completed(total);
+        }
+        finally
+        {
+            cycleGate.Release();
+        }
+    }
+
+    /// <param name="sweptSince">Boards stamped at or after it are left out of the slice - they are already done in
+    /// the running sweep. <see cref="DateTimeOffset.MaxValue"/> for a standalone cycle.</param>
+    private async Task<CycleReport> RunCycleCoreAsync(DateTimeOffset sweptSince, CancellationToken ct)
     {
         var opts = options.CurrentValue;
         var enabled = await watchlists.GetEnabledAsync(ct);
@@ -79,13 +131,20 @@ public sealed class RegistryPollingService(
         var polled = new Dictionary<string, DateTimeOffset>(
             await pollState.LoadAsync(ct), StringComparer.OrdinalIgnoreCase);
 
-        var slice = TakeSlice(boards, polled, opts.BoardsPerCycle);
+        var slice = TakeSlice(boards, polled, sweptSince, opts.BoardsPerCycle);
+        if (slice.Count == 0)
+        {
+            ctxLog.Info("Every registry board has been swept in this run");
+            return CycleReport.Empty;
+        }
 
-        progress.CycleStarted(TraversalKind.Registry, Coverage(boards, slice, polled, opts, now));
+        progress.CycleStarted(TraversalKind.Registry, Coverage(boards, slice, polled, now));
 
+        var walk = WalkLength(boards, polled, now);
         ctxLog.Info(
-            "Start registry cycle: {Slice} of {Total} boards, {Covered} of them already swept in this walk",
-            slice.Count, boards.Count, Swept(boards, polled, opts, now));
+            "Start registry cycle: {Slice} boards, {Covered} of {Total} registry boards swept within one walk "
+            + "(a walk takes {Walk} at the current pace)",
+            slice.Count, Swept(boards, polled, now - walk), boards.Count, FormatWalk(walk));
 
         var settings = new BoardProcessSettings(
             opts.SingleEntryProcessTimeoutSeconds,
@@ -115,7 +174,7 @@ public sealed class RegistryPollingService(
         foreach (var board in slice)
             polled[$"{board.SourceId}/{board.BoardId}"] = now;
 
-        progress.CycleFinished(TraversalKind.Registry, Coverage(boards, [], polled, opts, now));
+        progress.CycleFinished(TraversalKind.Registry, Coverage(boards, [], polled, now));
 
         // Promotion is database work only, so it runs after the fetch pass: one writer, and the cap is exact.
         var promoted = await PromoteAsync(results, SelectPromotionCandidates(enabled, opts), opts, ct);
@@ -124,7 +183,7 @@ public sealed class RegistryPollingService(
         ctxLog.Info(
             "Registry cycle finished: boards {Boards}, fetched {Fetched}, stored {Stored}, errors {Failed}, "
             + "promotions {Promoted}",
-            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Failed, promoted);
+            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesStored, report.Failed, promoted);
 
         return report;
     }
@@ -225,17 +284,16 @@ public sealed class RegistryPollingService(
     }
 
     /// <summary>
-    /// The per-source progress units of the sweep: the active registry as the dataset, the boards swept within the
-    /// current walk as its covered part, and the slice as the plan of this cycle.
+    /// The per-source progress units of the sweep: the active registry as the dataset, the boards swept within one
+    /// walk as its covered part, and the slice as the plan of this cycle.
     /// </summary>
     private static List<TraversalSourceUnits> Coverage(
         IReadOnlyList<RegisteredBoard> boards,
         IReadOnlyList<RegisteredBoard> slice,
         IReadOnlyDictionary<string, DateTimeOffset> polled,
-        RegistryPollingOptions opts,
         DateTimeOffset now)
     {
-        var since = now - WalkLength(boards.Count, opts);
+        var since = now - WalkLength(boards, polled, now);
 
         var planned = slice
             .GroupBy(b => b.SourceId, StringComparer.OrdinalIgnoreCase)
@@ -258,13 +316,8 @@ public sealed class RegistryPollingService(
     private static int Swept(
         IReadOnlyList<RegisteredBoard> boards,
         IReadOnlyDictionary<string, DateTimeOffset> polled,
-        RegistryPollingOptions opts,
-        DateTimeOffset now)
-    {
-        var since = now - WalkLength(boards.Count, opts);
-
-        return boards.Count(b => IsSwept(b, polled, since));
-    }
+        DateTimeOffset since) =>
+        boards.Count(b => IsSwept(b, polled, since));
 
     private static bool IsSwept(
         RegisteredBoard board,
@@ -273,16 +326,27 @@ public sealed class RegistryPollingService(
         polled.TryGetValue($"{board.SourceId}/{board.BoardId}", out var at) && at >= since;
 
     /// <summary>
-    /// How long one full walk over the registry takes at the configured pace. Coverage is «swept within this
-    /// window», because the stamps only ever grow: without a window every board would read as covered forever,
-    /// and the percentage would never mean anything again after the first walk.
+    /// How long one full walk over the registry takes at the pace the sweep really keeps: the boards swept over the
+    /// last <see cref="PaceWindow"/> extrapolated to the whole registry. Measured rather than derived from
+    /// `CycleIntervalMinutes`, because a one-shot job runs on a cron schedule that option knows nothing about.
+    /// Zero when nothing was swept lately - the walk is not moving.
     /// </summary>
-    private static TimeSpan WalkLength(int boards, RegistryPollingOptions opts)
+    private static TimeSpan WalkLength(
+        IReadOnlyList<RegisteredBoard> boards,
+        IReadOnlyDictionary<string, DateTimeOffset> polled,
+        DateTimeOffset now)
     {
-        var cycles = (int)Math.Ceiling(boards / (double)Math.Max(1, opts.BoardsPerCycle));
+        var recent = Swept(boards, polled, now - PaceWindow);
+        if (recent == 0)
+            return TimeSpan.Zero;
 
-        return TimeSpan.FromMinutes((double)Math.Max(1, cycles) * opts.CycleIntervalMinutes);
+        return PaceWindow * Math.Max(1d, boards.Count / (double)recent);
     }
+
+    private static string FormatWalk(TimeSpan walk) =>
+        walk == TimeSpan.Zero
+            ? "unknown"
+            : walk.TotalDays >= 1 ? $"{walk.TotalDays:F1} days" : $"{walk.TotalHours:F1} hours";
 
     /// <summary>
     /// The slice of this cycle: the least recently polled boards first. The order is taken from
@@ -292,14 +356,18 @@ public sealed class RegistryPollingService(
     private static List<RegisteredBoard> TakeSlice(
         IReadOnlyList<RegisteredBoard> boards,
         IReadOnlyDictionary<string, DateTimeOffset> polled,
+        DateTimeOffset sweptSince,
         int size) =>
     [
         .. boards
-            .OrderBy(b => polled.TryGetValue($"{b.SourceId}/{b.BoardId}", out var at)
+            .Select(b => (Board: b, At: polled.TryGetValue($"{b.SourceId}/{b.BoardId}", out var at)
                 ? at
-                : DateTimeOffset.MinValue)
-            .ThenBy(b => b.SourceId, StringComparer.Ordinal)
-            .ThenBy(b => b.BoardId, StringComparer.Ordinal)
+                : DateTimeOffset.MinValue))
+            .Where(x => x.At < sweptSince)
+            .OrderBy(x => x.At)
+            .ThenBy(x => x.Board.SourceId, StringComparer.Ordinal)
+            .ThenBy(x => x.Board.BoardId, StringComparer.Ordinal)
             .Take(Math.Max(1, size))
+            .Select(x => x.Board)
     ];
 }

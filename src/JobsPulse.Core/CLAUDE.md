@@ -57,7 +57,9 @@ registry cycle tests a board against the individual watchlist filters without fe
 
 - load the global seen vacancies of the board - handed to the source as `SourceTarget.Known`, together with
   `NeedsDescription` (a storage filter reads descriptions) and `MayBeStored` (`VacancyMatcher.MayMatchListed` against
-  the storage filters), so the source can skip detail requests - see `DetailSelector`
+  the storage filters), so the source can skip detail requests - see `DetailSelector`; for a source that
+  `SelectsDetails` also its rejected postings (`IRejectedPostingStorage`) of the current filter set, as
+  `SourceTarget.Rejected`
 - traverse the board once
 - load its match layer (skipped when nothing is subscribed)
 - `ChangeDetector` produces both levels in one pass
@@ -69,6 +71,9 @@ registry cycle tests a board against the individual watchlist filters without fe
 - seen vacancies and match rows whose hashes equal the stored ones are dropped from the commit first - they mirror
   the storage guards, so the database result is the same, but an unchanged board commits nothing and costs no round
   trip. `BoardProcessResult.Relevant` still carries every vacancy that passed the storage filters.
+- remember the rejected postings: every vacancy carrying a `ListHash` (its detail was read, or it was skipped as known
+  rejected) that passes no storage filter. Only the difference to the stored set is written, outside the commit -
+  losing it costs a detail request, not a notification.
 
 ### Scheduling
 
@@ -105,7 +110,8 @@ only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and 
 
 ### Reports
 
-`BoardReport` / `CycleReport` are logging-only aggregates, nothing reads them for control flow.
+`BoardReport` / `CycleReport` are logging-only aggregates, nothing reads them for control flow. `Stored` counts the
+vacancies that passed the storage filters, `Matched` the match rows - always zero for a registry board.
 
 ## RegistryPollingService
 
@@ -129,6 +135,11 @@ The registry is walked **least-recently-polled first** - `BoardsPerCycle` boards
 anything else). There is no cursor any more: the order is derived from the stamps, so a restart continues the walk
 where it stopped instead of starting the longest procedure of the installation over again. The whole slice is
 stamped after the fetch pass, failures included, or the same board would be picked every cycle.
+
+`TryRunSweepAsync(until)` is the one-shot job: cycle after cycle, leaving out boards already stamped in this call,
+until the registry is done or the longest cycle so far (x1.5) no longer fits before `until` - so the deadline rarely
+cuts a slice before it is stamped. One slice per run spent seconds of a half-hour budget and made a full walk a week
+long. The long-living `all` role keeps one cycle per `CycleIntervalMinutes`.
 
 Concurrency, the per-board pause and the cycle interval are separate options, so the
 background traffic does not starve the watchlist polling or the discovery crawler. Cycles never overlap
@@ -203,8 +214,9 @@ no longer passes that watchlist's filter, whatever the reason).
 Two consequences worth remembering:
 
 - a vacancy that stops matching a watchlist filter is reported as closed to that watchlist and stays alive for the
-  others - except when it is still on the board and fails only `PostedWithinDays`: aging out of the window is not a
-  closure, so that match is removed silently;
+  others - except when it is still on the board and is older than `PostedWithinDays`: that is `AgedOut`, not
+  `Closed`. Judged by the date alone, because a source skips the detail of a posting its date rules out, so the rest
+  of the filter (a description above all) could not be checked anyway;
 - a vacancy marked `DescriptionUnavailable` (its detail request failed) keeps its previous verdict per watchlist: it
   stays in a watchlist it matched, and cannot enter one it did not;
 - the present-set is built from post-dedup upserts - a duplicate post that loses deduplication is closed too.
@@ -307,10 +319,10 @@ the whole reason the table exists - the tracker used to mirror in-memory schedul
   after the stamps are written, so it is the post-cycle truth, and an empty or not-due cycle still closes the
   progress - otherwise the screen would read «still running» forever.
 - `RegistryPollingService` reports the active, unwatched registry as its dataset and the slice as the plan. Covered
-  there means «stamped within the last full-walk window» - `ceil(boards / BoardsPerCycle) * CycleIntervalMinutes`.
-  The stamps only ever grow, so without that window every board would read as covered forever and the percentage
-  would stop meaning anything after the first walk; with it, it means «how much of the registry the current walk has
-  got through», which is what it meant before - only now across restarts.
+  there means «stamped within one walk», and the walk length is **measured**: the boards stamped over the last day,
+  extrapolated to the whole registry. It is not derived from `CycleIntervalMinutes`, because a one-shot job runs on
+  a cron that option knows nothing about. During the first walk the number grows towards 100%; after it, it stays
+  there and drops only when the sweep stalls or discovery adds unswept boards.
 
 ## DeliveryWindow
 
@@ -326,6 +338,10 @@ posting whether the per-posting detail endpoint is asked (`DetailDecision`):
 
 - `Fetch` for everything when `IncludeContentOnPoll` is set (the old, slow behaviour);
 - `ListOnly` for a posting no storage filter can accept by title and publication date (`MayBeStored`);
+- `Rejected` for a posting in `SourceTarget.Rejected` whose list data still has the remembered fingerprint
+  (`ListHash` - `VacancyHasher` over the list-only mapping): the same filters rejected the same data before. The
+  trade-off: a posting whose detail alone changes (its description) is not re-read until its list data or the filters
+  change. Without it a posting failing a description filter was unknown on every poll - thousands of requests an hour;
 - `Fetch` for every remaining posting when `NeedsDescription` - descriptions are not stored, so a description filter
   needs a fresh one each poll, and without a budget: a stored vacancy mapped without its description would fail the
   filter and be closed;
@@ -335,7 +351,8 @@ posting whether the per-posting detail endpoint is asked (`DetailDecision`):
   for the first time finishes instead of timing out every cycle. Such a posting keeps its list-only fields until its
   list data changes; it is never backfilled.
 
-`FetchAsync` runs the selected requests with `DetailConcurrency` in parallel.
+`FetchAsync` runs the selected requests with `DetailConcurrency` in parallel. `Detailed` and `Rejected` stamp the
+mapped vacancy with its `ListHash` (and `KnownRejected`), which is what `BoardProcessor` remembers rejections by.
 
 ## PollingTrigger
 
@@ -441,6 +458,13 @@ of a board, after the whole cycle, so a poll that produced no state change still
 
 The map is loaded whole rather than queried per board - a cycle needs every board's stamp to sort and to report
 coverage anyway, and the table has one narrow row per registry board.
+
+## IRejectedPostingStorage
+
+Postings the storage filters rejected after their detail was read (`rejected_posting`) - the counterpart of
+`seen_vacancy` for what was not stored. `LoadAsync` gives a board's rows whatever filter set wrote them (the caller
+keeps the current one), `SaveAsync` writes a difference. A filter change invalidates every row through its
+`FilterHash`, so nothing has to purge them.
 
 ## ITraversalProgressTracker
 
@@ -598,6 +622,12 @@ Set by a source when the detail request of a stored (`SourceTarget.Known`) posti
 descriptions. The vacancy then carries the stored fields and no description; `VacancyMatcher` skips description rules
 and `ChangeDetector` keeps its previous watchlist verdict, so a transient HTTP error neither closes nor adds a match.
 Not persisted, not serialized.
+
+### ListHash / KnownRejected
+
+Set by `DetailSelector` for a list-only-mapping source: `ListHash` is the fingerprint of the list data, present when
+the detail was read or skipped as known rejected; `KnownRejected` marks the latter - a list-only vacancy that
+`ChangeDetector` neither stores nor matches. Not persisted, not serialized.
 
 ## OutboxItem
 

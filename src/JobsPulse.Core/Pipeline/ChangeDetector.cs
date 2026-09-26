@@ -52,7 +52,8 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
     {
         // Single vacancy can be duplicated in many posts (locations/languages).
         // Deduplicate by (GroupId, Location) once - both levels see the same set.
-        var fetched = Deduplicate(input.Traverse.Vacancies).ToList();
+        // A known rejected posting was not evaluated at all - it is list-only and must neither be stored nor matched.
+        var fetched = Deduplicate([.. input.Traverse.Vacancies.Where(v => !v.KnownRejected)]).ToList();
         var hashes = fetched.ToDictionary(v => v.PostId, VacancyHasher.Compute, StringComparer.Ordinal);
 
         var upserts = fetched
@@ -133,21 +134,22 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
             return;
 
         var present = fetched.ToDictionary(v => v.PostId, StringComparer.Ordinal);
-        var ageless = subscription.Filter with { PostedWithinDays = null };
 
         foreach (var (postId, reported) in previous.Where(p => !matchedNow.Contains(p.Key)))
         {
             matchRemovals.Add(new WatchlistMatchKey(
                 subscription.WatchlistId, input.SourceId, input.BoardId, postId));
 
-            // Still open and still matching everything but `PostedWithinDays` - it aged out of the window, it did not
-            // close, so the match is dropped silently.
-            if (present.TryGetValue(postId, out var current) && matcher.Matches(current, ageless))
-                continue;
+            // Still on the board but older than `PostedWithinDays` - it left the tracked window, it did not close.
+            // Judged by the date alone: a posting that old is mapped from the list only, so its other fields
+            // (a description above all) are missing and would fail the rest of the filter anyway.
+            var kind = present.TryGetValue(postId, out var current) && !matcher.IsRecent(current, subscription.Filter)
+                ? VacancyChangeKind.AgedOut
+                : VacancyChangeKind.Closed;
 
-            // The post is gone from the board (or from the filter) - the notification is rebuilt from stored state.
+            // The notification is rebuilt from stored state - the post is gone from the board or from the filter.
             if (input.Seen.TryGetValue(postId, out var stored))
-                changes.Add(Change(VacancyChangeKind.Closed, stored, reported, subscription));
+                changes.Add(Change(kind, stored, reported, subscription));
         }
     }
 

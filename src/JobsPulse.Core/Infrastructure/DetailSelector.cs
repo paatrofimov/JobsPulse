@@ -1,5 +1,6 @@
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
+using JobsPulse.Core.Pipeline;
 
 namespace JobsPulse.Core.Infrastructure;
 
@@ -32,6 +33,9 @@ public static class DetailSelector
 
             if (target.MayBeStored?.Invoke(vacancy) == false)
                 decisions[i] = DetailDecision.ListOnly;
+            // Rejected with the very same list data under the same filters - the detail would say the same again.
+            else if (target.Rejected.TryGetValue(vacancy.PostId, out var rejected) && rejected == ListHash(vacancy))
+                decisions[i] = DetailDecision.Rejected;
             // Descriptions are not stored, so a description filter needs a fresh one for every plausible posting -
             // and without a budget: a stored vacancy mapped without its description would fail the filter and close.
             else if (target.NeedsDescription)
@@ -46,6 +50,15 @@ public static class DetailSelector
 
         return decisions;
     }
+
+    /// <summary>Fingerprint of a list-only mapping: its hashed fields, all of which come from the list there.</summary>
+    public static string ListHash(Vacancy listed) => VacancyHasher.Compute(listed);
+
+    /// <summary>A vacancy mapped with its detail, carrying the fingerprint a rejection is remembered by.</summary>
+    public static Vacancy Detailed(Vacancy vacancy, Vacancy listed) => vacancy with { ListHash = ListHash(listed) };
+
+    /// <summary>A posting skipped as known rejected - list-only, and never stored or matched.</summary>
+    public static Vacancy Rejected(Vacancy listed) => listed with { ListHash = ListHash(listed), KnownRejected = true };
 
     /// <summary>Runs <paramref name="fetch"/> for every posting marked <see cref="DetailDecision.Fetch"/>.</summary>
     public static async Task<TDetail?[]> FetchAsync<TDetail>(

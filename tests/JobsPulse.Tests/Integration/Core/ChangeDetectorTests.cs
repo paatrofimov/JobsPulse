@@ -10,7 +10,8 @@ namespace JobsPulse.Tests.Integration.Core;
 
 /// <summary>
 /// `PostedWithinDays` against the publication date, and what leaving a watchlist means: a vacancy that aged out of
-/// the date window or lost its description to a failed request is still open, so it must not be reported as closed.
+/// the date window is reported as such, and one that lost its description to a failed request keeps its verdict -
+/// neither is reported as closed.
 /// </summary>
 public sealed class ChangeDetectorTests
 {
@@ -61,13 +62,40 @@ public sealed class ChangeDetectorTests
     }
 
     [Test]
-    public void Detect_should_drop_an_aged_out_match_silently()
+    public void Detect_should_report_an_aged_out_match_as_aged_out()
     {
         var aged = Vacancy("1", published: Now.AddDays(-121));
 
         var output = Detect([aged], seen: [aged], matches: [Match(aged)]);
 
         output.MatchRemovals.Should().ContainSingle();
+        output.VacanciesChanges.Should().ContainSingle(c => c.Kind == VacancyChangeKind.AgedOut);
+    }
+
+    /// <summary>
+    /// A source skips the detail of a posting its date already rules out, so the aged-out vacancy arrives without a
+    /// description - it still left the window, it did not close.
+    /// </summary>
+    [Test]
+    public void Detect_should_report_an_aged_out_list_only_match_as_aged_out()
+    {
+        var stored = Vacancy("1", published: Now.AddDays(-121));
+        var listOnly = stored with { Description = null };
+
+        var output = Detect([listOnly], seen: [stored], matches: [Match(stored)]);
+
+        output.VacanciesChanges.Should().ContainSingle(c => c.Kind == VacancyChangeKind.AgedOut);
+    }
+
+    [Test]
+    public void Detect_should_neither_store_nor_match_a_known_rejected_posting()
+    {
+        var rejected = Vacancy("1") with { KnownRejected = true };
+
+        var output = Detect([rejected], seen: [], matches: []);
+
+        output.VacanciesUpserts.Should().BeEmpty();
+        output.MatchUpserts.Should().BeEmpty();
         output.VacanciesChanges.Should().BeEmpty();
     }
 

@@ -95,7 +95,7 @@ long-living host.
 | Workflow | Cadence (UTC) | What it does |
 |---|---|---|
 | `polling` | hourly, :05 | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
-| `registry` | :17 and :47 | Background sweep of the discovered board registry: the 50 least recently polled boards per run; a board whose vacancies match a watchlist filter is added to it (🔎, up to 5 per run). |
+| `registry` | :17 and :47 | Background sweep of the discovered board registry, least recently polled first, 50 boards per slice and slice after slice for up to 25 minutes; a board whose vacancies match a watchlist filter is added to it (🔎, up to 5 per slice). |
 | `discovery` | daily, 03:23 | Mines Common Crawl indexes for ATS board urls to fill the registry. Stops after 330 minutes and continues from its checkpoint on the next run. |
 | `cleanup` | daily, 04:53 | Deletes delivered notifications older than 24 hours from the outbox. |
 | `deploy-bot` | on push to `master` | Builds the image, deploys the webhook bot to Cloud Run and registers the webhook. |

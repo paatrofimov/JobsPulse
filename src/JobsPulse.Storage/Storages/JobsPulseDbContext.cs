@@ -13,6 +13,7 @@ public class JobsPulseDbContext(
     public DbSet<PersistentCrawlIndexState> CrawlIndexState => Set<PersistentCrawlIndexState>();
     public DbSet<PersistentDiscoveryCheckpoint> DiscoveryCheckpoints => Set<PersistentDiscoveryCheckpoint>();
     public DbSet<PersistentBoardPollState> BoardPollState => Set<PersistentBoardPollState>();
+    public DbSet<PersistentRejectedPosting> RejectedPostings => Set<PersistentRejectedPosting>();
     public DbSet<PersistentWatchlist> Watchlists => Set<PersistentWatchlist>();
     public DbSet<PersistentWatchlistEntry> WatchlistEntries => Set<PersistentWatchlistEntry>();
     public DbSet<PersistentWatchlistVacancy> WatchlistVacancies => Set<PersistentWatchlistVacancy>();
@@ -27,6 +28,7 @@ public class JobsPulseDbContext(
         ConfigureCrawlIndexState(modelBuilder);
         ConfigureDiscoveryCheckpoint(modelBuilder);
         ConfigureBoardPollState(modelBuilder);
+        ConfigureRejectedPosting(modelBuilder);
         ConfigureWatchlist(modelBuilder);
         ConfigureWatchlistEntry(modelBuilder);
         ConfigureWatchlistVacancy(modelBuilder);
@@ -123,6 +125,27 @@ public class JobsPulseDbContext(
             {
                 x.SourceId,
                 x.BoardId
+            })
+            .IsUnique();
+    }
+
+    private static void ConfigureRejectedPosting(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentRejectedPosting>();
+
+        entity.ToTable("rejected_posting");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // ON CONFLICT target and the per-board read of a traversal.
+        entity.HasIndex(x => new
+            {
+                x.SourceId,
+                x.BoardId,
+                x.PostId
             })
             .IsUnique();
     }

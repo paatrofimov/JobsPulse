@@ -64,7 +64,7 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
     /// `PostedWithinDays` against the board's publication date. `FirstSeenAt` is only the fallback for a source that
     /// reports none: it is our own stamp, so on the first poll of a board it made every old vacancy look new.
     /// </summary>
-    private bool IsRecent(Vacancy v, FilterSpec f)
+    public bool IsRecent(Vacancy v, FilterSpec f)
     {
         if (f.PostedWithinDays is not { } days)
             return true;

@@ -19,7 +19,7 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 ///
 /// Inside a window the batch is split per watchlist (the same vacancy legitimately arrives for several) and then
 /// folded into one collapsed <c>&lt;details&gt;</c> block per company, exactly like the browsable lists: the message
-/// opens as the list of company headers and unfolding one shows its vacancies. A block mixes the three change kinds,
+/// opens as the list of company headers and unfolding one shows its vacancies. A block mixes the change kinds,
 /// so the summary counts them and every line carries its own glyph.
 ///
 /// Blocks are ordered manual companies before discovered ones, then by their freshest vacancy; vacancies inside a
@@ -32,7 +32,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     private const string DetailsClose = "</details>";
 
     private static readonly VacancyChangeKind[] KindOrder =
-        [VacancyChangeKind.New, VacancyChangeKind.Updated, VacancyChangeKind.Closed];
+        [VacancyChangeKind.New, VacancyChangeKind.Updated, VacancyChangeKind.Closed, VacancyChangeKind.AgedOut];
 
     public IReadOnlyList<InputRichMessage> Format(
         IReadOnlyList<OutboxItem> batch,
@@ -255,13 +255,14 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     private static string RenderOffices(IReadOnlyList<string> offices) =>
         offices.Select(Escape).JoinStrings(" · ");
 
-    /// <summary>The kind of a change in one character - a folded block mixes all three.</summary>
+    /// <summary>The kind of a change in one character - a folded block mixes all of them.</summary>
     private static string KindGlyph(VacancyChangeKind kind) =>
         kind switch
         {
             VacancyChangeKind.New => "🆕",
             VacancyChangeKind.Updated => "✏️",
             VacancyChangeKind.Closed => "❌",
+            VacancyChangeKind.AgedOut => "⌛",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 

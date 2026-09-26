@@ -4,5 +4,6 @@ public enum DetailDecision
 {
     Fetch,
     Reuse,
-    ListOnly
+    ListOnly,
+    Rejected
 }

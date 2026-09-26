@@ -8,7 +8,7 @@ Differences from Greenhouse that shape this project:
 - it accepts server-side filters (`location`, `team`, `department`, `commitment`, `level`), so the board can be
   narrowed before download
 - there is no job-level id: one job in many locations is one posting with `categories.allLocations`
-- an unknown site answers `200 []`, not 404
+- an unknown site answers 404 on every instance; a site without postings answers `200 []` on its own instance
 
 # Infrastructure
 
@@ -31,16 +31,19 @@ board, 429 is reported as a failure with the retry hint.
 ### Instance lookup
 
 The instance of an unknown site is probed with one unfiltered posting per instance, in `Regions` order, and then
-remembered - paging and later cycles cost no extra request. Because an unknown site answers `200 []`, emptiness is the
-«not on this instance» signal.
+remembered - paging and later cycles cost no extra request. `Regions` is de-duplicated first: the configuration binder
+appends the configured list to the default one.
 
-Two failure modes are kept apart on purpose: a site that no instance knows answers as an empty board (today's
-behaviour - its vacancies are closed), while an instance that could not be asked at all is reported as a failure, so a
-temporary outage never closes stored vacancies.
+- a non-empty answer is the home instance;
+- 404 on every instance is a missing board (`LeverFetch.Missing`), so its watchlist entries and registry row get
+  disabled;
+- `200 []` on exactly one instance with 404 elsewhere is the home of an empty site - remembered too, or every poll of
+  it would probe all instances again;
+- an instance that could not be asked at all is a failure, so a temporary outage never closes stored vacancies.
 
 ## LeverBoardSource
 
-Resolves the instance once (cached) and pages with `skip`/`limit` until a short page arrives. `MaxPages` is a safety cap - hitting it returns an
+Resolves the instance from the first non-empty page (cached) and pages with `skip`/`limit` until a short page arrives. `MaxPages` is a safety cap - hitting it returns an
 incomplete traversal, so the orchestrator drops the batch instead of closing everything it did not fetch.
 
 ## LeverBoardResolver
