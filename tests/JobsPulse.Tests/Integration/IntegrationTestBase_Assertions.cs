@@ -21,6 +21,8 @@ public abstract partial class IntegrationTestBase
     {
         return opts
             .Excluding(x => x.Id)
+            // Stamped by the database on insert, the mock never carries it.
+            .Excluding(x => x.CreatedAt)
             .Excluding(x => x.Vacancy.UpdatedAt)
             .Excluding(x => x.Vacancy.FirstSeenAt)
             .Excluding(x => x.Vacancy.ContentHash)

@@ -93,11 +93,12 @@ public sealed class BoardProcessor(
         {
             SourceId = board.SourceId,
             BoardId = board.BoardId,
-            Upserts = detected.VacanciesUpserts,
+            // Rows the database would skip anyway are not sent: an unchanged board then commits nothing at all.
+            Upserts = [.. detected.VacanciesUpserts.Where(v => IsChanged(v, seen))],
             ClosedPostIds = detected.ClosedPostIds,
             Notifications = notifications,
             FilterHash = settings.StorageFilterHash,
-            MatchUpserts = detected.MatchUpserts,
+            MatchUpserts = ChangedMatches(detected.MatchUpserts, matches),
             MatchRemovals = detected.MatchRemovals
         }, ct);
 
@@ -122,6 +123,25 @@ public sealed class BoardProcessor(
             Failed: false);
 
         return new BoardProcessResult(report, false, detected.VacanciesUpserts);
+    }
+
+    /// <summary>Mirrors the `content_hash IS DISTINCT FROM` guard of the seen_vacancy upsert.</summary>
+    private static bool IsChanged(Vacancy vacancy, IReadOnlyDictionary<string, Vacancy> seen)
+    {
+        return !seen.TryGetValue(vacancy.PostId, out var stored)
+               || !string.Equals(stored.ContentHash, VacancyHasher.Compute(vacancy), StringComparison.Ordinal);
+    }
+
+    /// <summary>Mirrors the content and filter hash guard of the watchlist_vacancy upsert.</summary>
+    private static IReadOnlyList<WatchlistMatch> ChangedMatches(
+        IReadOnlyList<WatchlistMatch> detected,
+        IReadOnlyList<WatchlistMatch> existing)
+    {
+        var stored = existing
+            .Select(e => (e.WatchlistId, e.PostId, e.ContentHash, e.FilterHash))
+            .ToHashSet();
+
+        return [.. detected.Where(m => !stored.Contains((m.WatchlistId, m.PostId, m.ContentHash, m.FilterHash)))];
     }
 
     private static IReadOnlyList<OutboxItem> BuildNotifications(IReadOnlyList<VacancyChange> changes)

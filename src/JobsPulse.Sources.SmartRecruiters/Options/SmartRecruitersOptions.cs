@@ -10,7 +10,7 @@ public sealed class SmartRecruitersOptions
     public int PageSize { get; set; } = 100;
 
     /// <summary>Safety cap on pagination - a board bigger than this is reported as an incomplete traversal.</summary>
-    public int MaxPages { get; set; } = 50;
+    public int MaxPages { get; set; } = 100;
 
     /// <summary>A probe only needs `totalFound`, so one posting is enough to prove the company exists.</summary>
     public int ProbePageSize { get; set; } = 1;
