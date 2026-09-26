@@ -60,7 +60,7 @@ to it.
 |---|---|
 | Language, runtime | C# 13, .NET 9 |
 | Data | PostgreSQL 16, EF Core 9, Npgsql |
-| Bot | `Telegram.Bot` |
+| Bot | `Telegram.Bot`, webhook on Google Cloud Run (ASP.NET Core minimal API) |
 | Integrations | Greenhouse, Lever, SmartRecruiters, Ashby, Workday, SuccessFactors careers APIs; Common Crawl (DuckDB over remote Parquet) |
 | Runtime | `Microsoft.Extensions.Hosting` background services, transactional outbox, rate limiting |
 | Scheduling | GitHub Actions one-shot jobs, started by cron-job.org via `workflow_dispatch` |
@@ -85,12 +85,17 @@ dotnet run
 
 ## Deployment
 
-`dotnet run` runs everything in one process. In production the routines are one-shot GitHub Actions jobs
-(`--role polling | registry | discovery | cleanup`, see `.github/workflows`), started by
-[cron-job.org](https://cron-job.org) via `workflow_dispatch`, because GitHub does not fire their own `schedule:`
-here. The Telegram bot runs as a webhook on Google Cloud Run (`--role webhook`, scales to zero), deployed by
-`.github/workflows/deploy-bot.yml` on every push to `master`; `--role bot` (long polling) remains for a
-long-living host.
+`dotnet run` runs everything in one process. In production the service is split into three free-tier parts:
+
+- **PostgreSQL** - an external database (Neon);
+- **GitHub Actions** - the routines, as one-shot jobs;
+- **Google Cloud Run** - the Telegram bot.
+
+### Routines - GitHub Actions
+
+Each routine is a workflow in `.github/workflows` that builds the host and runs one iteration of it
+(`--role polling | registry | discovery | cleanup`). They are started by [cron-job.org](https://cron-job.org) via
+`workflow_dispatch`, because GitHub does not fire their own `schedule:` in this repository.
 
 | Workflow | Cadence (UTC) | What it does |
 |---|---|---|
@@ -98,17 +103,45 @@ long-living host.
 | `registry` | :17 and :47 | Background sweep of the discovered board registry: the 50 least recently polled boards per run; a board whose vacancies match a watchlist filter is added to it (🔎, up to 5 per run). |
 | `discovery` | daily, 03:23 | Mines Common Crawl indexes for ATS board urls to fill the registry. Stops after 330 minutes and continues from its checkpoint on the next run. |
 | `cleanup` | daily, 04:53 | Deletes delivered notifications older than 24 hours from the outbox. |
-| `deploy-bot` | on push to `master` | Builds the image, deploys the webhook bot to Cloud Run and registers the webhook. |
 
-`_run-job.yml` is the shared build-and-run step of the first four; `schedule-probe` is a temporary check of GitHub's
-own `schedule:`.
+`_run-job.yml` is the shared build-and-run step of these four; `schedule-probe` is a temporary check of GitHub's own
+`schedule:`.
 
-Cloud Run setup, once: a Google Cloud project with billing, the Cloud Run and Artifact Registry APIs enabled, and a
-service account with **Cloud Run Admin**, **Artifact Registry Administrator** and **Service Account User** roles.
-Repository variable `GCP_PROJECT_ID` (optional `GCP_REGION`, default `europe-west3` - next to a Frankfurt database);
-secrets `GCP_SA_KEY` (the account's JSON key), `TELEGRAM_WEBHOOK_SECRET` (random, letters, digits, `_` and `-`) and
-`GH_DISPATCH_TOKEN` (fine-grained, **Actions: read and write**, lets the bot start polling after a company is added).
+### Telegram bot - Google Cloud Run
 
-Needed: an external PostgreSQL, repository secrets `POSTGRES` and `TELEGRAM_BOT_TOKEN`, and a fine-grained token with
-**Actions: read and write** for cron-job.org (`POST .../actions/workflows/<workflow>.yml/dispatches`,
-body `{"ref":"master"}`).
+The bot is the user interface: menus, watchlists, filters, adding companies, the vacancy feed. It does not poll
+boards and does not send notifications - the routines above do that and write to Telegram themselves.
+
+It runs as a **webhook** (`--role webhook`): Telegram sends every message and button tap as an HTTP request to the
+Cloud Run service, Cloud Run starts the container on demand (a cold start takes about two seconds), answers, and scales
+back to zero after a quiet period - so it costs nothing while nobody uses it. At most one instance runs, which keeps
+the in-memory dialogue state in one place. When a company is added, the bot starts the `polling` workflow through the
+GitHub API, and its vacancies arrive a few minutes later.
+
+The `deploy-bot` workflow ships it on every push to `master` that touches the code (or on a manual run): it builds the
+Docker image, pushes it to Artifact Registry, deploys it to Cloud Run and registers the service url as the bot's
+webhook together with the command menu (`--role webhooksetup`). It is skipped until `GCP_PROJECT_ID` is set.
+
+`--role bot` (long polling) remains for a long-living host; it steps aside while a webhook is registered.
+
+Cloud Run setup, once: a Google Cloud project with billing, the **Cloud Run Admin API** and **Artifact Registry API**
+enabled, and a service account with **Cloud Run Admin**, **Artifact Registry Administrator** and **Service Account
+User** roles and a JSON key.
+
+### Secrets and variables
+
+Repository **Settings → Secrets and variables → Actions**:
+
+| Name | Kind | Used by | Value |
+|---|---|---|---|
+| `POSTGRES` | secret | routines, bot | connection string of the database |
+| `TELEGRAM_BOT_TOKEN` | secret | routines, bot | token from @BotFather |
+| `GCP_PROJECT_ID` | variable | `deploy-bot` | Google Cloud project id |
+| `GCP_REGION` | variable, optional | `deploy-bot` | Cloud Run region, default `europe-west3` (next to a Frankfurt database) |
+| `GCP_SA_KEY` | secret | `deploy-bot` | JSON key of the deploy service account |
+| `TELEGRAM_WEBHOOK_SECRET` | secret | `deploy-bot` | random string (letters, digits, `_`, `-`) Telegram sends with every request |
+| `GH_DISPATCH_TOKEN` | secret | bot | fine-grained token, **Actions: read and write** - lets the bot start `polling` |
+| `POLLING_DRY_RUN` | variable, optional | `polling` | `true` - poll without enqueueing notifications |
+
+cron-job.org needs its own fine-grained token with **Actions: read and write**
+(`POST .../actions/workflows/<workflow>.yml/dispatches`, body `{"ref":"master"}`).
