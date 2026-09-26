@@ -1,4 +1,5 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Sources.Workday.Models;
@@ -36,7 +37,7 @@ public sealed class WorkdayBoardSource(
         if (page.Error is not null)
             return SourceTraverseResult.Failed(page.Error, page.BoardMissing);
 
-        var vacancies = await MapAsync(config, page.Postings, ct);
+        var vacancies = await MapAsync(target, config, page.Postings, opts, ct);
 
         if (page.IsComplete)
             return SourceTraverseResult.Complete(vacancies);
@@ -144,32 +145,56 @@ public sealed class WorkdayBoardSource(
 
     /// <summary>
     /// Descriptions and the only real posting date live on the per-vacancy endpoint, so they cost one request each.
-    /// The budget bounds that: postings past it are mapped from the list alone instead of turning a poll into a crawl.
+    /// `DetailSelector` bounds that: unchanged postings reuse the stored vacancy, and new ones past
+    /// `MaxDetailsPerPoll` are mapped from the list alone instead of turning a poll into a crawl.
     /// </summary>
     private async Task<IReadOnlyList<Vacancy>> MapAsync(
+        SourceTarget target,
         WorkdayBoardConfig config,
         IReadOnlyList<(JobPostingDto Dto, string ExternalPath)> postings,
+        WorkdayOptions opts,
         CancellationToken ct)
     {
-        var vacancies = new List<Vacancy>(postings.Count);
+        var listed = postings.Select(p => mapper.ToVacancy(p.Dto, config, p.ExternalPath, null)).ToList();
 
-        foreach (var (dto, externalPath) in postings)
+        var decisions = DetailSelector.Select(
+            listed, target, opts.IncludeContentOnPoll, opts.MaxDetailsPerPoll, WorkdayMapper.ListUnchanged);
+
+        var details = await DetailSelector.FetchAsync(decisions, opts.DetailConcurrency, async (i, token) =>
         {
-            ct.ThrowIfCancellationRequested();
-
-            JobPostingInfoDto? detail = null;
-
-            var response = await client.GetJobAsync(config, externalPath, ct);
+            var externalPath = postings[i].ExternalPath;
+            var response = await client.GetJobAsync(config, externalPath, token);
 
             if (response.Success)
-                detail = response.Value!.JobPostingInfo;
-            else
-                ctxLog.Debug(
-                    "Posting {Path} of {Board} has no readable detail ({Error})",
-                    externalPath, config.BoardId, response.Error ?? "board is missing");
+                return response.Value!.JobPostingInfo;
 
-            vacancies.Add(mapper.ToVacancy(dto, config, externalPath, detail));
+            ctxLog.Debug(
+                "Posting {Path} of {Board} has no readable detail ({Error})",
+                externalPath, config.BoardId, response.Error ?? "board is missing");
+
+            return null;
+        }, ct);
+
+        var vacancies = new List<Vacancy>(postings.Count);
+
+        for (var i = 0; i < postings.Count; i++)
+        {
+            var (dto, externalPath) = postings[i];
+
+            vacancies.Add(decisions[i] switch
+            {
+                DetailDecision.Fetch when details[i] is { } detail => mapper.ToVacancy(dto, config, externalPath, detail),
+                DetailDecision.Reuse => WorkdayMapper.Reuse(listed[i], target.Known[listed[i].PostId]),
+                _ => listed[i]
+            });
         }
+
+        ctxLog.Debug(
+            "Board {Board}: {Fetched} details requested, {Reused} reused, {ListOnly} list-only",
+            config.BoardId,
+            decisions.Count(d => d == DetailDecision.Fetch),
+            decisions.Count(d => d == DetailDecision.Reuse),
+            decisions.Count(d => d == DetailDecision.ListOnly));
 
         return vacancies;
     }

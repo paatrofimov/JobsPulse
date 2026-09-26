@@ -49,6 +49,18 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
         return true;
     }
 
+    /// <summary>
+    /// The title part of <see cref="Matches"/> only. Location, description and date may still be filled in by a
+    /// detail request, so this is the one check a list-only vacancy can fail for good.
+    /// </summary>
+    public bool MatchesTitle(Vacancy v, FilterSpec f)
+    {
+        if (f.TitleNoneOf.Count > 0 && AnyMatch(v.Title, f.TitleNoneOf, f.MatchMode))
+            return false;
+
+        return f.TitleAnyOf.Count == 0 || AnyMatch(v.Title, f.TitleAnyOf, f.MatchMode);
+    }
+
     public IReadOnlyList<Vacancy> Apply(IReadOnlyList<Vacancy> source, FilterSpec f)
     {
         if (f.IsEmpty)

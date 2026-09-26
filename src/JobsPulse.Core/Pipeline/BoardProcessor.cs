@@ -15,6 +15,7 @@ public sealed class BoardProcessor(
     ISourceCatalog sourceCatalog,
     IStateStore stateStore,
     ChangeDetector changeDetector,
+    VacancyMatcher matcher,
     ILog log)
 {
     private readonly ILog ctxLog = log.ForContext<BoardProcessor>();
@@ -31,6 +32,10 @@ public sealed class BoardProcessor(
             return BoardProcessResult.Failed();
         }
 
+        // Read before the fetch: the source reuses stored vacancies instead of asking for unchanged details again.
+        var seen = await stateStore.LoadSeenAsync(board.SourceId, board.BoardId, ct);
+        var storageFilters = settings.StorageFilters;
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds));
 
@@ -42,7 +47,10 @@ public sealed class BoardProcessor(
                 {
                     SourceId = board.SourceId,
                     BoardId = board.BoardId,
-                    Configuration = board.Configuration
+                    Configuration = board.Configuration,
+                    Known = seen,
+                    NeedsDescription = storageFilters.Any(f => f.UsesDescription),
+                    MayBeStored = v => storageFilters.Any(f => matcher.MatchesTitle(v, f))
                 },
                 timeout.Token);
         }
@@ -60,8 +68,6 @@ public sealed class BoardProcessor(
             ctxLog.Warn("Incomplete traversal {Company}: {Error}. Changes are not applied", board.CompanyName, traverse.Error);
             return BoardProcessResult.Failed();
         }
-
-        var seen = await stateStore.LoadSeenAsync(board.SourceId, board.BoardId, ct);
 
         // Nothing is subscribed to a registry board, so its match layer is not even read.
         var matches = board.Subscriptions.Count == 0

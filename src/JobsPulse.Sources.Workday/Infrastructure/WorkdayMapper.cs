@@ -40,6 +40,28 @@ public partial class WorkdayMapper(TimeProvider clock)
         };
     }
 
+    /// <summary>
+    /// The title is the only hashed field the list reports reliably: its location is a count for multi-site postings
+    /// and lacks the detail's remote marker, so comparing it would mark most postings as changed on every poll.
+    /// </summary>
+    public static bool ListUnchanged(Vacancy listed, Vacancy known)
+    {
+        return listed.Title == known.Title;
+    }
+
+    /// <summary>A list-only mapping completed with what the stored vacancy once got from the detail.</summary>
+    public static Vacancy Reuse(Vacancy listed, Vacancy known)
+    {
+        return listed with
+        {
+            GroupId = known.GroupId,
+            Location = known.Location,
+            Offices = known.Offices,
+            Url = known.Url,
+            FirstPublishedAt = known.FirstPublishedAt
+        };
+    }
+
     private static string? Title(JobPostingDto dto, JobPostingInfoDto? detail)
     {
         var title = dto.Title?.Trim();
