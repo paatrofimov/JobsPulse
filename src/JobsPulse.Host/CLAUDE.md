@@ -48,8 +48,12 @@ a cycle that is already walking.
 
 One iteration of a role: `polling` (filter maintenance + `RunCycleAsync`), `registry` (`TryRunCycleAsync`),
 `discovery` (`DiscoveryBootstrapPolicy` decides bootstrap vs incremental), `cleanup` (purge). Reaching
-`Job:MaxRunMinutes` is a success - all routines keep their progress in the database. `polling` and `registry` drain
-the outbox afterwards, also after a failure or a deadline, so committed changes are not held until the next run.
+`Job:MaxRunMinutes` is a success - all routines keep their progress in the database.
+
+`polling` and `registry` run the dispatcher loop (`DispatchOnceAsync` every `Delivery:DispatchOutboxIntervalSeconds`)
+next to the cycle, so closed delivery windows leave while the walk goes on. The loop is stopped between ticks, never
+mid-delivery. Afterwards the outbox is drained, also after a failure or a deadline, so committed changes are not
+held until the next run.
 
 ## OutboxDelivery
 
@@ -87,7 +91,7 @@ Three things open the gate, which is why it is not a plain «wait five minutes»
   so there is nothing left to group.
 
 The tracker is in-process, which is why the outbox is dispatched only by the process that walks: a one-shot job
-drains after its own cycle, and the `bot` role does not dispatch at all.
+dispatches next to its own cycle, and the `bot` role does not dispatch at all.
 
 Two cycles can still interleave inside one window - the watchlist cycle ends and flushes, the registry sweep starts
 a moment later and fills the same window - and that second report repeats the header. One message per cycle is the

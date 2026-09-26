@@ -21,6 +21,7 @@ public sealed class JobRunner(
     IOptionsMonitor<RegistryPollingOptions> registryOptions,
     IOptionsMonitor<DiscoveryOptions> discoveryOptions,
     IOptionsMonitor<JobOptions> jobOptions,
+    IOptionsMonitor<DeliveryOptions> deliveryOptions,
     ILog log)
 {
     private readonly ILog ctxLog = log.ForContext<JobRunner>();
@@ -42,6 +43,15 @@ public sealed class JobRunner(
 
         ctxLog.Info("Job {Role} has started", role);
 
+        var delivers = role is HostRole.Polling or HostRole.Registry;
+
+        // The traversal and the progress tracker live in this process, so the regular cutoff holds: every closed
+        // delivery window leaves while the cycle is still walking instead of the whole cycle arriving at its end.
+        using var stopDispatch = new CancellationTokenSource();
+        var dispatch = delivers
+            ? DispatchLoopAsync(stopDispatch.Token, stoppingToken)
+            : Task.CompletedTask;
+
         try
         {
             await RunRoleAsync(role, deadline.Token);
@@ -60,8 +70,11 @@ public sealed class JobRunner(
             exitCode = 1;
         }
 
+        await stopDispatch.CancelAsync();
+        await dispatch;
+
         // Changes committed before a failure or a deadline are delivered all the same.
-        if (role is HostRole.Polling or HostRole.Registry && !stoppingToken.IsCancellationRequested)
+        if (delivers && !stoppingToken.IsCancellationRequested)
             exitCode = Math.Max(exitCode, await DrainAsync(opts, stoppingToken));
 
         ctxLog.Info("Job {Role} has finished with exit code {ExitCode}", role, exitCode);
@@ -126,6 +139,38 @@ public sealed class JobRunner(
             ctxLog.Warn(
                 "{Pending} crawl collections are left pending ({Failed} failed) — the next run continues from them",
                 report.CollectionsPending, report.CollectionsFailed);
+    }
+
+    /// <summary>
+    /// The <see cref="Routines.OutboxDispatcher"/> loop, run next to the cycle. <paramref name="stop"/> only ends the
+    /// loop between ticks - a delivery in flight is finished, not cancelled, so a sent batch is always marked as sent.
+    /// </summary>
+    private async Task DispatchLoopAsync(CancellationToken stop, CancellationToken stoppingToken)
+    {
+        while (!stop.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await outbox.DispatchOnceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                ctxLog.Error(ex, "Outbox dispatch iteration has failed");
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(deliveryOptions.CurrentValue.DispatchOutboxIntervalSeconds), stop);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
     }
 
     private async Task<int> DrainAsync(JobOptions opts, CancellationToken stoppingToken)
