@@ -292,7 +292,7 @@ correctly-grouped messages that all carried the same `17:10–17:15` header.
 
 Inside a window every company is **one collapsed `<details>` block**, exactly like the browsable lists: the message
 opens as the list of company headers and unfolding one shows its vacancies. A block mixes the change kinds (🆕 new,
-✏️ changed, ❌ closed, ⌛ left the `PostedWithinDays` window), so the summary counts them (`🏢 Acme · 🆕 3 · ✏️ 1`) and
+✏️ changed, ❌ closed, ⌛ left the `PostedWithinDays` window, 🚫 no longer passes the filter), so the summary counts them (`🏢 Acme · 🆕 3 · ✏️ 1`) and
 every line carries its own glyph. Blocks are ordered **manual
 companies before discovered ones**, then by their freshest vacancy; vacancies inside a block by kind, then freshness.
 A company too large for a whole message - and only such a company - is continued under a repeated header.

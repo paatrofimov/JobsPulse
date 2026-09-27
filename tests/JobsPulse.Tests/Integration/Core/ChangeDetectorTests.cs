@@ -107,6 +107,37 @@ public sealed class ChangeDetectorTests
         var output = Detect([], seen: [gone], matches: [Match(gone)]);
 
         output.VacanciesChanges.Should().ContainSingle(c => c.Kind == VacancyChangeKind.Closed);
+        output.ClosedPostIds.Should().Equal("1");
+        output.DroppedPostIds.Should().BeEmpty();
+    }
+
+    [Test]
+    public void Detect_should_report_a_match_the_filter_rules_out_as_filtered_and_drop_its_row()
+    {
+        var stored = Vacancy("1");
+        var ruledOut = stored with { Description = "Java only" };
+
+        var output = Detect([ruledOut], seen: [stored], matches: [Match(stored)]);
+
+        output.MatchRemovals.Should().ContainSingle();
+        output.VacanciesChanges.Should().ContainSingle(c => c.Kind == VacancyChangeKind.Filtered);
+        output.DroppedPostIds.Should().Equal("1");
+        output.ClosedPostIds.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The filter maintenance runs before the poll and has already deleted the stored row - the notification is built
+    /// from what the board shows, instead of the match disappearing silently.
+    /// </summary>
+    [Test]
+    public void Detect_should_report_a_filtered_match_whose_stored_row_is_already_deleted()
+    {
+        var listed = Vacancy("1", description: "Java only");
+
+        var output = Detect([listed], seen: [], matches: [Match(Vacancy("1"))]);
+
+        output.VacanciesChanges.Should().ContainSingle(c =>
+            c.Kind == VacancyChangeKind.Filtered && c.Vacancy.PostId == "1");
     }
 
     [Test]

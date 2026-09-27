@@ -365,6 +365,7 @@ internal class StateStore(
 
         var upserts = await UpsertSeenVacanciesAsync(connection, tx, commit, now, ct);
         var closures = await CloseSeenVacanciesAsync(connection, tx, commit, now, ct);
+        var drops = await DropSeenVacanciesAsync(connection, tx, commit, ct);
 
         // The match layer and the notifications must land together with the state that produced them.
         var matches = await UpsertMatchesAsync(connection, tx, commit, now, ct);
@@ -374,7 +375,7 @@ internal class StateStore(
 
         await tx.CommitAsync(ct);
 
-        return new StateCommitResult(upserts, closures, outboxes, matches);
+        return new StateCommitResult(upserts, closures, outboxes, matches, drops);
     }
 
     private async Task<int> UpsertSeenVacanciesAsync(
@@ -390,17 +391,18 @@ internal class StateStore(
         const string sql =
             """
             INSERT INTO seen_vacancy
-                (source_id, board_id, post_id, group_id, content_hash, filter_hash,
+                (source_id, board_id, post_id, group_id, content_hash, filter_hash, description_rules_hash,
                  title, location, url,
                  first_seen_at, first_published_at, updated_at, closed_at, offices)
             VALUES
-                (@source, @board, @post, @group, @hash, @filter_hash,
+                (@source, @board, @post, @group, @hash, @filter_hash, @description_rules_hash,
                  @title, @location, @url,
                  @first_seen_at, @first_published_at, @updated_at, NULL, @offices)
             ON CONFLICT (source_id, board_id, post_id) DO UPDATE SET
-                group_id           = EXCLUDED.group_id,
-                content_hash       = EXCLUDED.content_hash,
-                filter_hash        = EXCLUDED.filter_hash,
+                group_id               = EXCLUDED.group_id,
+                content_hash           = EXCLUDED.content_hash,
+                filter_hash            = EXCLUDED.filter_hash,
+                description_rules_hash = EXCLUDED.description_rules_hash,
                 title              = EXCLUDED.title,
                 location           = EXCLUDED.location,
                 url                = EXCLUDED.url,
@@ -411,6 +413,7 @@ internal class StateStore(
                     seen_vacancy.first_published_at,
                     EXCLUDED.first_published_at)
             WHERE seen_vacancy.content_hash IS DISTINCT FROM EXCLUDED.content_hash
+               OR seen_vacancy.description_rules_hash IS DISTINCT FROM EXCLUDED.description_rules_hash
                OR seen_vacancy.closed_at IS NOT NULL
             """;
 
@@ -422,6 +425,7 @@ internal class StateStore(
             p.AddWithValue("group", (object?)vacancy.GroupId ?? DBNull.Value);
             p.AddWithValue("hash", VacancyHasher.Compute(vacancy));
             p.AddWithValue("filter_hash", (object?)commit.FilterHash ?? DBNull.Value);
+            p.AddWithValue("description_rules_hash", (object?)vacancy.DescriptionRulesHash ?? DBNull.Value);
             p.AddWithValue("title", vacancy.Title);
             p.AddWithValue("location", (object?)vacancy.Location ?? DBNull.Value);
             p.AddWithValue("url", vacancy.Url);
@@ -472,6 +476,40 @@ internal class StateStore(
         ctxLog.Debug(
             "Closing {ClosedCount} vacancies in seen_vacancy affected {AffectedRows} rows",
             commit.ClosedPostIds.Count,
+            affectedRows);
+
+        return affectedRows;
+    }
+
+    private async Task<int> DropSeenVacanciesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction tx,
+        StateCommit commit,
+        CancellationToken ct)
+    {
+        if (commit.DroppedPostIds.Count == 0)
+            return 0;
+
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+
+        cmd.CommandText =
+            """
+            DELETE FROM seen_vacancy
+            WHERE source_id = @source
+              AND board_id = @board
+              AND post_id = ANY(@post_ids)
+            """;
+
+        cmd.Parameters.AddWithValue("source", commit.SourceId);
+        cmd.Parameters.AddWithValue("board", commit.BoardId);
+        cmd.Parameters.AddWithValue("post_ids", commit.DroppedPostIds.ToArray());
+
+        var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+
+        ctxLog.Debug(
+            "Dropping {DroppedCount} vacancies no longer passing the storage filters from seen_vacancy affected {AffectedRows} rows",
+            commit.DroppedPostIds.Count,
             affectedRows);
 
         return affectedRows;

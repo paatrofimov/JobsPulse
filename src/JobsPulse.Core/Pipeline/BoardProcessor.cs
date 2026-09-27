@@ -59,6 +59,7 @@ public sealed class BoardProcessor(
                         .Where(r => r.FilterHash == settings.StorageFilterHash)
                         .ToDictionary(r => r.PostId, r => r.ListHash, StringComparer.Ordinal),
                     NeedsDescription = storageFilters.Any(f => f.UsesDescription),
+                    DescriptionRulesHash = settings.DescriptionRulesHash,
                     MayBeStored = v => storageFilters.Any(f => matcher.MayMatchListed(v, f))
                 },
                 timeout.Token);
@@ -105,8 +106,14 @@ public sealed class BoardProcessor(
             SourceId = board.SourceId,
             BoardId = board.BoardId,
             // Rows the database would skip anyway are not sent: an unchanged board then commits nothing at all.
-            Upserts = [.. detected.VacanciesUpserts.Where(v => IsChanged(v, seen))],
+            Upserts =
+            [
+                .. detected.VacanciesUpserts
+                    .Select(v => WithDescriptionRules(v, seen, settings))
+                    .Where(v => IsChanged(v, seen))
+            ],
             ClosedPostIds = detected.ClosedPostIds,
+            DroppedPostIds = detected.DroppedPostIds,
             Notifications = notifications,
             FilterHash = settings.StorageFilterHash,
             MatchUpserts = ChangedMatches(detected.MatchUpserts, matches),
@@ -115,9 +122,10 @@ public sealed class BoardProcessor(
 
         ctxLog.Info(
             "State commit result for board {Board} ({Company}): {Upserts} seen_vacancy upserts, {Closed} seen_vacancy closures, "
-            + "{Matches} watchlist_vacancy rows, {Notifications} outbox notifications",
+            + "{Dropped} seen_vacancy drops, {Matches} watchlist_vacancy rows, {Notifications} outbox notifications",
             board.BoardKey, board.CompanyName, commitResult.UpsertVacanciesAffectedRows,
-            commitResult.CloseVacanciesAffectedRows, commitResult.MatchAffectedRows, commitResult.OutboxAffectedRows);
+            commitResult.CloseVacanciesAffectedRows, commitResult.DropVacanciesAffectedRows, commitResult.MatchAffectedRows,
+            commitResult.OutboxAffectedRows);
 
         if (settings.DryRun && detected.VacanciesChanges.Count > 0)
         {
@@ -176,11 +184,28 @@ public sealed class BoardProcessor(
         await rejectedPostings.SaveAsync(board.SourceId, board.BoardId, upserts, removals, ct);
     }
 
-    /// <summary>Mirrors the `content_hash IS DISTINCT FROM` guard of the seen_vacancy upsert.</summary>
+    /// <summary>Mirrors the content and description rules hash guard of the seen_vacancy upsert.</summary>
     private static bool IsChanged(Vacancy vacancy, IReadOnlyDictionary<string, Vacancy> seen)
     {
         return !seen.TryGetValue(vacancy.PostId, out var stored)
-               || !string.Equals(stored.ContentHash, VacancyHasher.Compute(vacancy), StringComparison.Ordinal);
+               || !string.Equals(stored.ContentHash, VacancyHasher.Compute(vacancy), StringComparison.Ordinal)
+               || !string.Equals(stored.DescriptionRulesHash, vacancy.DescriptionRulesHash, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Stamps the description rules the verdict was given under. A vacancy whose description was not read keeps the
+    /// stamp it had - its verdict is still the old one, and the next poll has to read it again.
+    /// </summary>
+    private static Vacancy WithDescriptionRules(
+        Vacancy vacancy,
+        IReadOnlyDictionary<string, Vacancy> seen,
+        BoardProcessSettings settings)
+    {
+        var hash = vacancy.DescriptionUnavailable
+            ? seen.GetValueOrDefault(vacancy.PostId)?.DescriptionRulesHash
+            : settings.DescriptionRulesHash;
+
+        return vacancy with { DescriptionRulesHash = hash };
     }
 
     /// <summary>Mirrors the content and filter hash guard of the watchlist_vacancy upsert.</summary>

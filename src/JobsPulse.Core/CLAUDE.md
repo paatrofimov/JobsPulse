@@ -41,6 +41,8 @@ outside Core.
 - `StorageFilters` - the union of all enabled watchlist filters - plus `StorageFilterHash`. A vacancy matching none of
   them cannot produce a notification anywhere, so it is not stored at all. A watchlist with an empty filter matches
   everything, and therefore makes the registry sweep store everything.
+- `DescriptionRulesHash` - `VacancyHasher.ComputeDescriptionRulesHash` over `StorageFilters`: the description rules
+  alone, so a title edit does not force every stored description to be read again.
 
 The plan is shared by `PollingOrchestrator`, `RegistryPollingService` and `FilterMaintenanceService`, so all three
 agree on what relevant means and every stored row carries the same filter-set hash.
@@ -64,13 +66,16 @@ registry cycle tests a board against the individual watchlist filters without fe
 - load its match layer (skipped when nothing is subscribed)
 - `ChangeDetector` produces both levels in one pass
 - build outbox notifications - one per change, so one per watchlist
+- stamp every upsert with the description rules hash of the plan (`Vacancy.DescriptionRulesHash`); a vacancy whose
+  description was not read (`DescriptionUnavailable`) keeps the stamp it had, so the next poll reads it again
 - update state as a single transaction:
-    - upsert seen vacancies, close the ones that are gone
+    - upsert seen vacancies, close the ones that are gone, delete the ones still listed that pass no storage filter
     - upsert and delete match rows
     - enqueue outbox
 - seen vacancies and match rows whose hashes equal the stored ones are dropped from the commit first - they mirror
   the storage guards, so the database result is the same, but an unchanged board commits nothing and costs no round
-  trip. `BoardProcessResult.Relevant` still carries every vacancy that passed the storage filters.
+  trip (a changed description rules hash counts as a change). `BoardProcessResult.Relevant` still carries every
+  vacancy that passed the storage filters.
 - remember the rejected postings: every vacancy carrying a `ListHash` (its detail was read, or it was skipped as known
   rejected) that passes no storage filter. Only the difference to the stored set is written, outside the commit -
   losing it costs a detail request, not a notification.
@@ -172,18 +177,23 @@ stamp and is due at once.
 
 Every `seen_vacancy` row stores `filter_hash` - the hash of the *set* of enabled watchlist filters it passed. When
 any watchlist filter changes, the rows whose hash is no longer in use are re-evaluated: the ones matching no
-watchlist are deleted and the count is logged, the rest just get the new hash. Newly matching vacancies are not
-fetched here - the next cycle finds them.
+watchlist are deleted and the count is logged, the rest just get the new hash. Rows are read in batches of 5000,
+batch after batch until nothing is stale, so one run applies the change to the whole table - the registry boards are
+polled too rarely to clean up a leftover in the meantime. A batch that changed nothing ends the run instead of being
+read again. Newly matching vacancies are not fetched here - the next cycle finds them.
+
+Nothing is sent to the user from here; the notification comes from the poll of the board - see `ChangeDetector`.
 
 Runs at the start of every `PollingWorker` iteration and short-circuits when nothing is stale. With no enabled
 watchlist the stored state is left untouched instead of being wiped.
 
 The match layer is deliberately not touched here: it is reconciled by the next poll of the board, which is also what
-turns a narrowed filter into a `Closed` notification for that watchlist.
+turns a narrowed filter into a `Filtered` notification for that watchlist.
 
 `DescriptionAnyOf` and `DescriptionNoneOf` are dropped from the filter copies used for re-evaluation - descriptions are
 not persisted, so those rules cannot be re-checked offline: the first would wipe everything, the second would keep
-everything.
+everything. A changed description rule is applied by the poll instead: stored rows carry the description rules hash,
+and `DetailSelector` reads a known posting again when it differs.
 
 ## ChangeDetector
 
@@ -198,9 +208,9 @@ case-insensitive. Posts without `GroupId` (prospect posts) always pass through -
 
 ### Storage level
 
-A fetched vacancy is stored when it matches at least one of `StorageFilters`. Anything else is not stored, which for
-the closure rule below makes it look exactly like a vacancy that left the board - and that is intended: a vacancy
-that stops matching every watchlist is reported as closed.
+A fetched vacancy is stored when it matches at least one of `StorageFilters`. A stored row that is still listed but
+matches none of them any more is **dropped** (`DroppedPostIds` - deleted, as `FilterMaintenanceService` does), not
+closed: it did not leave the board, and a closure would count in `BoardActivity`.
 
 ### New / Updated (per watchlist)
 
@@ -212,23 +222,27 @@ the first one is not disturbed.
 ### Closed
 
 Computed only when `Traverse.IsComplete` (the orchestrator already bails out earlier - this is a second guard).
-`Seen` holds only open vacancies of the board, so anything in `Seen` and not among the upserts is closed.
+`Seen` holds only open vacancies of the board, so anything in `Seen` that the board no longer lists is closed.
 
-Closed is computed on both levels: globally (the post is no longer stored for the board) and per watchlist (the post
-no longer passes that watchlist's filter, whatever the reason).
+Closed is computed on both levels: globally (the post is no longer listed on the board) and per watchlist (the post
+no longer passes that watchlist's filter). Per watchlist the removal is reported by its reason: `Closed` when the
+post is gone from the board, `AgedOut` when it is listed but older than `PostedWithinDays`, `Filtered` when it is
+listed and recent - the filter (or the posting) changed and rules it out.
 
 Two consequences worth remembering:
 
-- a vacancy that stops matching a watchlist filter is reported as closed to that watchlist and stays alive for the
-  others - except when it is still on the board and is older than `PostedWithinDays`: that is `AgedOut`, not
-  `Closed`. Judged by the date alone, because a source skips the detail of a posting its date rules out, so the rest
-  of the filter (a description above all) could not be checked anyway;
+- a vacancy that stops matching a watchlist filter is reported as `Filtered` to that watchlist and stays alive for
+  the others - except when it is older than `PostedWithinDays`: that is `AgedOut`. Judged by the date alone,
+  because a source skips the detail of a posting its date rules out, so the rest of the filter (a description above
+  all) could not be checked anyway;
 - a vacancy marked `DescriptionUnavailable` (its detail request failed) keeps its previous verdict per watchlist: it
   stays in a watchlist it matched, and cannot enter one it did not;
-- the present-set is built from post-dedup upserts - a duplicate post that loses deduplication is closed too.
+- the present-set is built from post-dedup vacancies plus the known rejected ones - a duplicate post that loses
+  deduplication is closed.
 
-The closed `Vacancy` is rebuilt from the stored row, not from the source (the post is gone), and reuses the stored
-`ContentHash` so the dedup key stays stable.
+The removed `Vacancy` is rebuilt from the stored row and reuses the reported `ContentHash`, so the dedup key stays
+stable. When the stored row is already gone - `FilterMaintenanceService` runs before the poll and deletes rows no
+filter keeps - a still-listed post is described by what the board shows now, so the removal is never silent.
 
 ## VacancyHasher
 
@@ -352,8 +366,11 @@ posting whether the per-posting detail endpoint is asked (`DetailDecision`):
   (`ListHash` - `VacancyHasher` over the list-only mapping): the same filters rejected the same data before. The
   trade-off: a posting whose detail alone changes (its description) is not re-read until its list data or the filters
   change. Without it a posting failing a description filter was unknown on every poll - thousands of requests an hour;
-- `Reuse` for a known posting whose list data did not move (the source's `ListUnchanged`) - the stored vacancy
-  supplies the detail fields, so the content hash stays put. Under a description filter the source marks it
+- `Reuse` for a known posting whose list data did not move (the source's `ListUnchanged`) and whose verdict still
+  stands: no description rule is in force, or its `DescriptionRulesHash` equals `SourceTarget.DescriptionRulesHash`
+  (a null one, stored before the hash existed, counts as current). The stored vacancy supplies the detail fields, so
+  the content hash stays put. A description rule change therefore costs one read of every stored posting of these
+  sources, after which reuse resumes. Under a description filter the source marks it
   `DescriptionUnavailable`, so the description rules keep the verdict they gave when its text was last read. Before,
   every stored posting was re-read on every poll to confirm that verdict - about 3500 Workday requests per cycle;
 - `Fetch` for every remaining posting when `NeedsDescription` - descriptions are not stored, so a new or changed
@@ -646,6 +663,11 @@ Set by a source when the detail request of a stored (`SourceTarget.Known`) posti
 descriptions. The vacancy then carries the stored fields and no description; `VacancyMatcher` skips description rules
 and `ChangeDetector` keeps its previous watchlist verdict, so a transient HTTP error neither closes nor adds a match.
 Not persisted, not serialized.
+
+### DescriptionRulesHash
+
+Which description rules the stored verdict was given under (`seen_vacancy.description_rules_hash`), stamped by
+`BoardProcessor`. `DetailSelector` reuses a known posting only while it equals the current one. Not serialized.
 
 ### ListHash / KnownRejected
 

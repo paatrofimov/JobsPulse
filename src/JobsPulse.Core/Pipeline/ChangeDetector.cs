@@ -35,6 +35,7 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
         public required IReadOnlyList<VacancyChange> VacanciesChanges { get; init; }
         public required IReadOnlyList<Vacancy> VacanciesUpserts { get; init; }
         public required IReadOnlyList<string> ClosedPostIds { get; init; }
+        public required IReadOnlyList<string> DroppedPostIds { get; init; }
         public required IReadOnlyList<WatchlistMatch> MatchUpserts { get; init; }
         public required IReadOnlyList<WatchlistMatchKey> MatchRemovals { get; init; }
 
@@ -43,6 +44,7 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
             VacanciesChanges = [],
             VacanciesUpserts = [],
             ClosedPostIds = [],
+            DroppedPostIds = [],
             MatchUpserts = [],
             MatchRemovals = []
         };
@@ -63,10 +65,21 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
         // Closed can be set only if complete board was traversed.
         // Otherwise can false-positively decide that unfetched vacancy is closed.
         var closed = new List<string>();
+        var dropped = new List<string>();
         if (input.Traverse.IsComplete)
         {
-            var present = upserts.Select(v => v.PostId).ToHashSet(StringComparer.Ordinal);
-            closed.AddRange(input.Seen.Keys.Where(postId => !present.Contains(postId)));
+            var stored = upserts.Select(v => v.PostId).ToHashSet(StringComparer.Ordinal);
+            var listed = input.Traverse.Vacancies.Select(v => v.PostId).ToHashSet(StringComparer.Ordinal);
+
+            // A stored row that is still listed but passes no storage filter any more did not close - it is deleted,
+            // exactly as the filter maintenance deletes it, so it never counts as a closure.
+            foreach (var postId in input.Seen.Keys.Where(postId => !stored.Contains(postId)))
+            {
+                if (listed.Contains(postId))
+                    dropped.Add(postId);
+                else
+                    closed.Add(postId);
+            }
         }
 
         var changes = new List<VacancyChange>();
@@ -83,6 +96,7 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
             VacanciesChanges = changes,
             VacanciesUpserts = upserts,
             ClosedPostIds = closed,
+            DroppedPostIds = dropped,
             MatchUpserts = matchUpserts,
             MatchRemovals = matchRemovals
         };
@@ -133,7 +147,12 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
         if (!input.Traverse.IsComplete)
             return;
 
-        var present = fetched.ToDictionary(v => v.PostId, StringComparer.Ordinal);
+        // A known rejected posting is still on the board too - it only was not evaluated.
+        var present = new Dictionary<string, Vacancy>(StringComparer.Ordinal);
+        foreach (var vacancy in fetched.Concat(input.Traverse.Vacancies.Where(v => v.KnownRejected)))
+        {
+            present.TryAdd(vacancy.PostId, vacancy);
+        }
 
         foreach (var (postId, reported) in previous.Where(p => !matchedNow.Contains(p.Key)))
         {
@@ -143,13 +162,18 @@ public sealed class ChangeDetector(VacancyMatcher matcher)
             // Still on the board but older than `PostedWithinDays` - it left the tracked window, it did not close.
             // Judged by the date alone: a posting that old is mapped from the list only, so its other fields
             // (a description above all) are missing and would fail the rest of the filter anyway.
-            var kind = present.TryGetValue(postId, out var current) && !matcher.IsRecent(current, subscription.Filter)
-                ? VacancyChangeKind.AgedOut
-                : VacancyChangeKind.Closed;
+            // Still on the board and recent - the watchlist filter was changed and rules it out.
+            var kind = !present.TryGetValue(postId, out var current)
+                ? VacancyChangeKind.Closed
+                : matcher.IsRecent(current, subscription.Filter)
+                    ? VacancyChangeKind.Filtered
+                    : VacancyChangeKind.AgedOut;
 
-            // The notification is rebuilt from stored state - the post is gone from the board or from the filter.
-            if (input.Seen.TryGetValue(postId, out var stored))
-                changes.Add(Change(kind, stored, reported, subscription));
+            // The notification is rebuilt from stored state when there is one. A posting the filter maintenance has
+            // already deleted is still on the board, so what the board shows now describes it.
+            var vacancy = input.Seen.GetValueOrDefault(postId) ?? current;
+            if (vacancy is not null)
+                changes.Add(Change(kind, vacancy, reported, subscription));
         }
     }
 

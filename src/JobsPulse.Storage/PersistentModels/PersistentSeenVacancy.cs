@@ -11,6 +11,7 @@ public class PersistentSeenVacancy
     public string? GroupId { get; set; }
     public required string ContentHash { get; set; }
     public string? FilterHash { get; set; }
+    public string? DescriptionRulesHash { get; set; }
     public required string Title { get; set; }
     public string? Location { get; set; }
     public string[] Offices { get; set; } = [];

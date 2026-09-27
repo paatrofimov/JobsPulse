@@ -32,7 +32,10 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
     private const string DetailsClose = "</details>";
 
     private static readonly VacancyChangeKind[] KindOrder =
-        [VacancyChangeKind.New, VacancyChangeKind.Updated, VacancyChangeKind.Closed, VacancyChangeKind.AgedOut];
+        [
+            VacancyChangeKind.New, VacancyChangeKind.Updated, VacancyChangeKind.Closed, VacancyChangeKind.AgedOut,
+            VacancyChangeKind.Filtered
+        ];
 
     public IReadOnlyList<InputRichMessage> Format(
         IReadOnlyList<OutboxItem> batch,
@@ -263,6 +266,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
             VacancyChangeKind.Updated => "✏️",
             VacancyChangeKind.Closed => "❌",
             VacancyChangeKind.AgedOut => "⌛",
+            VacancyChangeKind.Filtered => "🚫",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 

@@ -38,6 +38,10 @@ public sealed record Vacancy
     // move. Description rules keep the previous verdict instead of failing
     [JsonIgnore] public bool DescriptionUnavailable { get; init; }
 
+    // Which description rules the stored verdict was given under (`VacancyHasher.ComputeDescriptionRulesHash`) -
+    // a known posting is re-read when they changed. Null for a row stored before it was tracked
+    [JsonIgnore] public string? DescriptionRulesHash { get; init; }
+
     // Fingerprint of the list data this vacancy was mapped from - set only when its detail was read or skipped as
     // known rejected, so a rejection can be remembered against it
     [JsonIgnore] public string? ListHash { get; init; }

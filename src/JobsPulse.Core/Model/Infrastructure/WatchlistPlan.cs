@@ -20,6 +20,9 @@ public sealed record WatchlistPlan
 
     public string StorageFilterHash { get; init; } = string.Empty;
 
+    /// <summary>Hash of the description rules among <see cref="StorageFilters"/> - see <c>Vacancy.DescriptionRulesHash</c>.</summary>
+    public string DescriptionRulesHash { get; init; } = string.Empty;
+
     public bool HasWatchlists => StorageFilters.Count > 0;
 
     public static readonly WatchlistPlan Empty = new();
@@ -71,7 +74,8 @@ public sealed record WatchlistPlan
         {
             Boards = [.. boards.Values],
             StorageFilters = filters,
-            StorageFilterHash = VacancyHasher.ComputeFilterSetHash(filters)
+            StorageFilterHash = VacancyHasher.ComputeFilterSetHash(filters),
+            DescriptionRulesHash = VacancyHasher.ComputeDescriptionRulesHash(filters)
         };
     }
 

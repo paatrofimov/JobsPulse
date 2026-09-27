@@ -9,6 +9,9 @@ public sealed record StateCommit
 
     public required IReadOnlyList<Vacancy> Upserts { get; init; }
     public required IReadOnlyList<string> ClosedPostIds { get; init; }
+
+    /// <summary>Stored vacancies still on the board that pass no storage filter any more - deleted, not closed.</summary>
+    public IReadOnlyList<string> DroppedPostIds { get; init; } = [];
     public required IReadOnlyList<OutboxItem> Notifications { get; init; }
 
     /// <summary>Hash of the filter set the upserted vacancies passed - stored per row to detect filter changes.</summary>
@@ -23,6 +26,7 @@ public sealed record StateCommit
     public bool IsEmpty =>
         Upserts.Count == 0 &&
         ClosedPostIds.Count == 0 &&
+        DroppedPostIds.Count == 0 &&
         Notifications.Count == 0 &&
         MatchUpserts.Count == 0 &&
         MatchRemovals.Count == 0;

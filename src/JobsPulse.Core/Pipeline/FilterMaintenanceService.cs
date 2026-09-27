@@ -7,10 +7,11 @@ namespace JobsPulse.Core.Pipeline;
 /// <summary>
 /// Keeps the stored vacancies in sync with the current watchlist filters. Every row carries the hash of the filter
 /// set it passed; when any watchlist filter changes, the rows are re-evaluated and the ones that no longer match any
-/// watchlist are deleted. Newly matching vacancies are not fetched here - the next polling cycle finds them.
+/// watchlist are deleted. Every stale row is handled in one run, batch after batch. Newly matching vacancies are not
+/// fetched here - the next polling cycle finds them.
 ///
 /// The per-watchlist match layer is not touched: it is reconciled by the next poll of the board, which is also what
-/// turns a narrowed filter into a Closed notification for that watchlist.
+/// turns a narrowed filter into a Filtered notification for that watchlist.
 /// </summary>
 public sealed class FilterMaintenanceService(
     IStateStore stateStore,
@@ -33,11 +34,43 @@ public sealed class FilterMaintenanceService(
             return FilterMaintenanceReport.Empty;
         }
 
-        var stale = await stateStore.LoadStaleFilterAsync([plan.StorageFilterHash], BatchLimit, ct);
+        var storable = plan.StorageFilters.Select(Storable).ToList();
+        var total = FilterMaintenanceReport.Empty;
+
+        // Batch after batch until nothing stale is left: a row left for the next run would wait there for hours,
+        // and the registry boards are not polled often enough to clean it up in the meantime.
+        while (true)
+        {
+            var batch = await RunBatchAsync(plan.StorageFilterHash, storable, ct);
+
+            total = new FilterMaintenanceReport(
+                total.Checked + batch.Checked,
+                total.Removed + batch.Removed,
+                total.Retained + batch.Retained);
+
+            // A batch that changed nothing would be read again as it is - stop instead of spinning.
+            if (batch.Checked < BatchLimit || batch.Removed + batch.Retained == 0)
+                break;
+        }
+
+        if (total.Checked == 0)
+            return total;
+
+        ctxLog.Warn(
+            "Filter change detected: {Checked} stored vacancies re-evaluated, {Removed} removed as not matching, {Kept} kept",
+            total.Checked, total.Removed, total.Retained);
+
+        return total;
+    }
+
+    private async Task<FilterMaintenanceReport> RunBatchAsync(
+        string filterHash,
+        IReadOnlyList<FilterSpec> storable,
+        CancellationToken ct)
+    {
+        var stale = await stateStore.LoadStaleFilterAsync([filterHash], BatchLimit, ct);
         if (stale.Count == 0)
             return FilterMaintenanceReport.Empty;
-
-        var storable = plan.StorageFilters.Select(Storable).ToList();
 
         var obsolete = new List<VacancyKey>();
         var retained = new List<VacancyKey>();
@@ -54,11 +87,7 @@ public sealed class FilterMaintenanceService(
         }
 
         var removed = await stateStore.DeleteAsync(obsolete, ct);
-        var kept = await stateStore.SetFilterHashAsync(retained, plan.StorageFilterHash, ct);
-
-        ctxLog.Warn(
-            "Filter change detected: {Checked} stored vacancies re-evaluated, {Removed} removed as not matching, {Kept} kept",
-            stale.Count, removed, kept);
+        var kept = await stateStore.SetFilterHashAsync(retained, filterHash, ct);
 
         return new FilterMaintenanceReport(stale.Count, removed, kept);
     }

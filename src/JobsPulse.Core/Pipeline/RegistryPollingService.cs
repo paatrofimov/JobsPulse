@@ -171,7 +171,8 @@ public sealed class RegistryPollingService(
             opts.SingleEntryProcessTimeoutSeconds,
             opts.DryRun,
             plan.StorageFilters,
-            plan.StorageFilterHash);
+            plan.StorageFilterHash,
+            plan.DescriptionRulesHash);
 
         using var gate = new SemaphoreSlim(opts.MaxConcurrentBoards);
 

@@ -191,4 +191,35 @@ public sealed class StateStoreTests : IntegrationTestBase
         commitResult.UpsertVacanciesAffectedRows.Should().Be(1);
         (await LoadSeenVacanciesAsync()).Keys.Should().ContainSingle(k => k == vacancy.PostId);
     }
+
+    [Test]
+    public async Task Should_delete_dropped_vacancies_instead_of_closing_them()
+    {
+        var (_, vacancies, __) = await InsertVacanciesAsync(take: 2, changeKind: VacancyChangeKind.New);
+
+        var commitResult = await CommitAsync(
+            BuildStateCommit(notifications: [], vacancies: [], closed: []) with { DroppedPostIds = [vacancies[0].PostId] });
+
+        commitResult.DropVacanciesAffectedRows.Should().Be(1);
+        commitResult.CloseVacanciesAffectedRows.Should().Be(0);
+
+        var seenVacancies = await ReadAllSeenVacanciesAsync();
+        seenVacancies.Should().ContainSingle(v => v.PostId == vacancies[1].PostId);
+    }
+
+    [Test]
+    public async Task Should_update_the_description_rules_hash_of_an_unchanged_vacancy()
+    {
+        var (_, vacancies, __) = await InsertVacanciesAsync(take: 1, changeKind: VacancyChangeKind.New);
+        var vacancy = vacancies[0] with { DescriptionRulesHash = "rules" };
+
+        var commitResult = await CommitAsync(BuildStateCommit(notifications: [], vacancies: [vacancy], closed: []));
+
+        commitResult.UpsertVacanciesAffectedRows.Should().Be(1);
+        (await LoadSeenVacanciesAsync())[vacancy.PostId].DescriptionRulesHash.Should().Be("rules");
+
+        // The same content under the same rules is still a no-op.
+        var repeated = await CommitAsync(BuildStateCommit(notifications: [], vacancies: [vacancy], closed: []));
+        repeated.UpsertVacanciesAffectedRows.Should().Be(0);
+    }
 }

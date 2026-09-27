@@ -23,6 +23,7 @@ public static class PersistencyExtensions
             UpdatedAt = persistentVacancy.UpdatedAt,
             ContentHash = persistentVacancy.ContentHash,
             GroupId = persistentVacancy.GroupId,
+            DescriptionRulesHash = persistentVacancy.DescriptionRulesHash,
         };
     }
 

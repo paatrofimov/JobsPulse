@@ -41,7 +41,9 @@ public static class DetailSelector
             // Rejected with the very same list data under the same filters - the detail would say the same again.
             else if (target.Rejected.TryGetValue(vacancy.PostId, out var rejected) && rejected == ListHash(vacancy))
                 decisions[i] = DetailDecision.Rejected;
-            else if (target.Known.TryGetValue(vacancy.PostId, out var known) && listUnchanged(vacancy, known))
+            else if (target.Known.TryGetValue(vacancy.PostId, out var known)
+                     && listUnchanged(vacancy, known)
+                     && VerdictHolds(known, target))
                 decisions[i] = DetailDecision.Reuse;
             // Descriptions are not stored, so a description filter needs one for every new or changed plausible
             // posting - and without a budget: a posting left list-only could never pass the description rule.
@@ -55,6 +57,16 @@ public static class DetailSelector
 
         return decisions;
     }
+
+    /// <summary>
+    /// Whether the description verdict of a known posting still stands: no description rule is in force, or it was
+    /// given under the current rules. A row stored before the rules were tracked (no hash) is taken as current - it
+    /// was re-read on every poll back then, so its verdict is the one the rules in force gave.
+    /// </summary>
+    private static bool VerdictHolds(Vacancy known, SourceTarget target) =>
+        !target.NeedsDescription
+        || known.DescriptionRulesHash is null
+        || string.Equals(known.DescriptionRulesHash, target.DescriptionRulesHash, StringComparison.Ordinal);
 
     /// <summary>Fingerprint of a list-only mapping: its hashed fields, all of which come from the list there.</summary>
     public static string ListHash(Vacancy listed) => VacancyHasher.Compute(listed);

@@ -51,7 +51,8 @@ unique `iteration` index; `20260921140000_AddBoardPollState` adds `board_poll_st
 closed_at))` per board) - the state it replaces was in memory only, so without the seed the first cycle after the
 upgrade would re-read every board at once, which is exactly the cost the table exists to avoid.
 `20260926190129_AddRejectedPosting` adds `rejected_posting` with its unique `(source_id, board_id, post_id)` index.
-`20260927123137_AddTraversalRun` adds `traversal_run`.
+`20260927123137_AddTraversalRun` adds `traversal_run`. `20260927132722_AddSeenVacancyDescriptionRulesHash` adds the
+nullable `seen_vacancy.description_rules_hash`; nothing backfills it - a null hash is taken as current.
 Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
@@ -72,10 +73,13 @@ Table `seen_vacancy` - last known state of every post ever observed on a board.
 
 ### Why columns look like this
 
-- `closed_at`: soft close. Rows are never deleted, so a vacancy that reappears keeps its `id` and `first_seen_at`,
-  and history stays queryable. Reopening is just `closed_at = NULL` in the upsert.
+- `closed_at`: soft close. A closed row is never deleted, so a vacancy that reappears keeps its `id` and
+  `first_seen_at`, and history stays queryable. Reopening is just `closed_at = NULL` in the upsert. Only a row that
+  stopped passing the storage filters is deleted - it did not close.
 - `filter_hash`: which filter the row passed. `FilterMaintenanceService` re-evaluates and deletes rows whose hash
   fell out of use, so a narrowed filter cleans the table instead of leaving stale rows behind.
+- `description_rules_hash`: the description rules the row's verdict was given under - see
+  `Vacancy.DescriptionRulesHash` in Core. A known posting is re-read once they change.
 - `content_hash`: change detection. Recomputed by `VacancyHasher` on write, not taken from the domain model.
 - `first_seen_at` vs `first_published_at`: ours vs the board's. Because it is ours, the upsert falls back to the commit
   time when the domain model carries none - a source that does not stamp it (`SuccessFactors` did not) must not fail the
@@ -213,9 +217,12 @@ Upserts, closures and outbox inserts run in one explicit transaction on one conn
 be enqueued without the state change that produced it, and vice versa.
 
 - Upsert: one statement per vacancy, sent through `NpgsqlBatchExecutor`. The `WHERE content_hash IS DISTINCT FROM
-  ... OR closed_at IS NOT NULL` guard turns unchanged open vacancies into zero-row no-ops, so the returned count is
-  the number of real changes; a closed vacancy that comes back is reopened even with an unchanged hash.
+  ... OR description_rules_hash IS DISTINCT FROM ... OR closed_at IS NOT NULL` guard turns unchanged open vacancies
+  into zero-row no-ops, so the returned count is the number of real changes; a closed vacancy that comes back is
+  reopened even with an unchanged hash.
 - Close: single statement over `ANY(@post_ids)`, guarded by `closed_at IS NULL` so re-closing is a no-op.
+- Drop: single `DELETE` over `ANY(@post_ids)` for `DroppedPostIds` - still listed, no longer passing the storage
+  filters.
 - Enqueue: per-item insert with `ON CONFLICT (dedup_key) DO NOTHING`, batched the same way.
 
 An empty commit short-circuits before opening a connection.

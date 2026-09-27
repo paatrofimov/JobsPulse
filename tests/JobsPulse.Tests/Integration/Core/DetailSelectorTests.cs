@@ -2,6 +2,7 @@ using FluentAssertions;
 using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
+using JobsPulse.Core.Pipeline;
 using NUnit.Framework;
 
 namespace JobsPulse.Tests.Integration.Core;
@@ -94,6 +95,45 @@ public sealed class DetailSelectorTests
         var decisions = DetailSelector.Select([Vacancy("1", "Lead Engineer")], target, false, 0, SameTitle);
 
         decisions.Should().Equal(DetailDecision.Fetch);
+    }
+
+    [Test]
+    public void Select_should_fetch_a_known_posting_again_when_the_description_rules_changed()
+    {
+        var known = Vacancy("1", "Engineer") with { DescriptionRulesHash = "old" };
+        var target = Target(known) with { NeedsDescription = true, DescriptionRulesHash = "new" };
+
+        var decisions = DetailSelector.Select([Vacancy("1", "Engineer")], target, false, 0, SameTitle);
+
+        decisions.Should().Equal(DetailDecision.Fetch);
+    }
+
+    [Test]
+    public void Select_should_reuse_a_known_posting_judged_under_the_current_or_untracked_description_rules()
+    {
+        var current = Vacancy("1", "Engineer") with { DescriptionRulesHash = "rules" };
+        var untracked = Vacancy("2", "Engineer");
+        var target = Target(current, untracked) with { NeedsDescription = true, DescriptionRulesHash = "rules" };
+
+        var decisions = DetailSelector.Select(
+            [Vacancy("1", "Engineer"), Vacancy("2", "Engineer")], target, false, 0, SameTitle);
+
+        decisions.Should().Equal(DetailDecision.Reuse, DetailDecision.Reuse);
+    }
+
+    [Test]
+    public void Description_rules_hash_should_change_only_with_the_description_rules()
+    {
+        FilterSpec titles = new() { TitleAnyOf = ["engineer"] };
+        FilterSpec described = new() { TitleAnyOf = ["engineer"], DescriptionNoneOf = ["java"] };
+
+        var none = VacancyHasher.ComputeDescriptionRulesHash([titles]);
+
+        VacancyHasher.ComputeDescriptionRulesHash([titles with { TitleAnyOf = ["designer"] }]).Should().Be(none);
+        VacancyHasher.ComputeDescriptionRulesHash([]).Should().Be(none);
+        VacancyHasher.ComputeDescriptionRulesHash([described]).Should().NotBe(none);
+        VacancyHasher.ComputeDescriptionRulesHash([described, titles])
+            .Should().Be(VacancyHasher.ComputeDescriptionRulesHash([titles, described]));
     }
 
     [Test]

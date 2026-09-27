@@ -26,6 +26,12 @@ public sealed record SourceTarget
     public bool NeedsDescription { get; init; }
 
     /// <summary>
+    /// Hash of the current description rules. A known posting whose stored verdict was given under other rules is
+    /// not reused - its description is read again.
+    /// </summary>
+    public string? DescriptionRulesHash { get; init; }
+
+    /// <summary>
     /// Whether a list-only vacancy can pass the storage filters by its title and publication date. Null means «maybe».
     /// </summary>
     public Func<Vacancy, bool>? MayBeStored { get; init; }

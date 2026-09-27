@@ -97,7 +97,8 @@ public sealed class PollingOrchestrator(
             opts.SingleEntryProcessTimeoutSeconds,
             opts.DryRun,
             plan.StorageFilters,
-            plan.StorageFilterHash);
+            plan.StorageFilterHash,
+            plan.DescriptionRulesHash);
 
         using var gate = new SemaphoreSlim(opts.MaxConcurrentEntries);
 
