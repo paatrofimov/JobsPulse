@@ -53,6 +53,12 @@ public sealed class DiscoveryOptions
 
     public int MaxThrottlePenaltySeconds { get; set; } = 1200;
 
+    /// <summary>
+    /// Once the pacing penalty reaches this, the http index is abandoned for the run instead of waiting it out
+    /// (0 - never). The last run spent 73 of 112 minutes waiting on a penalty of up to 9 minutes per request.
+    /// </summary>
+    public int GiveUpAtThrottlePenaltySeconds { get; set; } = 120;
+
     /// <summary>How many requests in a row must succeed before the pacing penalty is relaxed by one step.</summary>
     public int ThrottleRecoveryAfterRequests { get; set; } = 10;
 

@@ -45,7 +45,9 @@ jobs:
 
       - name: Run ${{ inputs.role }}
         working-directory: out
-        run: dotnet JobsPulse.Host.dll --role ${{ inputs.role }}
+        # exec: dotnet replaces the shell, so a cancel or the job timeout reaches it as SIGINT/SIGTERM and the job stops
+        # gracefully (checkpoints written). Under bash it was orphaned and killed outright.
+        run: exec dotnet JobsPulse.Host.dll --role ${{ inputs.role }}
         env:
           DOTNET_ENVIRONMENT: Production
           ConnectionStrings__Postgres: ${{ secrets.POSTGRES }}

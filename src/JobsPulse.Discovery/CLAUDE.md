@@ -22,8 +22,10 @@ both may be on.
   throttles hard, which is why this is off by default.
 
 Both passes share `crawl_index_state`, so whatever one of them has finished the other skips for free. That is also
-what makes `Parquet:FallbackToHttp` cheap: when the columnar reader leaves collections pending, the http pass is run
-after it and picks up exactly those.
+what makes `Parquet:FallbackToHttp` cheap: the http pass runs after the columnar one over exactly the collections it
+could not read (`ParquetPassResult.FallbackCollections`: failed ones, and the rest when the columnar index looked
+unavailable). Collections left by the token cap are not among them - the http index would walk them far more slowly
+into the same cap; one run spent 70 minutes of CC index throttling on 2022 collections for that reason.
 
 # Abstractions
 
@@ -73,6 +75,9 @@ The index front-end throttles hard: it answers 503/429 and simply drops connecti
 - The penalty grows by `ThrottlePenaltyStepSeconds` (up to `MaxThrottlePenaltySeconds`) on every throttled or failed
   request and is relaxed by one step after `ThrottleRecoveryAfterRequests` requests in a row succeed. Both
   directions are logged, so the log shows how hard the index is pushing back.
+- Once the penalty reaches `GiveUpAtThrottlePenaltySeconds` (120), the next request throws
+  `CrawlIndexThrottledException` instead of waiting: minutes per request are not worth it, the http pass stops and
+  the next run continues. The exception is deliberately not transient, so no per-page handler swallows it.
 - Retries are `IndexRetries` linear steps of `IndexRetryDelaySeconds * attempt`, honouring `Retry-After` when it
   asks for more, capped by `MaxIndexRetryDelaySeconds`.
 - A non-transient status (404 for a pattern with no captures) is returned as-is - retrying it would be waste.
@@ -184,8 +189,9 @@ which index is read and in what order; the reading is in the passes.
 
 - `full: true` (bootstrap / `/discover`) - union of the last `BootstrapYears` of crawl indexes, processed marks are
   ignored, indexes are walked oldest first.
-- `full: false` (periodic) - every collection that is not yet in `crawl_index_state` for that source, which in
-  practice is only the newly published one. History is never re-read.
+- `full: false` (periodic) - the same last `BootstrapYears`, newest first, minus what `crawl_index_state` holds for a
+  source - in practice only the newly published collections. It used to take the whole list back to 2008, so the
+  first incremental run after a bootstrap set out to read 93 old collections of mostly dead boards.
 
 Runs never overlap - a zero-timeout `SemaphoreSlim(1, 1)`, the same trick as `PollingOrchestrator`. A busy service
 returns `BoardDiscoveryReport.Busy`.
@@ -212,13 +218,16 @@ ATS or ten, so every parser is folded into one pass over the files. Per collecti
 - the host of a returned url picks the one parser that owns it, tokens already in the registry are dropped
 - per source: validate, upsert, and mark the collection processed - but only if it was scanned whole
 
+Returns a `ParquetPassResult`: the report plus the collections the http fallback should read (failed ones, and the
+rest when `MaxConsecutiveCollectionFailures` gave up on the columnar index).
+
 Sources already holding the collection in `crawl_index_state` are left out of the predicate, so a re-run after a
 partial failure asks about less.
 
 ## HttpIndexDiscoveryPass
 
 The cdx reader, source-major. For every pending collection and every url pattern: page count → stream pages → parse
-board token.
+board token. A `CrawlIndexThrottledException` stops the whole pass; everything not done is reported pending.
 
 ## BoardTokenSink
 

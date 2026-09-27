@@ -106,30 +106,34 @@ public sealed class BoardDiscoveryService(
         }
 
         var report = BoardDiscoveryReport.Empty;
+        var parquet = ParquetPassResult.Empty;
 
         if (opts.Mode.HasFlag(DiscoveryMode.Parquet))
-            report = DiscoveryReports.Merge(report, await parquetPass.RunAsync(remaining, full, opts, ct));
+        {
+            parquet = await parquetPass.RunAsync(remaining, full, opts, ct);
+            report = DiscoveryReports.Merge(report, parquet.Report);
+        }
 
-        // The http pass reads `crawl_index_state`, so whatever parquet has finished is skipped here for free -
-        // both when http is a mode of its own and when it is only the fallback for a failed parquet collection.
+        // The http pass reads `crawl_index_state`, so whatever parquet has finished is skipped here for free. As a
+        // fallback it gets only the collections the columnar index failed on - not the ones the token cap left,
+        // which it would walk far more slowly into the same cap (the run that spent 70 minutes on 2022 did that).
         var fallback = opts.Mode.HasFlag(DiscoveryMode.Parquet)
                        && opts.Parquet.FallbackToHttp
-                       && report.CollectionsPending + report.CollectionsFailed > 0;
+                       && parquet.FallbackCollections.Count > 0;
 
         if (opts.Mode.HasFlag(DiscoveryMode.Http) || fallback)
         {
             if (fallback && !opts.Mode.HasFlag(DiscoveryMode.Http))
             {
                 ctxLog.Warn(
-                    "{Pending} collections are left pending by the columnar index ({Failed} failed) — "
-                    + "falling back to the http index",
-                    report.CollectionsPending, report.CollectionsFailed);
-
-                // The pending count is re-measured by the fallback pass; keeping the old one would double-count it.
-                report = report with { CollectionsPending = 0 };
+                    "{Count} collections could not be read from the columnar index — falling back to the http index "
+                    + "for them",
+                    parquet.FallbackCollections.Count);
             }
 
-            report = DiscoveryReports.Merge(report, await httpPass.RunAsync(remaining, full, opts, ct));
+            var httpCollections = opts.Mode.HasFlag(DiscoveryMode.Http) ? remaining : parquet.FallbackCollections;
+
+            report = DiscoveryReports.Merge(report, await httpPass.RunAsync(httpCollections, full, opts, ct));
         }
 
         await checkpoints.CompleteAsync(ct);
@@ -163,22 +167,22 @@ public sealed class BoardDiscoveryService(
         return index is null ? window : window.Skip(index.Value).ToList();
     }
 
-    /// <summary>Bootstrap takes the union of the last N years; an incremental run takes only fresh indexes.</summary>
+    /// <summary>
+    /// Both kinds of run look at the last <c>BootstrapYears</c> only. A bootstrap walks that window oldest first; an
+    /// incremental run walks it newest first and skips what `crawl_index_state` says is mined, so in practice it reads
+    /// the fresh collections on top. It used to take the whole list back to 2008, which turned the first incremental
+    /// run after a bootstrap into days of reading boards that have long been dead.
+    /// </summary>
     private IReadOnlyList<CrawlCollection> SelectCollections(
         IReadOnlyList<CrawlCollection> collections,
         bool full,
         DiscoveryOptions opts)
     {
-        if (!full)
-            return collections;
-
         var since = clock.GetUtcNow().Year - Math.Max(1, opts.BootstrapYears) + 1;
+        var recent = collections.Where(c => c.Year == 0 || c.Year >= since);
 
-        var crawlCollections = collections
-            .Where(c => c.Year == 0 || c.Year >= since)
-            .OrderBy(c => c.Id, StringComparer.Ordinal)
-            .ToList();
-
-        return crawlCollections;
+        return full
+            ? [.. recent.OrderBy(c => c.Id, StringComparer.Ordinal)]
+            : [.. recent];
     }
 }

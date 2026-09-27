@@ -318,6 +318,11 @@ public sealed partial class CrawlIndexClient(
     /// <summary>Keeps a minimum gap between requests: the configured one plus whatever throttling has earned us.</summary>
     private async Task PaceAsync(DiscoveryOptions opts, CancellationToken ct)
     {
+        // Waiting minutes per request is not worth it - the caller stops and the next run picks the rest up.
+        var giveUpAt = TimeSpan.FromSeconds(opts.GiveUpAtThrottlePenaltySeconds);
+        if (giveUpAt > TimeSpan.Zero && throttlePenalty >= giveUpAt)
+            throw new CrawlIndexThrottledException(throttlePenalty);
+
         var minGap = TimeSpan.FromMilliseconds(Math.Max(0, opts.PauseBetweenRequestsMsec)) + throttlePenalty;
         if (minGap <= TimeSpan.Zero || lastRequestAt == TimeSpan.MinValue)
             return;
