@@ -4,7 +4,7 @@ using NUnit.Framework;
 
 namespace JobsPulse.Tests.Integration.Telegram;
 
-/// <summary>A filter rule answer: a list replaces, a leading `+` adds, a leading `-` with words removes.</summary>
+/// <summary>A filter rule answer: a list replaces, a leading `+` or `-` with words adds, a lone `-` clears.</summary>
 public sealed class FilterListEditTests
 {
     private static readonly string[] Current = ["backend", "sre"];
@@ -21,10 +21,12 @@ public sealed class FilterListEditTests
         FilterListEdit.Apply(Current, "+ go, SRE, rust").Should().Equal("backend", "sre", "go", "rust");
     }
 
+    // The answer that once removed nothing and changed nothing: `-` before the words of an «excluded» rule.
     [Test]
-    public void Apply_should_remove_after_a_minus_ignoring_case()
+    public void Apply_should_add_after_a_minus_followed_by_words()
     {
-        FilterListEdit.Apply(Current, "- Backend, php").Should().Equal("sre");
+        FilterListEdit.Apply(["manager"], "- Bioprocess, Plant, On-Site, Intern")
+            .Should().Equal("manager", "Bioprocess", "Plant", "On-Site", "Intern");
     }
 
     [Test]

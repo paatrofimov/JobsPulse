@@ -107,8 +107,8 @@ internal static class EnglishTexts
         [TextKey.FilterCurrent] = "Now: <b>{0}</b>",
         [TextKey.FilterCurrentEmpty] = "The rule is empty now.",
         [TextKey.FilterEditModes] =
-            "A list replaces the current words. Start with <b>+</b> to add to them (<b>+ go, rust</b>) "
-            + "or with <b>-</b> to remove (<b>- php</b>).",
+            "A list replaces the current words. Start with <b>+</b> to add to them: <b>+ go, rust</b>.",
+        [TextKey.FilterUnchanged] = "The rule is unchanged — it already holds these words.",
         [TextKey.FilterSaved] = "Filter updated. Stored vacancies are re-checked on the next round.",
         [TextKey.FilterCleared] = "Filter cleared — every vacancy of these companies is a match now.",
         [TextKey.FilterAnyValue] = "any",

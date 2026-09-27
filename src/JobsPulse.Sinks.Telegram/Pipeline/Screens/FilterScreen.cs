@@ -116,7 +116,12 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
         if (!resolved.CanEdit)
             return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.NotAllowed, ctx.Language));
 
-        var values = FilterListEdit.Apply(Words(watchlist.Filter, kind), input);
+        var before = Words(watchlist.Filter, kind);
+        var values = FilterListEdit.Apply(before, input);
+
+        // Saying «updated» for an answer that changed nothing is how a misread input went unnoticed.
+        if (values.SequenceEqual(before, StringComparer.OrdinalIgnoreCase))
+            return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.FilterUnchanged, ctx.Language));
 
         var updated = kind switch
         {

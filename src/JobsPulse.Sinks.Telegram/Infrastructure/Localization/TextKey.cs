@@ -85,6 +85,7 @@ public enum TextKey
     FilterCurrent,
     FilterCurrentEmpty,
     FilterEditModes,
+    FilterUnchanged,
     FilterCleared,
     FilterAnyValue,
     FilterDays,

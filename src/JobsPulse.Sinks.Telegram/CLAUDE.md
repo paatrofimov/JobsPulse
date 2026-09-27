@@ -73,8 +73,9 @@ itself.
   **title**, of the **location** and of the vacancy **text**, plus freshness. The two halves of a field share a keyboard
   row (`KeyboardBuilder.Pair`) - one rule read from two sides - and all six lists are also printed above the buttons by
   `BotFormatter.Filter`, so «what is this watchlist actually looking for» is answered without opening anything. Answers
-  are comma separated and applied by `FilterListEdit`: a list replaces the rule, `+ words` adds to it, `- words` removes
-  from it, a lone `-` clears it. The prompt shows the words the rule holds now. No json ever reaches a user.
+  are comma separated and applied by `FilterListEdit`: a list replaces the rule, `+ words` (or `- words`) adds to it,
+  a lone `-` clears it. The prompt shows the words the rule holds now, and an answer that changes nothing says so
+  instead of «filter updated». No json ever reaches a user.
   The two text rules say in their prompt what makes them different: descriptions are not stored, so an unreadable text
   never passes «words in the text», and vacancies found earlier are not re-checked against either of them.
 - `CompaniesScreen` - the companies of a watchlist under one of **four groupings**, each one tap away on a shared
@@ -260,8 +261,9 @@ not be addressed by typing it in full.
 
 ## FilterListEdit
 
-One answer to a filter rule prompt applied to the words the rule holds: a plain list replaces them, `+` adds (no
-duplicates, case-insensitive), `-` followed by words removes those, a lone `-` or `—` clears.
+One answer to a filter rule prompt applied to the words the rule holds: a plain list replaces them, `+` or `-`
+followed by words adds (no duplicates, case-insensitive), a lone `-` or `—` clears. `-` once meant «remove»: an
+answer `- Intern, Research` to the «excluded words» prompt removed words that were not there and changed nothing.
 
 ## BotFormatter
 

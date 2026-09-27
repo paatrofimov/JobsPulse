@@ -115,8 +115,8 @@ internal static class RussianTexts
         [TextKey.FilterCurrent] = "Сейчас: <b>{0}</b>",
         [TextKey.FilterCurrentEmpty] = "Сейчас правило пустое.",
         [TextKey.FilterEditModes] =
-            "Список заменяет текущие слова. Начните с <b>+</b>, чтобы добавить к ним (<b>+ go, rust</b>), "
-            + "или с <b>-</b>, чтобы убрать (<b>- php</b>).",
+            "Список заменяет текущие слова. Начните с <b>+</b>, чтобы добавить к ним: <b>+ go, rust</b>.",
+        [TextKey.FilterUnchanged] = "Правило не изменилось — эти слова в нём уже есть.",
         [TextKey.FilterSaved] = "Фильтр обновлён. Сохранённые вакансии перепроверю на следующем круге.",
         [TextKey.FilterCleared] = "Фильтр очищен — теперь подходит любая вакансия этих компаний.",
         [TextKey.FilterAnyValue] = "любые",
