@@ -57,6 +57,8 @@ public abstract partial class IntegrationTestBase : IDisposable
 
     protected IStateStore StateStore => _services.GetRequiredService<IStateStore>();
 
+    protected IOutboxStorage OutboxStorage => _services.GetRequiredService<IOutboxStorage>();
+
     protected IRejectedPostingStorage RejectedPostings => _services.GetRequiredService<IRejectedPostingStorage>();
 
     protected IDbContextFactory<JobsPulseDbContext> DbContextFactory => _services.GetRequiredService<IDbContextFactory<JobsPulseDbContext>>();
