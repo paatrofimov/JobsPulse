@@ -22,6 +22,9 @@ public static class TelegramServiceCollectionExtensions
         services.Configure<TelegramWebhookOptions>(config.GetSection(TelegramWebhookOptions.SectionName));
         services.AddSingleton<WebhookRegistrar>();
 
+        services.Configure<ReleaseNoteOptions>(config.GetSection(ReleaseNoteOptions.SectionName));
+        services.AddSingleton<ReleaseAnnouncer>();
+
         services.AddSingleton<IVacancySink, TelegramSink>();
         services.AddSingleton<MessageFormatter>();
 

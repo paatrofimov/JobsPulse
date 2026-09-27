@@ -216,6 +216,9 @@ internal static class EnglishTexts
         [TextKey.NotificationClosed] = "Closed",
         [TextKey.NotificationNewBoard] = "New company found",
         [TextKey.NotificationWindow] = "🕔 {0}, {1}–{2} UTC",
-        [TextKey.NotificationWindowCounts] = "{0} changes in {1} companies"
+        [TextKey.NotificationWindowCounts] = "{0} changes in {1} companies",
+
+        [TextKey.ReleaseTitle] = "🚀 The bot is updated to version <b>{0}</b>",
+        [TextKey.ReleaseChanges] = "What's new:"
     };
 }

@@ -24,5 +24,8 @@ public interface IBotUserStorage
     /// <summary>Owners of a watchlist listing, resolved in one query instead of one per row.</summary>
     Task<IReadOnlyDictionary<long, BotUser>> GetManyAsync(IReadOnlyList<long> telegramUserIds, CancellationToken ct);
 
+    /// <summary>Every user of the bot; the table is tiny.</summary>
+    Task<IReadOnlyList<BotUser>> ListAsync(CancellationToken ct);
+
     Task<bool> SetLanguageAsync(long telegramUserId, BotLanguage language, CancellationToken ct);
 }

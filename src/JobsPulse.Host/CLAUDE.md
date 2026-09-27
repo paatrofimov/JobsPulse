@@ -10,6 +10,8 @@
   Deployed by `.github/workflows/deploy-bot.yml`;
 - `webhooksetup` - one-shot: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and publishes the
   command menu. The deploy workflow runs it in the freshly built image;
+- `release` - one-shot: `ReleaseAnnouncer` sends `ReleaseNote:Version` and `ReleaseNote:Changes` to the administrators.
+  Run by the deploy workflow after `webhooksetup`, with the commits since the image Cloud Run ran before;
 - `polling`, `registry`, `discovery`, `cleanup` - one-shot jobs run by `JobRunner`, scheduled by the GitHub Actions
   workflows in `.github/workflows` (`_run-job.yml` builds and runs; the others are started by cron-job.org through `workflow_dispatch` and hold no `schedule:` - GitHub fired it late and irregularly). The process exits with
   the job's code; SIGINT/SIGTERM from a cancelled workflow stop it gracefully - `_run-job.yml` starts it with `exec`,

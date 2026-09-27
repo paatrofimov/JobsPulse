@@ -28,6 +28,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The full history, so the release note can list the commits since the previous deploy.
+          fetch-depth: 0
 
       - uses: google-github-actions/auth@v2
         with:
@@ -48,6 +51,13 @@ jobs:
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # The image tag is the commit sha, so the running image tells which commit was deployed last.
+      - name: Remember the deployed commit
+        run: |
+          IMAGE_NOW=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT_ID" \
+            --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
+          echo "PREVIOUS_SHA=${IMAGE_NOW##*:}" >> "$GITHUB_ENV"
 
       - id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
@@ -86,3 +96,25 @@ jobs:
           Telegram__BotToken: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TelegramWebhook__SecretToken: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
           TelegramWebhook__PublicUrl: ${{ steps.deploy.outputs.url }}
+
+      - name: Tell the administrators about the release
+        # A failed announcement does not fail the deploy.
+        continue-on-error: true
+        run: |
+          if git cat-file -e "$PREVIOUS_SHA^{commit}" 2>/dev/null && [ "$PREVIOUS_SHA" != "$GITHUB_SHA" ]; then
+            RANGE="$PREVIOUS_SHA..$GITHUB_SHA"
+          else
+            RANGE="-1 $GITHUB_SHA"
+          fi
+          export ReleaseNote__Version="${GITHUB_SHA::7}"
+          export ReleaseNote__Changes="$(git log $RANGE --no-merges --format='%s' | head -n 20)"
+          docker run --rm \
+            -e DOTNET_ENVIRONMENT=Production \
+            -e ConnectionStrings__Postgres \
+            -e Telegram__BotToken \
+            -e ReleaseNote__Version \
+            -e ReleaseNote__Changes \
+            "$IMAGE" --role release
+        env:
+          ConnectionStrings__Postgres: ${{ secrets.POSTGRES }}
+          Telegram__BotToken: ${{ secrets.TELEGRAM_BOT_TOKEN }}
