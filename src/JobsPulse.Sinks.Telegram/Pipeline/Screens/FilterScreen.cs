@@ -31,21 +31,11 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
                 new KeyboardBuilder(ctx.Language).Build(CallbackAction.WatchlistOpen, watchlistId));
         }
 
-        // Wanted and unwanted words of one field share a row: the pair is one rule read from two sides, and seven
-        // buttons on seven rows would push the navigation off the screen.
+        // One button per field: the sign of each word in the answer says whether it is wanted or excluded.
         var keyboard = new KeyboardBuilder(ctx.Language)
-            .Pair(
-                (TextKey.FilterKeywords, CallbackAction.FilterKeywords),
-                (TextKey.FilterExcluded, CallbackAction.FilterExcluded),
-                watchlistId)
-            .Pair(
-                (TextKey.FilterLocations, CallbackAction.FilterLocations),
-                (TextKey.FilterLocationsExcluded, CallbackAction.FilterLocationsExcluded),
-                watchlistId)
-            .Pair(
-                (TextKey.FilterDescription, CallbackAction.FilterDescription),
-                (TextKey.FilterDescriptionExcluded, CallbackAction.FilterDescriptionExcluded),
-                watchlistId)
+            .Button(TextKey.FilterTitleButton, CallbackAction.FilterKeywords, watchlistId)
+            .Button(TextKey.FilterLocationButton, CallbackAction.FilterLocations, watchlistId)
+            .Button(TextKey.FilterTextButton, CallbackAction.FilterDescription, watchlistId)
             .Button(TextKey.FilterFreshness, CallbackAction.FilterFreshnessAsk, watchlistId)
             .ButtonIf(!watchlist.Filter.IsEmpty, TextKey.FilterClear, CallbackAction.FilterClear, watchlistId)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
@@ -66,40 +56,45 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
         if (!resolved.CanEdit)
             return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.NotAllowed, ctx.Language));
 
+        // The «excluded» kinds are only what buttons of older messages still send - they open the same field.
+        kind = FieldOf(kind);
         sessions.Await(ctx.UserId, kind, watchlistId);
 
         var prompt = kind switch
         {
-            PendingInputKind.FilterExcluded => TextKey.FilterExcludedPrompt,
             PendingInputKind.FilterLocations => TextKey.FilterLocationsPrompt,
-            PendingInputKind.FilterLocationsExcluded => TextKey.FilterLocationsExcludedPrompt,
             PendingInputKind.FilterDescription => TextKey.FilterDescriptionPrompt,
-            PendingInputKind.FilterDescriptionExcluded => TextKey.FilterDescriptionExcludedPrompt,
             _ => TextKey.FilterKeywordsPrompt
         };
 
         var keyboard = new KeyboardBuilder(ctx.Language).Build(CallbackAction.FilterOpen, watchlistId);
 
-        // The words the rule holds now, so an answer can extend or trim them instead of retyping the whole list.
-        var words = Words(watchlist.Filter, kind);
-        var current = words.Count == 0
+        // The field as a replacing answer, in a code block: one tap copies it, so a word is removed by editing the
+        // copy instead of retyping the whole list.
+        var field = Field(watchlist.Filter, kind);
+        var current = field.IsEmpty
             ? BotTexts.Get(TextKey.FilterCurrentEmpty, ctx.Language)
-            : BotTexts.Get(TextKey.FilterCurrent, ctx.Language, MessageFormatter.Escape(string.Join(", ", words)));
+            : BotTexts.Get(TextKey.FilterCurrent, ctx.Language, MessageFormatter.Escape(FilterFieldEdit.Render(field)));
 
         return new ScreenView(
-            $"<p>{BotTexts.Get(prompt, ctx.Language)}</p><p>{current}<br>"
-            + $"{BotTexts.Get(TextKey.FilterEditModes, ctx.Language)}</p>",
+            $"<p>{BotTexts.Get(prompt, ctx.Language)}</p><p>{BotTexts.Get(TextKey.FilterEditModes, ctx.Language)}</p>"
+            + $"<p>{current}</p>",
             keyboard);
     }
 
-    private static IReadOnlyList<string> Words(FilterSpec filter, PendingInputKind kind) => kind switch
+    private static PendingInputKind FieldOf(PendingInputKind kind) => kind switch
     {
-        PendingInputKind.FilterExcluded => filter.TitleNoneOf,
-        PendingInputKind.FilterLocations => filter.LocationAnyOf,
-        PendingInputKind.FilterLocationsExcluded => filter.LocationNoneOf,
-        PendingInputKind.FilterDescription => filter.DescriptionAnyOf,
-        PendingInputKind.FilterDescriptionExcluded => filter.DescriptionNoneOf,
-        _ => filter.TitleAnyOf
+        PendingInputKind.FilterExcluded => PendingInputKind.FilterKeywords,
+        PendingInputKind.FilterLocationsExcluded => PendingInputKind.FilterLocations,
+        PendingInputKind.FilterDescriptionExcluded => PendingInputKind.FilterDescription,
+        _ => kind
+    };
+
+    private static FilterField Field(FilterSpec filter, PendingInputKind kind) => FieldOf(kind) switch
+    {
+        PendingInputKind.FilterLocations => new FilterField(filter.LocationAnyOf, filter.LocationNoneOf),
+        PendingInputKind.FilterDescription => new FilterField(filter.DescriptionAnyOf, filter.DescriptionNoneOf),
+        _ => new FilterField(filter.TitleAnyOf, filter.TitleNoneOf)
     };
 
     public async Task<ScreenView> ApplyListAsync(
@@ -116,21 +111,21 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
         if (!resolved.CanEdit)
             return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.NotAllowed, ctx.Language));
 
-        var before = Words(watchlist.Filter, kind);
-        var values = FilterListEdit.Apply(before, input);
+        var before = Field(watchlist.Filter, kind);
+        var after = FilterFieldEdit.Apply(before, input);
 
         // Saying «updated» for an answer that changed nothing is how a misread input went unnoticed.
-        if (values.SequenceEqual(before, StringComparer.OrdinalIgnoreCase))
+        if (after.Wanted.SequenceEqual(before.Wanted, StringComparer.OrdinalIgnoreCase)
+            && after.Excluded.SequenceEqual(before.Excluded, StringComparer.OrdinalIgnoreCase))
             return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.FilterUnchanged, ctx.Language));
 
-        var updated = kind switch
+        var updated = FieldOf(kind) switch
         {
-            PendingInputKind.FilterExcluded => watchlist.Filter with { TitleNoneOf = values },
-            PendingInputKind.FilterLocations => watchlist.Filter with { LocationAnyOf = values },
-            PendingInputKind.FilterLocationsExcluded => watchlist.Filter with { LocationNoneOf = values },
-            PendingInputKind.FilterDescription => watchlist.Filter with { DescriptionAnyOf = values },
-            PendingInputKind.FilterDescriptionExcluded => watchlist.Filter with { DescriptionNoneOf = values },
-            _ => watchlist.Filter with { TitleAnyOf = values }
+            PendingInputKind.FilterLocations =>
+                watchlist.Filter with { LocationAnyOf = after.Wanted, LocationNoneOf = after.Excluded },
+            PendingInputKind.FilterDescription =>
+                watchlist.Filter with { DescriptionAnyOf = after.Wanted, DescriptionNoneOf = after.Excluded },
+            _ => watchlist.Filter with { TitleAnyOf = after.Wanted, TitleNoneOf = after.Excluded }
         };
 
         await watch.SetFilterAsync(watchlist, updated, ct);

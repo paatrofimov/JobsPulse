@@ -70,12 +70,13 @@ itself.
 - `WatchlistScreen` - one watchlist: owner, state, company and match counts, the filter in words. Rename, filter,
   companies, vacancies, pause and delete, with a confirmation step before the delete.
 - `FilterScreen` - the filter one rule at a time, and now every rule `FilterSpec` has: wanted and unwanted words of the
-  **title**, of the **location** and of the vacancy **text**, plus freshness. The two halves of a field share a keyboard
-  row (`KeyboardBuilder.Pair`) - one rule read from two sides - and all six lists are also printed above the buttons by
-  `BotFormatter.Filter`, so «what is this watchlist actually looking for» is answered without opening anything. Answers
-  are comma separated and applied by `FilterListEdit`: a list replaces the rule, `+ words` (or `- words`) adds to it,
-  a lone `-` clears it. The prompt shows the words the rule holds now, and an answer that changes nothing says so
-  instead of «filter updated». No json ever reaches a user.
+  **title**, of the **location** and of the vacancy **text**, plus freshness. **One button per field** (🔍 Title,
+  📍 Location, 📝 Vacancy text): the sign of each word in the answer says which half it goes to, so a wanted/excluded pair
+  of buttons is not needed. All six lists are also printed above the buttons by `BotFormatter.Filter`, so «what is this
+  watchlist actually looking for» is answered without opening anything. Answers are applied by `FilterFieldEdit`; the
+  prompt shows the field as a replacing answer in a `<code>` block (tap to copy), and an answer that changes nothing
+  says so instead of «filter updated». The «excluded» callbacks and input kinds remain only for buttons of older
+  messages and open the same field. No json ever reaches a user.
   The two text rules say in their prompt what makes them different: descriptions are not stored, so an unreadable text
   never passes «words in the text», and vacancies found earlier are not re-checked against either of them.
 - `CompaniesScreen` - the companies of a watchlist under one of **four groupings**, each one tap away on a shared
@@ -259,11 +260,17 @@ consecutive equal labels, so a group longer than a page continues under a repeat
 name win over a containing one, otherwise a company whose name is a prefix of another («Nebius» in «Nebius AI») could
 not be addressed by typing it in full.
 
-## FilterListEdit
+## FilterFieldEdit
 
-One answer to a filter rule prompt applied to the words the rule holds: a plain list replaces them, `+` or `-`
-followed by words adds (no duplicates, case-insensitive), a lone `-` or `—` clears. `-` once meant «remove»: an
-answer `- Intern, Research` to the «excluded words» prompt removed words that were not there and changed nothing.
+One answer to a filter field prompt applied to the field (`FilterField`: wanted and excluded words):
+- `backend, +go, -intern` adds - a word without a sign or with `+` is wanted, one with `-` is excluded, a word already
+  in the other list moves; case-insensitive, no duplicates; only a leading sign counts, `on-site` is one word;
+- `= backend, -intern` replaces the field - `Render` shows the field in exactly this form, so it can be copied,
+  edited and sent back;
+- a lone `-` or `—` clears the field.
+
+It replaced a wanted/excluded button pair per field and a list-level `+`/`-` mode whose `- words` meant «remove» -
+an answer `- Intern, Research` to the «excluded words» prompt removed words that were not there and changed nothing.
 
 ## BotFormatter
 
