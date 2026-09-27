@@ -27,7 +27,7 @@ Interface and notifications are available in English and Russian, switchable per
   may sit in many of them.
 - **Change detection, not a feed.** Each posting is tracked by a content hash, so an ATS bumping its own `updated_at`
   on a cosmetic edit produces nothing. Closed vacancies are reported too.
-- **Batched notifications.** Everything found within a 5-minute window arrives as one message, with a collapsible
+- **Batched notifications.** Everything found within a 15-minute window arrives as one message, with a collapsible
   block per company instead of one message per change.
 - **Browsable lists.** Vacancies and companies can be grouped by company, by region, by month, or by company activity.
 - **Company activity indicator.** Vacancy events per month on a board (opened / changed / closed) — a rough measure
@@ -56,7 +56,7 @@ thousands of boards discovery has found.
 
 Delivery goes through a transactional outbox: the state change and the notification it produced are written in one
 transaction, so neither can exist without the other. The job that walks the boards also sends the notifications, in
-5-minute windows while the cycle runs, drains the rest at the end and retries with backoff.
+15-minute windows while the cycle runs, drains the rest at the end and retries with backoff.
 
 The bot only renders — every screen reads the database and every button writes to it. Telegram sends each message and
 button tap to the Cloud Run service, which starts the container on demand and scales back to zero when nobody uses it.

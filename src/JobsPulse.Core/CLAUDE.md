@@ -336,6 +336,10 @@ window ends and they live in different projects: `OutboxDispatcher` holds a noti
 closed, `MessageFormatter` groups the batch by the same boundary. Keeping the floor in one place is what rules out
 the failure the split caused before it existed - a window delivered in halves, every half carrying the same header.
 
+`TakeWholeWindows` applies the same boundary to a capped batch: given up to `max + 1` items oldest first, it keeps the
+first `max` minus the window the cap cuts through (the extra item is how the cut is detected), so a batch never
+carries half a window. Only a single window bigger than the cap is taken in parts.
+
 ## DetailSelector
 
 For sources whose list lacks descriptions and part of the hashed fields (SmartRecruiters, Workday), decides per
@@ -389,11 +393,11 @@ configuration.
 
 ## IOutboxStorage
 
-The notification queue. `ReadAndLeaseAsync(max, createdBefore)` takes a **cutoff** rather than just a size: an item
-enqueued into the delivery window still being filled must stay pending, or the window is sent in pieces. Reads are
-oldest-first, so a backlog is drained window by window instead of an arbitrary slice of several.
-`CountPendingAsync` is what lets the dispatcher decide that an open window is already too big to be worth waiting
-for. The rest is retry bookkeeping - lease, deliver, fail with a backoff, dead-letter, purge.
+The notification queue. `ReadAndLeaseAsync(max, createdBefore, window)` takes a **cutoff** rather than just a size:
+an item enqueued into the delivery window still being filled must stay pending, or the window is sent in pieces.
+Reads are oldest-first and cut back to **whole windows** (`DeliveryWindow.TakeWholeWindows`): when the cap falls
+inside a window, that window waits for the next batch - only a single window bigger than the cap is sent in parts.
+The rest is retry bookkeeping - lease, deliver, fail with a backoff, dead-letter, purge.
 
 ## IBotUserStorage
 

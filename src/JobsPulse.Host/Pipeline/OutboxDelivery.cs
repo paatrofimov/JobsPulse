@@ -26,9 +26,10 @@ public sealed class OutboxDelivery(
 
         await outboxStorage.MarkAsDeadLetterAsync(opts.MaxAttemptsBeforeDeadLetter, ct);
 
-        var cutoff = await CutoffAsync(opts, ct);
+        var window = DeliveryWindow.Of(opts.GroupChangesWithinMinutes);
+        var cutoff = Cutoff(window);
 
-        var batch = await outboxStorage.ReadAndLeaseAsync(opts.OutboxBatchSize, cutoff, ct);
+        var batch = await outboxStorage.ReadAndLeaseAsync(opts.OutboxBatchSize, cutoff, window, ct);
 
         if (batch.Count == 0)
             return OutboxDispatchResult.Idle;
@@ -86,13 +87,15 @@ public sealed class OutboxDelivery(
     /// filled and waits. Without the cutoff the dispatcher drained the outbox every few seconds, and because a
     /// traversal commits per board, a window that should have been one message arrived as one message per company.
     ///
-    /// Three things open the gate, which is why this is not a plain «wait five minutes»:
-    /// - the window closed - the ordinary case, and the reason messages are aligned to five minute ranges;
+    /// Two things open the gate:
+    /// - the window closed - the ordinary case, and the reason messages are aligned to window ranges;
     /// - every traversal is idle - the walk is over, so nothing more can land in the open window and holding it
-    ///   back would only delay the report;
-    /// - the open window already holds more changes than one message can carry - there is nothing left to group.
+    ///   back would only delay the report.
+    ///
+    /// There is deliberately no «the open window is already big, send it now»: it sent the first part of a window
+    /// early and the rest later under the same header, which is exactly the split this type exists to prevent.
     /// </summary>
-    private async Task<DateTimeOffset> CutoffAsync(DeliveryOptions opts, CancellationToken ct)
+    private DateTimeOffset Cutoff(TimeSpan window)
     {
         var now = clock.GetUtcNow();
 
@@ -100,19 +103,7 @@ public sealed class OutboxDelivery(
         if (progress.Snapshot().All(traversal => !traversal.IsRunning))
             return now;
 
-        var pending = await outboxStorage.CountPendingAsync(ct);
-
-        if (pending >= opts.FlushWindowAfterChanges)
-        {
-            ctxLog.Info(
-                "{Pending} changes are waiting while a traversal runs — sending the open window without waiting "
-                + "for it to close",
-                pending);
-
-            return now;
-        }
-
-        return DeliveryWindow.Floor(now, DeliveryWindow.Of(opts.GroupChangesWithinMinutes));
+        return DeliveryWindow.Floor(now, window);
     }
 
     private async Task<OutboxDispatchResult> DeliverBatchAsync(IReadOnlyList<OutboxItem> items, CancellationToken ct)

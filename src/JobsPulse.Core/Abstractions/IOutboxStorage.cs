@@ -7,13 +7,15 @@ public interface IOutboxStorage
 {
     /// <summary>
     /// Leases up to <paramref name="max"/> due notifications enqueued before <paramref name="createdBefore"/>,
-    /// oldest first. The cutoff is what keeps a delivery window whole: an item of a window still being filled is
-    /// left pending instead of being sent on its own - see <see cref="DeliveryWindow"/>.
+    /// oldest first and whole <paramref name="window"/>s only. The cutoff keeps the window still being filled
+    /// pending; the whole-window cut keeps a closed window from being split across batches by the cap - either way
+    /// a window would arrive as several messages under the same header. See <see cref="DeliveryWindow"/>.
     /// </summary>
-    Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(int max, DateTimeOffset createdBefore, CancellationToken ct);
-
-    /// <summary>How many notifications are waiting to be delivered - due ones included. Nothing is leased.</summary>
-    Task<int> CountPendingAsync(CancellationToken ct);
+    Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(
+        int max,
+        DateTimeOffset createdBefore,
+        TimeSpan window,
+        CancellationToken ct);
 
     Task MarkDeliveredAsync(IReadOnlyList<long> ids, CancellationToken ct);
 
