@@ -1,8 +1,7 @@
 name: cleanup
 
 on:
-  schedule:
-    - cron: "53 4 * * *"
+  # Started only by cron-job.org (workflow_dispatch): GitHub's own schedule fires late and irregularly.
   workflow_dispatch:
 
 jobs:

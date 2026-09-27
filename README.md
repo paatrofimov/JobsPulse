@@ -81,15 +81,15 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 
 | Part | Where | How it runs |
 |---|---|---|
-| Routines | GitHub Actions | one-shot jobs, started on a schedule by cron-job.org |
+| Routines | GitHub Actions | one-shot jobs, started by cron-job.org via `workflow_dispatch` (GitHub's own `schedule:` fires late and irregularly, so it is not used) |
 | Telegram bot | Google Cloud Run | webhook container, started by incoming messages, scales to zero |
 | Database | Neon | managed PostgreSQL |
 | Monitoring | healthchecks.io | every finished run resets its job's check; an email alert comes only when a job has not run for three of its intervals |
 
 | Job | Runs | What it does |
 |---|---|---|
-| `polling` | hourly | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
-| `registry` | twice an hour | Sweeps the discovered board registry, least recently polled boards first; a board whose vacancies match a watchlist filter is added to it (🔎). |
+| `polling` | every 3 hours | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
+| `registry` | every 6 hours, up to an hour per run | Sweeps the discovered board registry, least recently polled boards first; a board whose vacancies match a watchlist filter is added to it (🔎). |
 | `discovery` | daily | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
 | `cleanup` | daily | Deletes delivered notifications from the outbox. |
 
