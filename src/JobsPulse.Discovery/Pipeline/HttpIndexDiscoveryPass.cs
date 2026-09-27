@@ -38,7 +38,20 @@ public sealed class HttpIndexDiscoveryPass(
         foreach (var parser in boardUrlParsers)
         {
             ct.ThrowIfCancellationRequested();
-            report = DiscoveryReports.Merge(report, await DiscoverSourceAsync(parser, collections, full, opts, ct));
+
+            try
+            {
+                report = DiscoveryReports.Merge(report, await DiscoverSourceAsync(parser, collections, full, opts, ct));
+            }
+            catch (CrawlIndexThrottledException ex)
+            {
+                ctxLog.Warn(
+                    "Crawl index is throttled (pacing penalty {Penalty}) — the http pass stops at {Source}, the rest is "
+                    + "left for the next run",
+                    ex.Penalty, parser.SourceId);
+
+                return DiscoveryReports.Merge(report, DiscoveryReports.Pending(collections.Count));
+            }
         }
 
         return report;

@@ -29,7 +29,7 @@ public sealed class ParquetIndexDiscoveryPass(
     private readonly ILog ctxLog = log.ForContext<ParquetIndexDiscoveryPass>();
     private readonly IReadOnlyList<IBoardUrlParser> boardUrlParsers = parsers.ToList();
 
-    public async Task<BoardDiscoveryReport> RunAsync(
+    public async Task<ParquetPassResult> RunAsync(
         IReadOnlyList<CrawlCollection> collections,
         bool full,
         DiscoveryOptions opts,
@@ -39,7 +39,7 @@ public sealed class ParquetIndexDiscoveryPass(
         if (targets.Count == 0)
         {
             ctxLog.Warn("No board url patterns are registered — the columnar index has nothing to be asked about");
-            return BoardDiscoveryReport.Empty;
+            return ParquetPassResult.Empty;
         }
 
         using var pass = StageTimer.Start(
@@ -53,6 +53,7 @@ public sealed class ParquetIndexDiscoveryPass(
         var state = await LoadStateAsync(full, ct);
 
         var totals = BoardDiscoveryReport.Empty;
+        var fallback = new List<CrawlCollection>();
         var failuresInARow = 0;
         var position = 0;
 
@@ -105,6 +106,7 @@ public sealed class ParquetIndexDiscoveryPass(
 
             if (scan.Failed)
             {
+                fallback.Add(collection);
                 failuresInARow++;
 
                 var maxFailures = Math.Max(1, opts.MaxConsecutiveCollectionFailures);
@@ -116,6 +118,7 @@ public sealed class ParquetIndexDiscoveryPass(
                         failuresInARow, collections.Count - position);
 
                     totals = DiscoveryReports.Merge(totals, DiscoveryReports.Pending(collections.Count - position));
+                    fallback.AddRange(collections.Skip(position));
                     break;
                 }
             }
@@ -127,7 +130,7 @@ public sealed class ParquetIndexDiscoveryPass(
             await DiscoveryPause.WaitAsync(ctxLog, opts.PauseBetweenCollectionsMsec, "collections", ct);
         }
 
-        return totals;
+        return new ParquetPassResult(totals, fallback);
     }
 
     private async Task<Dictionary<string, SourceState>> LoadStateAsync(bool full, CancellationToken ct)
