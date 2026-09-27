@@ -73,7 +73,8 @@ itself.
   **title**, of the **location** and of the vacancy **text**, plus freshness. The two halves of a field share a keyboard
   row (`KeyboardBuilder.Pair`) - one rule read from two sides - and all six lists are also printed above the buttons by
   `BotFormatter.Filter`, so «what is this watchlist actually looking for» is answered without opening anything. Answers
-  are comma separated, `-` clears a rule. No json ever reaches a user.
+  are comma separated and applied by `FilterListEdit`: a list replaces the rule, `+ words` adds to it, `- words` removes
+  from it, a lone `-` clears it. The prompt shows the words the rule holds now. No json ever reaches a user.
   The two text rules say in their prompt what makes them different: descriptions are not stored, so an unreadable text
   never passes «words in the text», and vacancies found earlier are not re-checked against either of them.
 - `CompaniesScreen` - the companies of a watchlist under one of **four groupings**, each one tap away on a shared
@@ -86,7 +87,10 @@ itself.
   without matched is a company the filter throws away; both at zero is one that has nothing at all. The region of a
   company is not stored anywhere - it is read from the vacancies found for it (`LocationRegions.ByBoard`), and a
   company with nothing found yet is listed under «location unclear» rather than dropped. Every group is folded into a
-  `<details>` block whatever its size, and the page holds up to 200 companies - one screen for any real watchlist.
+  `<details>` block only when the page lists more than 40 companies - folding every group whatever its size hid even
+  a five-company list under «show more» - and the page holds up to 200 companies, one screen for any real watchlist.
+  **Disabled companies are not listed**: a line under the list counts them and a button opens
+  `DisabledCompaniesScreen`. `🔧 Change a company` still finds them by name.
   The rows are text and not buttons, which is what lifts the page from 8 companies to 200: a
   button per company capped the page at the keyboard size and filled the screen with labels that only repeated the
   list. The region, the month and the rate are none of them stored on a company: the first two are read from the
@@ -253,6 +257,11 @@ grouping therefore never reshuffles companies inside a group. Grouping only slic
 consecutive equal labels, so a group longer than a page continues under a repeated header. `Find` lets an exact
 name win over a containing one, otherwise a company whose name is a prefix of another («Nebius» in «Nebius AI») could
 not be addressed by typing it in full.
+
+## FilterListEdit
+
+One answer to a filter rule prompt applied to the words the rule holds: a plain list replaces them, `+` adds (no
+duplicates, case-insensitive), `-` followed by words removes those, a lone `-` or `—` clears.
 
 ## BotFormatter
 

@@ -60,7 +60,7 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
         CancellationToken ct)
     {
         var resolved = await access.ResolveAsync(ctx, watchlistId, ct);
-        if (resolved.Watchlist is null)
+        if (resolved.Watchlist is not { } watchlist)
             return Gone(ctx);
 
         if (!resolved.CanEdit)
@@ -80,8 +80,27 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
 
         var keyboard = new KeyboardBuilder(ctx.Language).Build(CallbackAction.FilterOpen, watchlistId);
 
-        return new ScreenView($"<p>{BotTexts.Get(prompt, ctx.Language)}</p>", keyboard);
+        // The words the rule holds now, so an answer can extend or trim them instead of retyping the whole list.
+        var words = Words(watchlist.Filter, kind);
+        var current = words.Count == 0
+            ? BotTexts.Get(TextKey.FilterCurrentEmpty, ctx.Language)
+            : BotTexts.Get(TextKey.FilterCurrent, ctx.Language, MessageFormatter.Escape(string.Join(", ", words)));
+
+        return new ScreenView(
+            $"<p>{BotTexts.Get(prompt, ctx.Language)}</p><p>{current}<br>"
+            + $"{BotTexts.Get(TextKey.FilterEditModes, ctx.Language)}</p>",
+            keyboard);
     }
+
+    private static IReadOnlyList<string> Words(FilterSpec filter, PendingInputKind kind) => kind switch
+    {
+        PendingInputKind.FilterExcluded => filter.TitleNoneOf,
+        PendingInputKind.FilterLocations => filter.LocationAnyOf,
+        PendingInputKind.FilterLocationsExcluded => filter.LocationNoneOf,
+        PendingInputKind.FilterDescription => filter.DescriptionAnyOf,
+        PendingInputKind.FilterDescriptionExcluded => filter.DescriptionNoneOf,
+        _ => filter.TitleAnyOf
+    };
 
     public async Task<ScreenView> ApplyListAsync(
         BotContext ctx,
@@ -97,7 +116,7 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
         if (!resolved.CanEdit)
             return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.NotAllowed, ctx.Language));
 
-        var values = BotFormatter.ParseList(input);
+        var values = FilterListEdit.Apply(Words(watchlist.Filter, kind), input);
 
         var updated = kind switch
         {

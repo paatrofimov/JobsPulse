@@ -16,7 +16,7 @@ bot — buttons, no commands — served as a webhook on Google Cloud Run.
 3. **➕ Add company** — type a company name or paste a link to its careers page. The service resolves the board
    itself; you never see an ATS name or a board id.
 4. **🔧 Filter** — words wanted and unwanted in the title, in the location and in the description, plus how fresh a
-   vacancy may be.
+   vacancy may be. Answer with a list to replace a rule, or start it with **+** / **-** to add or remove words.
 5. Matching changes now arrive as messages. **💼 Vacancies** shows what is currently open at any time.
 
 Interface and notifications are available in English and Russian, switchable per user.

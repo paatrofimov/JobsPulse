@@ -104,6 +104,11 @@ internal static class EnglishTexts
         [TextKey.FilterFreshnessPrompt] = "How old may a vacancy be?",
         [TextKey.FilterFreshnessAny] = "Any age",
         [TextKey.FilterClear] = "🧹 Clear filter",
+        [TextKey.FilterCurrent] = "Now: <b>{0}</b>",
+        [TextKey.FilterCurrentEmpty] = "The rule is empty now.",
+        [TextKey.FilterEditModes] =
+            "A list replaces the current words. Start with <b>+</b> to add to them (<b>+ go, rust</b>) "
+            + "or with <b>-</b> to remove (<b>- php</b>).",
         [TextKey.FilterSaved] = "Filter updated. Stored vacancies are re-checked on the next round.",
         [TextKey.FilterCleared] = "Filter cleared — every vacancy of these companies is a match now.",
         [TextKey.FilterAnyValue] = "any",
@@ -114,7 +119,9 @@ internal static class EnglishTexts
         [TextKey.CompanyStatusActive] = "watching",
         [TextKey.CompanyStatusDisabled] = "disabled",
         [TextKey.CompanyStatusWorked] = "worked through",
-        [TextKey.CompanyLegend] = "▶️ watching · ✅ worked through · ⏸ disabled",
+        [TextKey.CompaniesDisabledCount] = "⏸ Disabled companies: <b>{0}</b> — they are on the disabled screen.",
+        [TextKey.CompaniesAllDisabled] = "Every company of this watchlist is disabled.",
+        [TextKey.CompanyLegend] = "▶️ watching · ✅ worked through",
         [TextKey.CompanyMarkWorked] = "✅ Mark as worked through",
         [TextKey.CompanyUnmarkWorked] = "↩️ Not worked through",
         [TextKey.CompanyDisable] = "⏸ Disable",
