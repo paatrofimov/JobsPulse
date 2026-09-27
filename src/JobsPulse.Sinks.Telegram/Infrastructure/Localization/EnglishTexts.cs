@@ -79,36 +79,31 @@ internal static class EnglishTexts
         [TextKey.FilterDescription] = "📝 Words in the text",
         [TextKey.FilterDescriptionExcluded] = "🚫 Excluded in the text",
         [TextKey.FilterFreshness] = "🗓 Freshness",
+        [TextKey.FilterTitleButton] = "🔍 Title",
+        [TextKey.FilterLocationButton] = "📍 Location",
+        [TextKey.FilterTextButton] = "📝 Vacancy text",
         [TextKey.FilterKeywordsPrompt] =
-            "Send the words a vacancy title must contain, comma separated — for example <b>backend, sre, platform</b>. "
-            + "A vacancy matching any of them is a hit. Send <b>-</b> to clear.",
-        [TextKey.FilterExcludedPrompt] =
-            "Send the words that must <b>not</b> appear in the title, comma separated — for example "
-            + "<b>intern, sales</b>. Send <b>-</b> to clear.",
+            "Words of the vacancy <b>title</b>. Wanted ones as they are, excluded ones with a minus: "
+            + "<b>backend, sre, -intern, -manager</b>. Any wanted word is a hit, any excluded one drops the vacancy.",
         [TextKey.FilterLocationsPrompt] =
-            "Send the locations you accept, comma separated — for example <b>remote, berlin, poland</b>. "
-            + "Send <b>-</b> to clear.",
-        [TextKey.FilterLocationsExcludedPrompt] =
-            "Send the locations you do <b>not</b> want, comma separated — for example <b>usa, india</b>. "
-            + "A vacancy named after any of them is dropped, whatever the other rules say. Send <b>-</b> to clear.",
+            "<b>Locations</b>. Accepted ones as they are, unwanted ones with a minus: <b>remote, berlin, -usa, -india</b>. "
+            + "A vacancy in an excluded location is dropped, whatever the other rules say.",
         [TextKey.FilterDescriptionPrompt] =
-            "Send the words the vacancy <b>text</b> must contain, comma separated — for example "
-            + "<b>kubernetes, postgres</b>. A vacancy matching any of them is a hit. Send <b>-</b> to clear.<br>"
-            + "Two things to know: a vacancy whose text I could not read never matches such a rule, and the rule is "
-            + "checked when the company is polled — vacancies found earlier are not re-checked against it.",
-        [TextKey.FilterDescriptionExcludedPrompt] =
-            "Send the words that must <b>not</b> appear in the vacancy text, comma separated — for example "
-            + "<b>on-site, security clearance</b>. Send <b>-</b> to clear.<br>"
-            + "As above: a vacancy with no readable text passes this rule, and already found vacancies are not "
-            + "re-checked against it.",
+            "Words of the vacancy <b>text</b>. Wanted ones as they are, excluded ones with a minus: "
+            + "<b>kubernetes, postgres, -on-site, -security clearance</b>.<br>"
+            + "The text is read when the company is polled: vacancies found earlier are not re-checked against this "
+            + "rule, and a vacancy whose text could not be read never matches wanted words and passes excluded ones.",
         [TextKey.FilterFreshnessPrompt] = "How old may a vacancy be?",
         [TextKey.FilterFreshnessAny] = "Any age",
         [TextKey.FilterClear] = "🧹 Clear filter",
-        [TextKey.FilterCurrent] = "Now: <b>{0}</b>",
+        [TextKey.FilterCurrent] =
+            "Now (tap to copy): <code>{0}</code>",
         [TextKey.FilterCurrentEmpty] = "The rule is empty now.",
         [TextKey.FilterEditModes] =
-            "A list replaces the current words. Start with <b>+</b> to add to them (<b>+ go, rust</b>) "
-            + "or with <b>-</b> to remove (<b>- php</b>).",
+            "Words are <b>added</b> to the current ones; a word already in the other list moves. "
+            + "Start the answer with <b>=</b> to replace the whole field — copy the current value below, edit it "
+            + "and send it. A lone <b>-</b> clears the field.",
+        [TextKey.FilterUnchanged] = "The rule is unchanged — it already holds these words.",
         [TextKey.FilterSaved] = "Filter updated. Stored vacancies are re-checked on the next round.",
         [TextKey.FilterCleared] = "Filter cleared — every vacancy of these companies is a match now.",
         [TextKey.FilterAnyValue] = "any",

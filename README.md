@@ -16,7 +16,8 @@ bot — buttons, no commands — served as a webhook on Google Cloud Run.
 3. **➕ Add company** — type a company name or paste a link to its careers page. The service resolves the board
    itself; you never see an ATS name or a board id.
 4. **🔧 Filter** — words wanted and unwanted in the title, in the location and in the description, plus how fresh a
-   vacancy may be. Answer with a list to replace a rule, or start it with **+** / **-** to add or remove words.
+   vacancy may be. One button per field: answer `backend, sre, -intern` to add wanted and excluded words, or start
+   with `=` to replace the field (the current value is shown ready to copy).
 5. Matching changes now arrive as messages. **💼 Vacancies** shows what is currently open at any time.
 
 Interface and notifications are available in English and Russian, switchable per user.
@@ -71,7 +72,6 @@ button tap to the Cloud Run service, which starts the container on demand and sc
 | Integrations | Greenhouse, Lever, SmartRecruiters, Ashby, Workday, SuccessFactors careers APIs; Common Crawl (DuckDB over remote Parquet) |
 | Routines | `Microsoft.Extensions.Hosting`, transactional outbox, bounded concurrency |
 | Hosting | GitHub Actions (routines, started by cron-job.org), Google Cloud Run (bot, Docker image in Artifact Registry) |
-| Monitoring | healthchecks.io — a dead man's switch per job, alerts by email |
 | Logging | Vostok, console and file |
 | Testing | NUnit, FluentAssertions, FakeItEasy |
 
@@ -84,7 +84,6 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 | Routines | GitHub Actions | one-shot jobs, started by cron-job.org via `workflow_dispatch` (GitHub's own `schedule:` fires late and irregularly, so it is not used) |
 | Telegram bot | Google Cloud Run | webhook container, started by incoming messages, scales to zero |
 | Database | Neon | managed PostgreSQL |
-| Monitoring | healthchecks.io | every finished run resets its job's check; an email alert comes only when a job has not run for three of its intervals |
 
 | Job | Runs | What it does |
 |---|---|---|
