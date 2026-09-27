@@ -54,7 +54,8 @@ so Telegram does not redeliver it forever.
 # Options
 
 - `JobOptions` (`Job`) - `MaxRunMinutes` time-boxes a one-shot job (0 - none), `DrainTimeoutMinutes` bounds the
-  outbox drain after it, `MaxDrainRetryAfterSeconds` is the longest delivery retry the drain waits out.
+  outbox drain after it, `MaxDrainRetryAfterSeconds` is the longest delivery retry the drain waits out,
+  `HeartbeatSeconds` is how often a job refreshes its `traversal_run` row.
 - `GitHubDispatchOptions` (`GitHubDispatch`) - `Token` (fine-grained PAT, Actions: write), `Repository`, `Workflow`,
   `Ref`, `CooldownSeconds`.
 
@@ -71,6 +72,11 @@ One iteration of a role: `polling` (filter maintenance + `RunCycleAsync`), `regi
 next to the cycle, so closed delivery windows leave while the walk goes on. The loop is stopped between ticks, never
 mid-delivery. Afterwards the outbox is drained, also after a failure or a deadline, so committed changes are not
 held until the next run.
+
+Both also hold a `traversal_run` row (`ITraversalRunStorage`) from the start to the end of the walk, refreshed every
+`Job:HeartbeatSeconds`: that row is how the other job's dispatcher knows the open window is still being filled. It is
+finished right after the walk and before the drain, and finishing ignores cancellation - a row left open would hold
+windows back until its heartbeat goes stale (`Delivery:TraversalRunStaleSeconds`).
 
 ## OutboxDelivery
 
@@ -99,23 +105,29 @@ to group. `CutoffAsync` is the fix: a letter of the window still being filled st
 
 Two things open the gate:
 
-- the window closed (`DeliveryWindow.Floor`, `Delivery:GroupChangesWithinMinutes` = 15) - the ordinary case, and
-  what makes the messages read as 15-minute ranges;
-- **every traversal is idle** (`ITraversalProgressTracker`) - the walk is over, nothing more can land in the open
-  window, so holding it back would only delay the report. `CycleFinished` is raised after the last commit of a
-  cycle, which is what makes this safe.
+- the window closed (`DeliveryWindow.Floor`, `Delivery:GroupChangesWithinMinutes` = 15) at least
+  `Delivery:WindowSettleSeconds` (30) ago - `created_at` is stamped when a commit starts, so a slow commit can land in
+  a window that has just closed;
+- **nothing walks anywhere** - no running traversal in this process (`ITraversalProgressTracker`) and no live job
+  in any other (`ITraversalRunStorage`). The walk is over, nothing more can land in the open window, so holding it
+  back would only delay the report. `CycleFinished` is raised after the last commit of a cycle, promotions included.
 
 There used to be a third one - «the open window already holds `FlushWindowAfterChanges` (50) letters, send it now»
 - and together with a batch cap of 50 it was the source of «many messages for one window»: the first 50 changes left
 early, the rest followed under the same header, and a closed window of 500 changes went out as ten batches. Now the
 open window always waits, and a batch (`OutboxBatchSize`, 500) takes whole windows only.
 
-The tracker is in-process, which is why the outbox is dispatched only by the process that walks: a one-shot job
-dispatches next to its own cycle, and the `bot` role does not dispatch at all.
+The in-process tracker alone split windows as soon as the polling and the registry jobs ran side by side: it went
+idle between two registry slices and never saw the other runner, so the registry job sent the open window every few
+minutes - pieces of the polling job's letters included - under the same header. The `traversal_run` rows close that,
+and the lease lock in `OutboxStorage` makes the two dispatchers take a closed window one at a time instead of
+splitting it or both sending it.
 
-Two cycles can still interleave inside one window - the watchlist cycle ends and flushes, the registry sweep starts
-a moment later and fills the same window - and that second report repeats the header. One message per cycle is the
-floor here; the per-company flood is what the cutoff removes.
+The outbox is dispatched only by the processes that walk: a one-shot job dispatches next to its own cycle, and the
+`bot` role does not dispatch at all.
+
+A window can still repeat its header when the jobs do not overlap - one job drains and exits, the next starts a
+minute later inside the same window. One message per walk is the floor here.
 
 # Routines
 

@@ -22,8 +22,8 @@ The watchlist configuration lives here now - there is no JSON watchlist any more
   routines, and a `DbContext` is not thread-safe. Every method creates and disposes its own context.
 - `UseSnakeCaseNamingConvention()` (EFCore.NamingConventions) - C# `PostId` maps to `post_id` automatically, so
   hand-written SQL in `StateStore` matches the EF model without explicit column mappings.
-- `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IBoardPollStateStorage`, `IWatchlistStorage`,
-  `IDiscoveryCheckpointStorage` and `IBotUserStorage` as singletons; implementations are `internal`.
+- `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IBoardPollStateStorage`, `ITraversalRunStorage`,
+  `IWatchlistStorage`, `IDiscoveryCheckpointStorage` and `IBotUserStorage` as singletons; implementations are `internal`.
 
 ## NpgsqlBatchExecutor
 
@@ -51,6 +51,7 @@ unique `iteration` index; `20260921140000_AddBoardPollState` adds `board_poll_st
 closed_at))` per board) - the state it replaces was in memory only, so without the seed the first cycle after the
 upgrade would re-read every board at once, which is exactly the cost the table exists to avoid.
 `20260926190129_AddRejectedPosting` adds `rejected_posting` with its unique `(source_id, board_id, post_id)` index.
+`20260927123137_AddTraversalRun` adds `traversal_run`.
 Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
@@ -124,6 +125,11 @@ and wrote no vacancy.
 Kept narrow on purpose - a cycle loads the whole table to sort its slice and to compute coverage, so the row is one
 key plus one stamp and nothing else. Nothing is ever deleted here: a board that comes back keeps its history, and a
 stale row for a board no longer in the registry is simply never joined.
+
+## PersistentTraversalRun
+
+Table `traversal_run` - one row per one-shot polling or registry job: `role`, `started_at`, `heartbeat_at`,
+`finished_at` (null while it walks). A handful of rows at most, so no index.
 
 ## PersistentRejectedPosting
 
@@ -257,6 +263,11 @@ Reads via EF into a case-insensitive `{source}/{board}` map, writes via a single
 `INSERT ... SELECT FROM unnest(@sources, @boards, @stamps) ... ON CONFLICT DO UPDATE`: a cycle stamps its whole
 slice at once, and a command per board would cost more round trips than the fetch that produced them.
 
+## TraversalRunStorage
+
+Pure EF over a table of a few rows. `StartAsync` also deletes rows whose heartbeat is older than a day, so the table
+never grows.
+
 ## RejectedPostingStorage
 
 Reads a board via EF, writes a difference in one transaction: a `DELETE ... ANY(@post_ids)` for the removals and a
@@ -296,7 +307,9 @@ resolved by re-reading - the unique index decides, not the method.
 ## OutboxStorage
 
 Pure EF. `ReadAndLease` selects due `Pending` items enqueued before the caller's cutoff and flips them to `Leased`
-inside a transaction, so two dispatchers cannot pick the same item. The rows are ordered by `created_at` (then `id`):
+inside a transaction that first takes `pg_advisory_xact_lock` - one lease at a time across every process. The
+transaction alone did not stop it: under read committed two dispatchers read the same pending rows and both leased
+them, so the polling and the registry job, waking up together when a window closed, split it or sent it twice. The rows are ordered by `created_at` (then `id`):
 a capped read of a backlog has to take whole delivery windows, and an unordered `Take` split every one of them
 across messages. It reads `max + 1` rows and leases `DeliveryWindow.TakeWholeWindows` of them, so the cap never cuts a
 window in two. Terminal transitions use `ExecuteUpdate` - single round trip, and

@@ -8,6 +8,7 @@ public class JobsPulseDbContext(
     : DbContext(options)
 {
     public DbSet<PersistentSeenVacancy> SeenVacancies => Set<PersistentSeenVacancy>();
+    public DbSet<PersistentTraversalRun> TraversalRuns => Set<PersistentTraversalRun>();
     public DbSet<PersistentOutboxItem> Outbox => Set<PersistentOutboxItem>();
     public DbSet<PersistentBoardRegistryEntry> BoardRegistry => Set<PersistentBoardRegistryEntry>();
     public DbSet<PersistentCrawlIndexState> CrawlIndexState => Set<PersistentCrawlIndexState>();
@@ -28,6 +29,7 @@ public class JobsPulseDbContext(
         ConfigureCrawlIndexState(modelBuilder);
         ConfigureDiscoveryCheckpoint(modelBuilder);
         ConfigureBoardPollState(modelBuilder);
+        ConfigureTraversalRun(modelBuilder);
         ConfigureRejectedPosting(modelBuilder);
         ConfigureWatchlist(modelBuilder);
         ConfigureWatchlistEntry(modelBuilder);
@@ -107,6 +109,18 @@ public class JobsPulseDbContext(
         // ON CONFLICT target - one row per discovery iteration, rewritten while the iteration walks.
         entity.HasIndex(x => x.Iteration)
             .IsUnique();
+    }
+
+    private static void ConfigureTraversalRun(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentTraversalRun>();
+
+        entity.ToTable("traversal_run");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
     }
 
     private static void ConfigureBoardPollState(ModelBuilder modelBuilder)

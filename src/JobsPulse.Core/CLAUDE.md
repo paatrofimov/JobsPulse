@@ -123,7 +123,8 @@ that stopped answering. With no enabled watchlist nothing is relevant, and the c
 What the sweep does produce is **promotions**: after the fetch pass every board is handed to
 `DiscoveredBoardPromoter` together with its relevant vacancies. Promotion runs after the concurrent fetch pass, one
 board at a time - it is database work only, so a single writer costs nothing and makes
-`MaxAutoAddedBoardsPerCycle` exact. Reaching the cap is logged with how many boards of the slice were left for the
+`MaxAutoAddedBoardsPerCycle` exact. It also runs before `CycleFinished`: promotions enqueue notifications, and an
+idle traversal lets the open delivery window leave. Reaching the cap is logged with how many boards of the slice were left for the
 next cycle, because a silent cap reads as «nothing matched».
 
 Candidates are enabled watchlists with a **non-empty** filter (`DiscoveredBoardPromoter.SelectCandidates`). A
@@ -351,11 +352,12 @@ posting whether the per-posting detail endpoint is asked (`DetailDecision`):
   (`ListHash` - `VacancyHasher` over the list-only mapping): the same filters rejected the same data before. The
   trade-off: a posting whose detail alone changes (its description) is not re-read until its list data or the filters
   change. Without it a posting failing a description filter was unknown on every poll - thousands of requests an hour;
-- `Fetch` for every remaining posting when `NeedsDescription` - descriptions are not stored, so a description filter
-  needs a fresh one each poll, and without a budget: a stored vacancy mapped without its description would fail the
-  filter and be closed;
 - `Reuse` for a known posting whose list data did not move (the source's `ListUnchanged`) - the stored vacancy
-  supplies the detail fields, so the content hash stays put;
+  supplies the detail fields, so the content hash stays put. Under a description filter the source marks it
+  `DescriptionUnavailable`, so the description rules keep the verdict they gave when its text was last read. Before,
+  every stored posting was re-read on every poll to confirm that verdict - about 3500 Workday requests per cycle;
+- `Fetch` for every remaining posting when `NeedsDescription` - descriptions are not stored, so a new or changed
+  plausible posting needs one, and without a budget: left list-only it could never pass the description rule;
 - `Fetch` for new or changed postings up to the source's `MaxDetailsPerPoll`, `ListOnly` past it - a big board seen
   for the first time finishes instead of timing out every cycle. Such a posting keeps its list-only fields until its
   list data changes; it is never backfilled.
@@ -478,7 +480,15 @@ keeps the current one), `SaveAsync` writes a difference. A filter change invalid
 ## ITraversalProgressTracker
 
 Live progress of the two polling cycles - see `TraversalProgressTracker` for why it exists and what «covered» means
-for each of them.
+for each of them. In-process only: it knows nothing of a job on another runner, and it is idle between two slices of
+a registry sweep - see `ITraversalRunStorage`.
+
+## ITraversalRunStorage
+
+One-shot jobs in flight across processes (`traversal_run`): `StartAsync` / `HeartbeatAsync` / `FinishAsync` by the
+job, `AnyActiveAsync(aliveSince)` by the outbox cutoff. The polling and the registry jobs run on separate runners
+and share one outbox, so «nothing is walking any more» has to be answered by the database. A row whose heartbeat is
+older than `aliveSince` is a killed runner, not a walk; rows older than a day are dropped by the next start.
 
 # Model Infrastructure
 

@@ -11,6 +11,11 @@ public static class DetailSelector
     /// A posting no storage filter can accept by title is left list-only; a known posting whose list data did not
     /// move reuses the stored vacancy; the rest is fetched up to <paramref name="budget"/>, so a first sight of a big
     /// board still finishes inside the traversal timeout instead of failing on every cycle.
+    ///
+    /// A reused posting under a description filter comes back without a description, so the source marks it
+    /// <see cref="Vacancy.DescriptionUnavailable"/> and it keeps the verdict its description got when it was first
+    /// read. Fetching the description of every stored posting on every cycle, only to confirm that verdict, was
+    /// thousands of detail requests per polling cycle.
     /// </summary>
     public static DetailDecision[] Select(
         IReadOnlyList<Vacancy> listed,
@@ -36,12 +41,12 @@ public static class DetailSelector
             // Rejected with the very same list data under the same filters - the detail would say the same again.
             else if (target.Rejected.TryGetValue(vacancy.PostId, out var rejected) && rejected == ListHash(vacancy))
                 decisions[i] = DetailDecision.Rejected;
-            // Descriptions are not stored, so a description filter needs a fresh one for every plausible posting -
-            // and without a budget: a stored vacancy mapped without its description would fail the filter and close.
-            else if (target.NeedsDescription)
-                decisions[i] = DetailDecision.Fetch;
             else if (target.Known.TryGetValue(vacancy.PostId, out var known) && listUnchanged(vacancy, known))
                 decisions[i] = DetailDecision.Reuse;
+            // Descriptions are not stored, so a description filter needs one for every new or changed plausible
+            // posting - and without a budget: a posting left list-only could never pass the description rule.
+            else if (target.NeedsDescription)
+                decisions[i] = DetailDecision.Fetch;
             else if (budget-- > 0)
                 decisions[i] = DetailDecision.Fetch;
             else

@@ -13,6 +13,7 @@ public sealed class OutboxDelivery(
     IOutboxStorage outboxStorage,
     IVacancySink sink,
     ITraversalProgressTracker progress,
+    ITraversalRunStorage runs,
     IOptionsMonitor<DeliveryOptions> deliveryOptions,
     TimeProvider clock,
     ILog log)
@@ -27,7 +28,7 @@ public sealed class OutboxDelivery(
         await outboxStorage.MarkAsDeadLetterAsync(opts.MaxAttemptsBeforeDeadLetter, ct);
 
         var window = DeliveryWindow.Of(opts.GroupChangesWithinMinutes);
-        var cutoff = Cutoff(window);
+        var cutoff = await CutoffAsync(window, opts, ct);
 
         var batch = await outboxStorage.ReadAndLeaseAsync(opts.OutboxBatchSize, cutoff, window, ct);
 
@@ -88,22 +89,27 @@ public sealed class OutboxDelivery(
     /// traversal commits per board, a window that should have been one message arrived as one message per company.
     ///
     /// Two things open the gate:
-    /// - the window closed - the ordinary case, and the reason messages are aligned to window ranges;
-    /// - every traversal is idle - the walk is over, so nothing more can land in the open window and holding it
-    ///   back would only delay the report.
+    /// - the window closed (plus <c>Delivery:WindowSettleSeconds</c>) - the ordinary case, and the reason messages
+    ///   are aligned to window ranges;
+    /// - nothing is walking anywhere - neither in this process nor in any other job (<see cref="ITraversalRunStorage"/>),
+    ///   so nothing more can land in the open window and holding it back would only delay the report.
+    ///
+    /// The in-process tracker alone was not enough: it went idle between two registry slices and never saw the
+    /// polling job on the next runner, so the open window left in pieces while both jobs were still filling it.
     ///
     /// There is deliberately no «the open window is already big, send it now»: it sent the first part of a window
     /// early and the rest later under the same header, which is exactly the split this type exists to prevent.
     /// </summary>
-    private DateTimeOffset Cutoff(TimeSpan window)
+    private async Task<DateTimeOffset> CutoffAsync(TimeSpan window, DeliveryOptions opts, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
 
         // Nothing is walking, so the open window is complete by definition.
-        if (progress.Snapshot().All(traversal => !traversal.IsRunning))
+        if (progress.Snapshot().All(traversal => !traversal.IsRunning)
+            && !await runs.AnyActiveAsync(now.AddSeconds(-opts.TraversalRunStaleSeconds), ct))
             return now;
 
-        return DeliveryWindow.Floor(now, window);
+        return DeliveryWindow.Floor(now.AddSeconds(-opts.WindowSettleSeconds), window);
     }
 
     private async Task<OutboxDispatchResult> DeliverBatchAsync(IReadOnlyList<OutboxItem> items, CancellationToken ct)

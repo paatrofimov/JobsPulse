@@ -8,6 +8,9 @@ namespace JobsPulse.Storage.Storages;
 
 internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, TimeProvider clock) : IOutboxStorage
 {
+    // Any constant shared by every process: it only has to be the same number everywhere.
+    private const long LeaseLockKey = 0x6A6F62_6F7574;
+
     // Read and set 'lease' status to 'pending' messages ready for delivery
     public async Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(
         int max,
@@ -19,6 +22,11 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
 
         await using var dbContext = await factory.CreateDbContextAsync(ct);
         await using var tx = await dbContext.Database.BeginTransactionAsync(ct);
+
+        // Polling and registry jobs dispatch the same outbox from different runners, and both wake up the moment a
+        // window closes. Unlocked, both read the same pending rows: a window was split between them or sent twice.
+        // Held to the commit, so the second reader sees the window already leased.
+        await dbContext.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({LeaseLockKey})", ct);
 
         var entities = await dbContext.Outbox
             .Where(x =>

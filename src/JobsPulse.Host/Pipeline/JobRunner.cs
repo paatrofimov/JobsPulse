@@ -18,6 +18,7 @@ public sealed class JobRunner(
     IBoardDiscoveryService discovery,
     DiscoveryBootstrapPolicy bootstrapPolicy,
     OutboxDelivery outbox,
+    ITraversalRunStorage runs,
     WebhookRegistrar webhookRegistrar,
     IOptionsMonitor<WatchlistPollingOptions> pollingOptions,
     IOptionsMonitor<RegistryPollingOptions> registryOptions,
@@ -47,8 +48,19 @@ public sealed class JobRunner(
 
         var delivers = role is HostRole.Polling or HostRole.Registry;
 
-        // The traversal and the progress tracker live in this process, so the regular cutoff holds: every closed
-        // delivery window leaves while the cycle is still walking instead of the whole cycle arriving at its end.
+        // The run row tells every dispatcher - this one and the other job's - that this job is still filling the open
+        // window, from the first slice to the last one, gaps between slices included.
+        var run = delivers
+            ? await StartRunAsync(role, stoppingToken)
+            : null;
+
+        using var stopHeartbeat = new CancellationTokenSource();
+        var heartbeat = run is { } runId
+            ? HeartbeatLoopAsync(runId, opts, stopHeartbeat.Token)
+            : Task.CompletedTask;
+
+        // Every closed delivery window leaves while the cycle is still walking instead of the whole cycle arriving at
+        // its end.
         using var stopDispatch = new CancellationTokenSource();
         var dispatch = delivers
             ? DispatchLoopAsync(stopDispatch.Token, stoppingToken)
@@ -71,6 +83,13 @@ public sealed class JobRunner(
             ctxLog.Error(ex, "Job {Role} has failed", role);
             exitCode = 1;
         }
+
+        // The walk is over: the drain below sends the open window, unless the other job is still filling it.
+        await stopHeartbeat.CancelAsync();
+        await heartbeat;
+
+        if (run is { } finishedId)
+            await FinishRunAsync(finishedId);
 
         await stopDispatch.CancelAsync();
         await dispatch;
@@ -180,6 +199,53 @@ public sealed class JobRunner(
             {
                 break;
             }
+        }
+    }
+
+    /// <summary>Null when the row cannot be written - the job still runs, the dispatchers just cannot see it.</summary>
+    private async Task<long?> StartRunAsync(HostRole role, CancellationToken ct)
+    {
+        try
+        {
+            return await runs.StartAsync(role.ToString(), ct);
+        }
+        catch (Exception ex)
+        {
+            ctxLog.Warn(ex, "Job {Role} could not register its run — other jobs may send the open window early", role);
+            return null;
+        }
+    }
+
+    private async Task HeartbeatLoopAsync(long runId, JobOptions opts, CancellationToken stop)
+    {
+        while (!stop.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, opts.HeartbeatSeconds)), stop);
+                await runs.HeartbeatAsync(runId, stop);
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                ctxLog.Warn(ex, "Heartbeat of run {Run} has failed", runId);
+            }
+        }
+    }
+
+    /// <summary>Not cancellable: a stopped job must still say it is no longer walking, or it holds windows back until its heartbeat goes stale.</summary>
+    private async Task FinishRunAsync(long runId)
+    {
+        try
+        {
+            await runs.FinishAsync(runId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            ctxLog.Warn(ex, "Run {Run} could not be finished — it stops counting once its heartbeat is stale", runId);
         }
     }
 

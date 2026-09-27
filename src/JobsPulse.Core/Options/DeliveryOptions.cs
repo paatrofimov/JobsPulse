@@ -26,6 +26,13 @@ public sealed class DeliveryOptions
     // Nothing of the window being filled right now is sent until it closes - see DeliveryWindow.
     [Range(1, 1440)] public int GroupChangesWithinMinutes { get; set; } = 15;
 
+    // A closed window is held this long more: a commit stamps its rows before it lands, so a slow one can still
+    // arrive into the window after it has closed.
+    [Range(0, 300)] public int WindowSettleSeconds { get; set; } = 30;
+
+    // A job whose heartbeat is older than this is dead, not walking - see ITraversalRunStorage.
+    [Range(30, 3600)] public int TraversalRunStaleSeconds { get; set; } = 180;
+
 
     // How far back the company activity indicator looks - see BoardActivity
     [Range(7, 730)] public int ActivityWindowDays { get; set; } = 90;

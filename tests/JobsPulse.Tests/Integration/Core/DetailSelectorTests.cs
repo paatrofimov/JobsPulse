@@ -60,7 +60,7 @@ public sealed class DetailSelectorTests
     }
 
     [Test]
-    public void Select_should_fetch_every_plausible_posting_without_budget_when_descriptions_are_needed()
+    public void Select_should_fetch_every_new_plausible_posting_without_budget_when_descriptions_are_needed()
     {
         var target = Target(Vacancy("1", "Engineer")) with
         {
@@ -69,10 +69,31 @@ public sealed class DetailSelectorTests
         };
 
         var decisions = DetailSelector.Select(
-            [Vacancy("1", "Engineer"), Vacancy("2", "Data Engineer"), Vacancy("3", "Accountant")],
+            [Vacancy("2", "Data Engineer"), Vacancy("3", "Platform Engineer"), Vacancy("4", "Accountant")],
             target, false, 0, SameTitle);
 
         decisions.Should().Equal(DetailDecision.Fetch, DetailDecision.Fetch, DetailDecision.ListOnly);
+    }
+
+    [Test]
+    public void Select_should_reuse_an_unchanged_known_posting_even_when_descriptions_are_needed()
+    {
+        var target = Target(Vacancy("1", "Engineer")) with { NeedsDescription = true };
+
+        var decisions = DetailSelector.Select(
+            [Vacancy("1", "Engineer"), Vacancy("2", "Senior Engineer")], target, false, 0, SameTitle);
+
+        decisions.Should().Equal(DetailDecision.Reuse, DetailDecision.Fetch);
+    }
+
+    [Test]
+    public void Select_should_fetch_a_known_posting_again_when_its_list_data_changed_and_descriptions_are_needed()
+    {
+        var target = Target(Vacancy("1", "Engineer")) with { NeedsDescription = true };
+
+        var decisions = DetailSelector.Select([Vacancy("1", "Lead Engineer")], target, false, 0, SameTitle);
+
+        decisions.Should().Equal(DetailDecision.Fetch);
     }
 
     [Test]

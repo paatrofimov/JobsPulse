@@ -195,10 +195,11 @@ public sealed class RegistryPollingService(
         foreach (var board in slice)
             polled[$"{board.SourceId}/{board.BoardId}"] = now;
 
-        progress.CycleFinished(TraversalKind.Registry, Coverage(boards, [], polled, now));
-
         // Promotion is database work only, so it runs after the fetch pass: one writer, and the cap is exact.
         var promoted = await PromoteAsync(results, SelectPromotionCandidates(enabled, opts), opts, ct);
+
+        // Only after the promotion: it enqueues notifications too, and an idle traversal lets the open window leave.
+        progress.CycleFinished(TraversalKind.Registry, Coverage(boards, [], polled, now));
 
         var report = CycleReport.Aggregate([.. results.Select(r => r.Result.Report)]);
         ctxLog.Info(

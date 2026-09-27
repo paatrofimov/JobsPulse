@@ -59,6 +59,19 @@ public sealed class OutboxStorageTests : IntegrationTestBase
         leased.Select(i => i.CreatedAt).Should().Equal(W1);
     }
 
+    [Test]
+    public async Task ReadAndLease_should_hand_a_window_to_one_of_concurrent_dispatchers_whole()
+    {
+        await InsertAsync([.. Enumerable.Range(0, 200).Select(i => W1.AddSeconds(i))]);
+
+        // Two jobs on two runners wake up together the moment the window closes.
+        var batches = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
+            OutboxStorage.ReadAndLeaseAsync(500, Later, Window, CancellationToken.None)));
+
+        batches.Where(b => b.Count > 0).Should().ContainSingle()
+            .Which.Should().HaveCount(200);
+    }
+
     private async Task InsertAsync(params DateTimeOffset[] stamps)
     {
         await using var db = await DbContextFactory.CreateDbContextAsync();

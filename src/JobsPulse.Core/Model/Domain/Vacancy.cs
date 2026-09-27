@@ -34,7 +34,8 @@ public sealed record Vacancy
     // no need to store vacancies' descriptions which can be too large
     [JsonIgnore] public string? Description { get; init; }
 
-    // The detail request of a known vacancy failed - description rules keep the previous verdict instead of failing
+    // A known vacancy without a fresh description - its detail failed, or was not asked because the list data did not
+    // move. Description rules keep the previous verdict instead of failing
     [JsonIgnore] public bool DescriptionUnavailable { get; init; }
 
     // Fingerprint of the list data this vacancy was mapped from - set only when its detail was read or skipped as

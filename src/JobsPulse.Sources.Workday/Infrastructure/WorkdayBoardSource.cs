@@ -190,7 +190,9 @@ public sealed class WorkdayBoardSource(
                 // A failed detail of a stored posting keeps its stored fields instead of flipping its hash and matches.
                 DetailDecision.Fetch when target.Known.TryGetValue(listed[i].PostId, out var known) =>
                     WorkdayMapper.Reuse(listed[i], known) with { DescriptionUnavailable = target.NeedsDescription },
-                DetailDecision.Reuse => WorkdayMapper.Reuse(listed[i], target.Known[listed[i].PostId]),
+                // Reused under a description filter: the description rules keep the verdict they gave it before.
+                DetailDecision.Reuse => WorkdayMapper.Reuse(listed[i], target.Known[listed[i].PostId])
+                    with { DescriptionUnavailable = target.NeedsDescription },
                 DetailDecision.Rejected => DetailSelector.Rejected(listed[i]),
                 _ => listed[i]
             });

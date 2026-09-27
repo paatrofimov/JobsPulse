@@ -9,4 +9,6 @@ public sealed class JobOptions
     public int DrainTimeoutMinutes { get; set; } = 5;
 
     public int MaxDrainRetryAfterSeconds { get; set; } = 60;
+
+    public int HeartbeatSeconds { get; set; } = 60;
 }
