@@ -1,8 +1,7 @@
 name: registry
 
 on:
-  schedule:
-    - cron: "17,47 * * * *"
+  # Started only by cron-job.org (workflow_dispatch): GitHub's own schedule fires late and irregularly.
   workflow_dispatch:
 
 concurrency:
@@ -14,9 +13,9 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: registry
-      # Started by cron-job.org every 30 minutes; healthchecks.io alerts after three missed runs.
-      cadence-minutes: 30
-      timeout-minutes: 40
-      # Slices are walked until this budget is spent; below the 30 minute cadence, so runs do not queue up.
-      max-run-minutes: 25
+      # Started by cron-job.org every 6 hours; healthchecks.io alerts after three missed runs.
+      cadence-minutes: 360
+      timeout-minutes: 75
+      # Slices are walked until this budget is spent; with a 6 hour cadence an hour keeps the registry covered.
+      max-run-minutes: 60
     secrets: inherit

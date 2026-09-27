@@ -1,9 +1,7 @@
 name: polling
 
 on:
-  schedule:
-    # Hourly, off the top of the hour: GitHub delays and drops scheduled runs at :00 under load.
-    - cron: "5 * * * *"
+  # Started only by cron-job.org (workflow_dispatch): GitHub's own schedule fires late and irregularly.
   workflow_dispatch:
 
 concurrency:
@@ -15,8 +13,8 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: polling
-      # Started by cron-job.org every 60 minutes; healthchecks.io alerts after three missed runs.
-      cadence-minutes: 60
+      # Started by cron-job.org every 3 hours; healthchecks.io alerts after three missed runs.
+      cadence-minutes: 180
       timeout-minutes: 60
       max-run-minutes: 50
     secrets: inherit

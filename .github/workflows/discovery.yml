@@ -1,8 +1,7 @@
 name: discovery
 
 on:
-  schedule:
-    - cron: "23 3 * * *"
+  # Started only by cron-job.org (workflow_dispatch): GitHub's own schedule fires late and irregularly.
   workflow_dispatch:
     inputs:
       max-run-minutes:

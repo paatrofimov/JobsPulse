@@ -141,6 +141,11 @@ until the registry is done or the longest cycle so far (x1.5) no longer fits bef
 cuts a slice before it is stamped. One slice per run spent seconds of a half-hour budget and made a full walk a week
 long. The long-living `all` role keeps one cycle per `CycleIntervalMinutes`.
 
+The enabled watchlists, the registry (up to `MaxRegistryBoards` rows) and `board_poll_state` are read once per sweep
+(`RegistrySweepState`), not once per slice: reloading them before every 50-board slice pulled gigabytes a day out of
+Neon and exhausted its free egress quota. Slices stamp the in-memory poll map as well as the table. A watchlist edited
+during a sweep takes effect with the next run.
+
 Concurrency, the per-board pause and the cycle interval are separate options, so the
 background traffic does not starve the watchlist polling or the discovery crawler. Cycles never overlap
 (`TryRunCycleAsync` with a zero-timeout gate); a board answering 404 is deactivated in the registry
@@ -576,6 +581,11 @@ whole. `UpdatedAt` is when the offset was last written, so «how stale is this»
 «This board was polled at this moment» - the unit `IBoardPollStateStorage.StampAsync` takes. A
 `readonly record struct`, because a cycle builds a few hundred of them per sweep and they live for one call;
 `BoardKey` renders the same `{source}/{board}` string the poll-state map is keyed by.
+
+## RegistrySweepState
+
+The snapshot a registry sweep walks: enabled watchlists, their plan, the registry boards worth polling and the poll
+map. Loaded once per sweep by `RegistryPollingService`; the poll map is updated in memory as slices are stamped.
 
 ## WatchlistSubscription / BoardWorkItem
 

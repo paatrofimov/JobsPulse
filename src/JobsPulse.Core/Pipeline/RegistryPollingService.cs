@@ -38,7 +38,11 @@ public sealed class RegistryPollingService(
 
         try
         {
-            return CycleRunResult.Completed(await RunCycleCoreAsync(DateTimeOffset.MaxValue, ct));
+            var state = await LoadStateAsync(ct);
+
+            return state is null
+                ? CycleRunResult.Completed(CycleReport.Empty)
+                : CycleRunResult.Completed(await RunCycleCoreAsync(state, DateTimeOffset.MaxValue, ct));
         }
         finally
         {
@@ -62,10 +66,15 @@ public sealed class RegistryPollingService(
             var cycles = new List<CycleReport>();
             var longest = TimeSpan.Zero;
 
+            // One read of the registry and the poll state for the whole sweep - every slice works on this snapshot.
+            var state = await LoadStateAsync(ct);
+            if (state is null)
+                return CycleRunResult.Completed(CycleReport.Empty);
+
             while (true)
             {
                 var cycleStarted = clock.GetUtcNow();
-                var report = await RunCycleCoreAsync(started, ct);
+                var report = await RunCycleCoreAsync(state, started, ct);
 
                 if (report.BoardsProcessed == 0)
                     break;
@@ -94,9 +103,8 @@ public sealed class RegistryPollingService(
         }
     }
 
-    /// <param name="sweptSince">Boards stamped at or after it are left out of the slice - they are already done in
-    /// the running sweep. <see cref="DateTimeOffset.MaxValue"/> for a standalone cycle.</param>
-    private async Task<CycleReport> RunCycleCoreAsync(DateTimeOffset sweptSince, CancellationToken ct)
+    /// <summary>Null when there is nothing to walk: no enabled watchlist, or no registry board outside them.</summary>
+    private async Task<RegistrySweepState?> LoadStateAsync(CancellationToken ct)
     {
         var opts = options.CurrentValue;
         var enabled = await watchlists.GetEnabledAsync(ct);
@@ -106,7 +114,7 @@ public sealed class RegistryPollingService(
         if (!plan.HasWatchlists)
         {
             ctxLog.Debug("No enabled watchlists — registry cycle is skipped");
-            return CycleReport.Empty;
+            return null;
         }
 
         // Boards of the watchlists are polled by the priority cycle - polling them twice would only duplicate work.
@@ -123,13 +131,26 @@ public sealed class RegistryPollingService(
             ctxLog.Debug("Board registry has nothing to poll");
             progress.CycleFinished(TraversalKind.Registry, []);
 
-            return CycleReport.Empty;
+            return null;
         }
-
-        var now = clock.GetUtcNow();
 
         var polled = new Dictionary<string, DateTimeOffset>(
             await pollState.LoadAsync(ct), StringComparer.OrdinalIgnoreCase);
+
+        return new RegistrySweepState(enabled, plan, boards, polled);
+    }
+
+    /// <param name="sweptSince">Boards stamped at or after it are left out of the slice - they are already done in
+    /// the running sweep. <see cref="DateTimeOffset.MaxValue"/> for a standalone cycle.</param>
+    private async Task<CycleReport> RunCycleCoreAsync(
+        RegistrySweepState state,
+        DateTimeOffset sweptSince,
+        CancellationToken ct)
+    {
+        var opts = options.CurrentValue;
+        var (enabled, plan, boards, polled) = state;
+
+        var now = clock.GetUtcNow();
 
         var slice = TakeSlice(boards, polled, sweptSince, opts.BoardsPerCycle);
         if (slice.Count == 0)
