@@ -13,8 +13,7 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: polling
-      # Started by cron-job.org every 3 hours; healthchecks.io alerts after three missed runs.
-      cadence-minutes: 180
+      # Started by cron-job.org every 3 hours; a failed run is reported by GitHub's own failure email.
       timeout-minutes: 60
       max-run-minutes: 50
     secrets: inherit

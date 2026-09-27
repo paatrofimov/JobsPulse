@@ -9,7 +9,6 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: cleanup
-      # Started by cron-job.org every day; healthchecks.io alerts after three missed runs.
-      cadence-minutes: 1440
+      # Started by cron-job.org every day; a failed run is reported by GitHub's own failure email.
       timeout-minutes: 15
     secrets: inherit
