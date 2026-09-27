@@ -1,4 +1,5 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Storage.PersistentModels;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +12,7 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
     public async Task<IReadOnlyList<OutboxItem>> ReadAndLeaseAsync(
         int max,
         DateTimeOffset createdBefore,
+        TimeSpan window,
         CancellationToken ct)
     {
         var now = clock.GetUtcNow();
@@ -27,30 +29,19 @@ internal class OutboxStorage(IDbContextFactory<JobsPulseDbContext> factory, Time
             // arbitrary slice of several windows and split every one of them across messages.
             .OrderBy(x => x.CreatedAt)
             .ThenBy(x => x.Id)
-            .Take(max)
+            // One extra row tells whether the cap cuts through a window.
+            .Take(max + 1)
             .ToListAsync(ct);
 
-        foreach (var entity in entities)
+        var leased = DeliveryWindow.TakeWholeWindows(entities, x => x.CreatedAt, max, window);
+
+        foreach (var entity in leased)
             entity.Status = PersistentOutboxStatus.Leased;
 
         await dbContext.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
-        return [.. entities.Select(x => x.ToDomainModel())];
-    }
-
-    public async Task<int> CountPendingAsync(CancellationToken ct)
-    {
-        var now = clock.GetUtcNow();
-
-        await using var dbContext = await factory.CreateDbContextAsync(ct);
-
-        return await dbContext.Outbox
-            .AsNoTracking()
-            .CountAsync(
-                x => x.Status == PersistentOutboxStatus.Pending
-                     && (x.NextAttemptAt == null || x.NextAttemptAt <= now),
-                ct);
+        return [.. leased.Select(x => x.ToDomainModel())];
     }
 
     public async Task MarkDeliveredAsync(IReadOnlyList<long> ids, CancellationToken ct)

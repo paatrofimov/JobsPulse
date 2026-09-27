@@ -18,4 +18,25 @@ public static class DeliveryWindow
 
         return new DateTimeOffset(ticks, TimeSpan.Zero);
     }
+
+    /// <summary>
+    /// The first <paramref name="max"/> of <paramref name="oldestFirst"/> cut back to whole windows: when the cap
+    /// falls inside a window, that window is left for the next batch instead of being sent in two messages under the
+    /// same header. Only a single window bigger than the cap is taken in parts - there is no other way to send it.
+    /// <paramref name="oldestFirst"/> must hold up to <c>max + 1</c> items, the extra one tells whether the cap cut.
+    /// </summary>
+    public static IReadOnlyList<T> TakeWholeWindows<T>(
+        IReadOnlyList<T> oldestFirst,
+        Func<T, DateTimeOffset> createdAt,
+        int max,
+        TimeSpan window)
+    {
+        if (oldestFirst.Count <= max)
+            return oldestFirst;
+
+        var cut = Floor(createdAt(oldestFirst[max]), window);
+        var whole = oldestFirst.Take(max).Where(x => Floor(createdAt(x), window) < cut).ToList();
+
+        return whole.Count > 0 ? whole : [.. oldestFirst.Take(max)];
+    }
 }

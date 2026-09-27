@@ -98,15 +98,18 @@ whatever is pending on every tick therefore produced one message per company, ea
 `Delivery:GroupChangesWithinMinutes` window header - the grouping `MessageFormatter` does was never handed anything
 to group. `CutoffAsync` is the fix: a letter of the window still being filled stays pending.
 
-Three things open the gate, which is why it is not a plain «wait five minutes»:
+Two things open the gate:
 
-- the window closed (`DeliveryWindow.Floor`) - the ordinary case, and what makes the messages read as five minute
-  ranges;
+- the window closed (`DeliveryWindow.Floor`, `Delivery:GroupChangesWithinMinutes` = 15) - the ordinary case, and
+  what makes the messages read as 15-minute ranges;
 - **every traversal is idle** (`ITraversalProgressTracker`) - the walk is over, nothing more can land in the open
   window, so holding it back would only delay the report. `CycleFinished` is raised after the last commit of a
-  cycle, which is what makes this safe;
-- the open window already holds `Delivery:FlushWindowAfterChanges` letters - that is more than one message anyway,
-  so there is nothing left to group.
+  cycle, which is what makes this safe.
+
+There used to be a third one - «the open window already holds `FlushWindowAfterChanges` (50) letters, send it now»
+- and together with a batch cap of 50 it was the source of «many messages for one window»: the first 50 changes left
+early, the rest followed under the same header, and a closed window of 500 changes went out as ten batches. Now the
+open window always waits, and a batch (`OutboxBatchSize`, 500) takes whole windows only.
 
 The tracker is in-process, which is why the outbox is dispatched only by the process that walks: a one-shot job
 dispatches next to its own cycle, and the `bot` role does not dispatch at all.
