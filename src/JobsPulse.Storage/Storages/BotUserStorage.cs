@@ -102,17 +102,6 @@ internal class BotUserStorage(
         return rows.ToDictionary(x => x.TelegramUserId, x => x.ToDomainModel());
     }
 
-    public async Task<IReadOnlyList<BotUser>> ListAsync(CancellationToken ct)
-    {
-        await using var db = await factory.CreateDbContextAsync(ct);
-
-        var rows = await db.BotUsers
-            .AsNoTracking()
-            .ToListAsync(ct);
-
-        return rows.Select(x => x.ToDomainModel()).ToList();
-    }
-
     public async Task<bool> SetLanguageAsync(long telegramUserId, BotLanguage language, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);

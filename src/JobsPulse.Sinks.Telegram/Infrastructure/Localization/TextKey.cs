@@ -191,9 +191,5 @@ public enum TextKey
     NotificationClosed,
     NotificationNewBoard,
     NotificationWindow,
-    NotificationWindowCounts,
-
-    // Release note
-    ReleaseTitle,
-    ReleaseChanges
+    NotificationWindowCounts
 }

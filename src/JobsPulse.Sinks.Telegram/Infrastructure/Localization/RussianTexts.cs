@@ -225,9 +225,6 @@ internal static class RussianTexts
         [TextKey.NotificationClosed] = "Закрыта",
         [TextKey.NotificationNewBoard] = "Найдена новая компания",
         [TextKey.NotificationWindow] = "🕔 {0}, {1}–{2} UTC",
-        [TextKey.NotificationWindowCounts] = "Изменений: {0}, компаний: {1}",
-
-        [TextKey.ReleaseTitle] = "🚀 Бот обновлён до версии <b>{0}</b>",
-        [TextKey.ReleaseChanges] = "Что нового:"
+        [TextKey.NotificationWindowCounts] = "Изменений: {0}, компаний: {1}"
     };
 }

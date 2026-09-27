@@ -92,4 +92,4 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 | `discovery` | daily | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
 | `cleanup` | daily | Deletes delivered notifications from the outbox. |
 
-Every push to `master` rebuilds the bot image and redeploys it to Cloud Run. Then the bot writes to its administrators the new version and the commits since the previous deploy.
+Every push to `master` rebuilds the bot image and redeploys it to Cloud Run.

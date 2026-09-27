@@ -6,7 +6,6 @@ public enum HostRole
     Bot,
     Webhook,
     WebhookSetup,
-    Release,
     Polling,
     Registry,
     Discovery,

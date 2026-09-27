@@ -404,7 +404,7 @@ The rest is retry bookkeeping - lease, deliver, fail with a backoff, dead-letter
 The people using the bot (`bot_user`): the telegram user id a watchlist owner is stored as, the chat to deliver to, the
 display name shown as the owner, and the interface language. `UpsertOnContactAsync` runs on every incoming update and
 refreshes the chat id, the name and the last-seen stamp - but never the language, which is a setting only the user
-changes. `GetManyAsync` resolves the owners of a whole listing in one query, `ListAsync` returns everybody.
+changes. `GetManyAsync` resolves the owners of a whole listing in one query.
 
 ## IWatchlistStorage
 

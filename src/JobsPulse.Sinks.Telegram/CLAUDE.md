@@ -51,13 +51,6 @@ where `SystemWatchlistClaimer` runs - then decides what the update is:
 - an **admin command** - handed to `CommandRouter`, but only from an admin chat; everybody else gets a localized
   refusal and the menu.
 
-## ReleaseAnnouncer
-
-The `release` role: tells every administrator, in their chat and language, that a new version is deployed and lists
-`ReleaseNote:Changes` (one line each). Administrators are found in `bot_user` - by `Telegram:AdminChatIds`, or by the
-display name `@username` for `Telegram:AdminUsernames`, the only place a username is stored - so an administrator
-who has never written to the bot gets nothing. Fails only when no administrator was reached.
-
 ## ScreenRouter
 
 One switch from `CallbackAction` to a screen, so the whole navigation graph is readable in one place, plus the routing
