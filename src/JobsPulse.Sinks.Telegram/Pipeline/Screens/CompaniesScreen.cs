@@ -19,8 +19,9 @@ namespace JobsPulse.Sinks.Telegram.Pipeline.Screens;
 ///
 /// The rows are text, not buttons: a button per company capped the page at eight and filled the screen with labels
 /// that only repeat the list. One «change a company» button asks for a name instead, so a page carries
-/// <see cref="PageSize"/> companies; every group is folded into a <c>&lt;details&gt;</c> block, so the page opens as
-/// its group headers however long the list behind them is.
+/// <see cref="PageSize"/> companies. Groups are folded into <c>&lt;details&gt;</c> blocks only when the page is long
+/// (<see cref="FoldAbove"/>): folding every group whatever its size hid even a five-company list under «show more».
+/// Disabled companies are not listed - they have their own screen, reached from a line under the list.
 /// </summary>
 public sealed class CompaniesScreen(
     WatchService watch,
@@ -36,6 +37,9 @@ public sealed class CompaniesScreen(
     /// counts, status» fits a few hundred times over. Paging is what is left for a watchlist nobody should have.
     /// </summary>
     private const int PageSize = 200;
+
+    /// <summary>A page with more companies than this opens as its group headers; a shorter one is shown whole.</summary>
+    private const int FoldAbove = 40;
 
     /// <summary>
     /// How much of the feed the region and the month of a company are read from - see
@@ -68,6 +72,10 @@ public sealed class CompaniesScreen(
             return new ScreenView(sb.ToString(), empty);
         }
 
+        // Switched-off companies are not being watched, so they are left out here and live on their own screen.
+        var disabledCount = watchlist.Entries.Count(e => !e.Enabled);
+        var active = watchlist with { Entries = [.. watchlist.Entries.Where(e => e.Enabled)] };
+
         var matched = await stateStore.CountMatchesByBoardAsync(watchlistId, ct);
 
         // The activity indicator is the only grouping that needs the whole-database counts, so it is read on demand.
@@ -76,7 +84,7 @@ public sealed class CompaniesScreen(
                 clock.GetUtcNow().AddDays(-deliveryOptions.CurrentValue.ActivityWindowDays), ct)
             : null;
 
-        var (groups, totalPages) = await GroupAsync(watchlist, matched, activity, grouping, ctx, page, ct);
+        var (groups, totalPages) = await GroupAsync(active, matched, activity, grouping, ctx, page, ct);
 
         // The slice is clamped, so a stale page button cannot open a page the list no longer has.
         page = Math.Clamp(page, 0, totalPages - 1);
@@ -87,23 +95,33 @@ public sealed class CompaniesScreen(
         if (activity is not null)
             sb.Append($"<p>{BotTexts.Get(TextKey.ActivityLegend, ctx.Language)}</p>");
 
-        // Every group is folded, whatever its size: the page then opens as the list of group headers.
-        foreach (var group in groups.Where(g => g.Entries.Count > 0))
+        var visible = groups.Where(g => g.Entries.Count > 0).ToList();
+        var fold = visible.Sum(g => g.Entries.Count) > FoldAbove;
+
+        foreach (var group in visible)
         {
-            sb.Append($"<details><summary><b>{MessageFormatter.Escape(group.Label)}</b> · "
-                      + $"{group.Entries.Count}</summary><p>");
+            var header = $"<b>{MessageFormatter.Escape(group.Label)}</b> · {group.Entries.Count}";
+
+            sb.Append(fold ? $"<details><summary>{header}</summary><p>" : $"<p>{header}<br>");
 
             foreach (var entry in group.Entries)
                 AppendRow(sb, entry, matched, activity, ctx);
 
-            sb.Append("</p></details>");
+            sb.Append(fold ? "</p></details>" : "</p>");
         }
+
+        if (active.Entries.Count == 0)
+            sb.Append($"<p>{BotTexts.Get(TextKey.CompaniesAllDisabled, ctx.Language)}</p>");
+
+        if (disabledCount > 0)
+            sb.Append($"<p>{BotTexts.Get(TextKey.CompaniesDisabledCount, ctx.Language, disabledCount)}</p>");
 
         var keyboard = new KeyboardBuilder(ctx.Language)
             .Paging(PagingAction(grouping), watchlistId, page, totalPages)
             .Modes([.. OtherModes(grouping)], watchlistId)
             .ButtonIf(resolved.CanEdit, TextKey.CompanyChange, CallbackAction.CompanyFind, watchlistId, page)
             .ButtonIf(resolved.CanEdit, TextKey.WatchlistAddCompany, CallbackAction.CompanyAdd, watchlistId)
+            .ButtonIf(disabledCount > 0, TextKey.MenuDisabledCompanies, CallbackAction.DisabledCompanies)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
 
         return new ScreenView(sb.ToString(), keyboard);

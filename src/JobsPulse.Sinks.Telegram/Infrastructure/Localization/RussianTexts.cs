@@ -112,6 +112,11 @@ internal static class RussianTexts
         [TextKey.FilterFreshnessPrompt] = "Насколько старой может быть вакансия?",
         [TextKey.FilterFreshnessAny] = "Любая",
         [TextKey.FilterClear] = "🧹 Очистить фильтр",
+        [TextKey.FilterCurrent] = "Сейчас: <b>{0}</b>",
+        [TextKey.FilterCurrentEmpty] = "Сейчас правило пустое.",
+        [TextKey.FilterEditModes] =
+            "Список заменяет текущие слова. Начните с <b>+</b>, чтобы добавить к ним (<b>+ go, rust</b>), "
+            + "или с <b>-</b>, чтобы убрать (<b>- php</b>).",
         [TextKey.FilterSaved] = "Фильтр обновлён. Сохранённые вакансии перепроверю на следующем круге.",
         [TextKey.FilterCleared] = "Фильтр очищен — теперь подходит любая вакансия этих компаний.",
         [TextKey.FilterAnyValue] = "любые",
@@ -122,7 +127,9 @@ internal static class RussianTexts
         [TextKey.CompanyStatusActive] = "следим",
         [TextKey.CompanyStatusDisabled] = "отключена",
         [TextKey.CompanyStatusWorked] = "проработана",
-        [TextKey.CompanyLegend] = "▶️ следим · ✅ проработана · ⏸ отключена",
+        [TextKey.CompaniesDisabledCount] = "⏸ Отключено компаний: <b>{0}</b> — они на экране отключённых.",
+        [TextKey.CompaniesAllDisabled] = "Все компании этого списка отключены.",
+        [TextKey.CompanyLegend] = "▶️ следим · ✅ проработана",
         [TextKey.CompanyMarkWorked] = "✅ Отметить проработанной",
         [TextKey.CompanyUnmarkWorked] = "↩️ Снять отметку",
         [TextKey.CompanyDisable] = "⏸ Отключить",

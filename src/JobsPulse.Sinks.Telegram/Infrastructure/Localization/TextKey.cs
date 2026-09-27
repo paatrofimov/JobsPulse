@@ -82,6 +82,9 @@ public enum TextKey
     FilterFreshnessAny,
     FilterClear,
     FilterSaved,
+    FilterCurrent,
+    FilterCurrentEmpty,
+    FilterEditModes,
     FilterCleared,
     FilterAnyValue,
     FilterDays,
@@ -119,6 +122,8 @@ public enum TextKey
 
     // Disabled companies screen
     DisabledTitle,
+    CompaniesDisabledCount,
+    CompaniesAllDisabled,
     DisabledEmpty,
     DisabledHint,
 
