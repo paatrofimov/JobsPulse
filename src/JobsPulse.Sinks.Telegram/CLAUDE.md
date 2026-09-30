@@ -335,7 +335,8 @@ Russian descriptions. Shared by the long-polling listener and `WebhookRegistrar`
 ## WebhookRegistrar
 
 `setWebhook` to `TelegramWebhook:PublicUrl` + `Path` with `SecretToken`, for `Message` and `CallbackQuery`, then the
-command menu. Run once per deploy (`--role webhooksetup`), not on every start of a host that scales to zero.
+command menu. Run by hand (`--role webhooksetup`) when the url, the secret or the command list changes, not on every
+start of a host that scales to zero.
 `TelegramWebhookOptions` is bound from the `TelegramWebhook` section.
 
 ## CommandRouter

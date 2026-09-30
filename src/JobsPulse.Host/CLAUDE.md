@@ -7,9 +7,11 @@
   `IPollingTrigger` is `GitHubWorkflowTrigger`;
 - `webhook` - the same bot served over HTTP (`TelegramWebhookEndpoint`) on a `WebApplication` listening on `$PORT`
   (8080 by default), for Cloud Run: scales to zero between messages, one instance at most, console log only.
-  Deployed by `.github/workflows/deploy-bot.yml`;
-- `webhooksetup` - one-shot: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and publishes the
-  command menu. The deploy workflow runs it in the freshly built image;
+  Deployed by Cloud Run continuous deployment: a Cloud Build trigger on the repository builds the `Dockerfile` and
+  rolls the service out on every push to `master` - nothing in this repository takes part;
+- `webhooksetup` - one-shot, run by hand: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and
+  publishes the command menu. The service url of Cloud Run is stable, so it is needed only when the url, the secret
+  or the command list changes;
 - `polling`, `registry`, `discovery`, `cleanup` - one-shot jobs run by `JobRunner`, scheduled by the GitHub Actions
   workflows in `.github/workflows` (`_run-job.yml` builds and runs; the others are started by cron-job.org through `workflow_dispatch` and hold no `schedule:` - GitHub fired it late and irregularly). The process exits with
   the job's code; SIGINT/SIGTERM from a cancelled workflow stop it gracefully - `_run-job.yml` starts it with `exec`,

@@ -71,7 +71,7 @@ button tap to the Cloud Run service, which starts the container on demand and sc
 | Bot | `Telegram.Bot`; webhook on ASP.NET Core minimal API |
 | Integrations | Greenhouse, Lever, SmartRecruiters, Ashby, Workday, SuccessFactors careers APIs; Common Crawl (DuckDB over remote Parquet) |
 | Routines | `Microsoft.Extensions.Hosting`, transactional outbox, bounded concurrency |
-| Hosting | GitHub Actions (routines, started by cron-job.org), Google Cloud Run (bot, Docker image in Artifact Registry) |
+| Hosting | GitHub Actions (routines, started by cron-job.org), Google Cloud Run (bot, built from the `Dockerfile` by Cloud Build) |
 | Logging | Vostok, console and file |
 | Testing | NUnit, FluentAssertions, FakeItEasy |
 
@@ -92,4 +92,5 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 | `discovery` | daily | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
 | `cleanup` | daily | Deletes delivered notifications from the outbox. |
 
-Every push to `master` rebuilds the bot image and redeploys it to Cloud Run.
+Every push to `master` rebuilds the bot image and redeploys it to Cloud Run: continuous deployment is configured in
+Cloud Run itself (a Cloud Build trigger on this repository), so no workflow here deploys anything.
