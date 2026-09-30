@@ -16,10 +16,17 @@ public sealed class GreenhouseBoardClient(
 
     private readonly ILog ctxLog = log.ForContext<GreenhouseBoardClient>();
 
+    /// <param name="includeContent">
+    /// Asks for the description of every posting too. It makes the answer an order of magnitude heavier, so it is
+    /// asked only when something reads the descriptions.
+    /// </param>
     public async Task<BoardFetch<JobListResponse>> GetJobsAsync(
-        string boardId, CancellationToken ct)
+        string boardId, bool includeContent, CancellationToken ct)
     {
-        var url = $"{Uri.EscapeDataString(boardId)}/jobs?content=true";
+        var url = $"{Uri.EscapeDataString(boardId)}/jobs";
+        if (includeContent)
+            url += "?content=true";
+
         return await GetAsync<JobListResponse>(url, ct);
     }
 

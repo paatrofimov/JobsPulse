@@ -6,7 +6,10 @@ public sealed class GreenhouseOptions
 
     public string BaseUrl { get; set; } = "https://boards-api.greenhouse.io/v1/boards/";
 
-    public bool IncludeContentOnPoll { get; set; } = true;
+    /// <summary>
+    /// Descriptions on every poll. Off: they are asked only while a watchlist filter has description rules.
+    /// </summary>
+    public bool IncludeContentOnPoll { get; set; }
 
     public int MaxSlugGuesses { get; set; } = 8;
 }
