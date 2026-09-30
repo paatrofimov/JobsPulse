@@ -101,7 +101,7 @@ public sealed class WorkdayCxsClient(
 
             return WorkdayFetch<T>.Failure($"contract error: {ex.Message}");
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
             return WorkdayFetch<T>.Failure(ex.Message);
         }

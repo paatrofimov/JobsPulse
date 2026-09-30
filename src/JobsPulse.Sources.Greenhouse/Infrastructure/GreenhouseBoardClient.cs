@@ -54,7 +54,7 @@ public sealed class GreenhouseBoardClient(
         {
             throw;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or IOException)
         {
             return BoardFetch<T>.Failure(ex.Message);
         }
