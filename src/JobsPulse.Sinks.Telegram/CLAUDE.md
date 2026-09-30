@@ -217,22 +217,26 @@ part of a rendered vacancy. A company longer than one screen is continued under 
 
 ## ProgressReporter / ProgressFormatter
 
-The admin answer to «how far has the walk got». `ProgressReporter` gathers the three sources of truth - the in-memory
-`ITraversalProgressTracker`, `IBoardDiscoveryService.GetProgressAsync` and the registry row counts - and
-`ProgressFormatter` renders them: per traversal, the state of the current cycle (`done of planned`, errors) and the
-dataset coverage (`covered of total`, percent), per source and in total, plus the mined share of the crawl indexes.
+The admin answer to «how far has the walk got», in plain words: for every routine (polling, registry, discovery,
+cleanup) when it last ran, how long it took and how it ended, what it did, and how much of its board set has been
+walked. The jobs run on GitHub runners and the bot on Cloud Run, so everything is read from the database - nothing
+in the memory of the bot knows about a job.
 
-The crawl block leads with the **discovery iteration** (`DiscoveryCheckpoint`): which one it is by count, whether it
-is a bootstrap, when and from which crawl index it started, where its offset stands now (`done of total`), what it
-has accumulated - urls, tokens, new boards - and the same line for the previous iteration, so the current numbers
-have something to be read against. Those counters are written every `Discovery:CheckpointIntervalMinutes`, and «offset
-saved Nm ago» says how stale they are rather than pretending they are live. A
-source that exists only in the registry is named as «not swept yet» rather than left out - a missing row reads as
-nothing to do.
+`ProgressReporter.ReadAsync` builds a `ProgressSnapshot`: the run history (`IJobRunHistoryStorage`), the coverage of
+the enabled watchlists' boards and of the active registry boards outside them (`BoardCoverage.Compute` over
+`board_poll_state`), the switched-off registry rows, the registry size by source and the discovery iteration.
+«Fresh» differs per set: for the watchlist it is «polled since the last *finished* polling run started» (polling
+stamps its boards with the cycle start, and only at the end of the cycle), for the registry «within the last day» -
+about the length of one walk. Both also say how many boards were never polled and how old the oldest poll is.
+
+`ProgressFormatter` renders it. A run that failed shows its error and the last successful run; a `Running` row older
+than seven hours (the longest job with a margin) is reported as a killed process, not as a walk; numbers of a run
+still in flight are those of the run before it. The block is in the language of the reader (`BotLanguage`) - the one
+part of the operator surface that is read rather than typed. Numbers are grouped by hand: the host runs in
+globalization-invariant mode and has no `ru-RU` culture.
 
 One reporter for two entry points (the admin screen and `/progress`), so they can never show different numbers.
-`ProgressFormatter` itself is static and does no IO, which is what makes it testable; both are English only, like the
-rest of the operator surface.
+`ProgressFormatter` is static and does no IO, which is what makes it testable.
 
 ## VacancyMonths
 

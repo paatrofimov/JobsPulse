@@ -6,7 +6,8 @@ storage layer as persistent models - conversion happens in `PersistencyExtension
 Tables: `seen_vacancy` (current state of a board), `watchlist_vacancy` (which watchlist a vacancy matches),
 `outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `bot_user` (the
 people using the bot), `board_registry` (accumulative list of boards that exist), `board_poll_state` (when each board was last polled),
-`rejected_posting` (postings whose detail was read and that no filter stored),
+`rejected_posting` (postings whose detail was read and that no filter stored), `traversal_run` (jobs in flight),
+`job_run_history` (every run of a one-shot job, for the bot),
 `crawl_index_state` (which crawl indexes were already mined) and `discovery_checkpoint` (where the current discovery
 walk stands).
 The watchlist configuration lives here now - there is no JSON watchlist any more.
@@ -23,6 +24,7 @@ The watchlist configuration lives here now - there is no JSON watchlist any more
 - `UseSnakeCaseNamingConvention()` (EFCore.NamingConventions) - C# `PostId` maps to `post_id` automatically, so
   hand-written SQL in `StateStore` matches the EF model without explicit column mappings.
 - `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IBoardPollStateStorage`, `ITraversalRunStorage`,
+  `IJobRunHistoryStorage`,
   `IWatchlistStorage`, `IDiscoveryCheckpointStorage` and `IBotUserStorage` as singletons; implementations are `internal`.
 
 ## NpgsqlBatchExecutor
@@ -53,6 +55,8 @@ upgrade would re-read every board at once, which is exactly the cost the table e
 `20260926190129_AddRejectedPosting` adds `rejected_posting` with its unique `(source_id, board_id, post_id)` index.
 `20260927123137_AddTraversalRun` adds `traversal_run`. `20260927132722_AddSeenVacancyDescriptionRulesHash` adds the
 nullable `seen_vacancy.description_rules_hash`; nothing backfills it - a null hash is taken as current.
+`20260930112018_AddJobRunHistory` adds `job_run_history` with an index on `started_at` (the bot reads the newest
+runs, the retention deletes the oldest).
 Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels

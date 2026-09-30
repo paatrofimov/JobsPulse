@@ -9,6 +9,7 @@ public class JobsPulseDbContext(
 {
     public DbSet<PersistentSeenVacancy> SeenVacancies => Set<PersistentSeenVacancy>();
     public DbSet<PersistentTraversalRun> TraversalRuns => Set<PersistentTraversalRun>();
+    public DbSet<PersistentJobRun> JobRuns => Set<PersistentJobRun>();
     public DbSet<PersistentOutboxItem> Outbox => Set<PersistentOutboxItem>();
     public DbSet<PersistentBoardRegistryEntry> BoardRegistry => Set<PersistentBoardRegistryEntry>();
     public DbSet<PersistentCrawlIndexState> CrawlIndexState => Set<PersistentCrawlIndexState>();
@@ -30,6 +31,7 @@ public class JobsPulseDbContext(
         ConfigureDiscoveryCheckpoint(modelBuilder);
         ConfigureBoardPollState(modelBuilder);
         ConfigureTraversalRun(modelBuilder);
+        ConfigureJobRun(modelBuilder);
         ConfigureRejectedPosting(modelBuilder);
         ConfigureWatchlist(modelBuilder);
         ConfigureWatchlistEntry(modelBuilder);
@@ -121,6 +123,24 @@ public class JobsPulseDbContext(
 
         entity.Property(x => x.Id)
             .UseIdentityByDefaultColumn();
+    }
+
+    private static void ConfigureJobRun(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentJobRun>();
+
+        entity.ToTable("job_run_history");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // The bot reads the recent runs, newest first; the retention deletes by the same column.
+        entity.HasIndex(x => x.StartedAt);
+
+        entity.Property(x => x.Summary)
+            .HasColumnType("jsonb");
     }
 
     private static void ConfigureBoardPollState(ModelBuilder modelBuilder)

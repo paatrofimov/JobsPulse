@@ -71,9 +71,17 @@ public sealed class CommandRouter(
             AdminCommandCatalog.Boards => await HandleBoardsAsync(argument, ct),
             AdminCommandCatalog.RegistryRemove => await HandleRegistryRemoveAsync(argument, ct),
             AdminCommandCatalog.Discover => await HandleDiscoverAsync(),
-            AdminCommandCatalog.Progress => await progressReporter.RenderAsync(ct),
+            AdminCommandCatalog.Progress => await RenderProgressAsync(userId, ct),
             _ => "<p>Unknown admin command. /admin — the list.</p>"
         };
+    }
+
+    /// <summary>In the language of the admin who asked - the block is read, unlike the rest of the operator surface.</summary>
+    private async Task<string> RenderProgressAsync(long userId, CancellationToken ct)
+    {
+        var language = (await users.GetAsync(userId, ct))?.Language ?? BotLanguage.English;
+
+        return await progressReporter.RenderAsync(language, ct);
     }
 
     private async Task<string> RenderWatchlistsAsync(CancellationToken ct)

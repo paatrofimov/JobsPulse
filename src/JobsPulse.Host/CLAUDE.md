@@ -78,6 +78,12 @@ Both also hold a `traversal_run` row (`ITraversalRunStorage`) from the start to 
 finished right after the walk and before the drain, and finishing ignores cancellation - a row left open would hold
 windows back until its heartbeat goes stale (`Delivery:TraversalRunStaleSeconds`).
 
+Every role but `webhook-setup` also records itself in `job_run_history` (`IJobRunHistoryStorage`): started at the
+beginning, finished at the very end with its `JobRunOutcome` - a failed drain turns a clean walk into `Failed`, as it
+does the exit code - the error message and a `JobRunSummary` of the report the routine returned. That is what the
+bot's progress screen reads, because the bot runs on another host and the jobs leave nothing else behind. Neither
+write may fail the job: both are logged and skipped.
+
 ## OutboxDelivery
 
 The outbox logic shared by `OutboxDispatcher`, `OutboxCleanupWorker` and `JobRunner`.
