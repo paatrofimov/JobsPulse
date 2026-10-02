@@ -19,6 +19,7 @@ public sealed class ScreenRouter(
     AddCompanyScreen addCompany,
     VacanciesScreen vacancies,
     LanguageScreen language,
+    StatsScreen stats,
     AdminScreen admin)
 {
     public async Task<(ScreenView View, BotContext Context)> RenderAsync(
@@ -95,6 +96,9 @@ public sealed class ScreenRouter(
             CallbackAction.VacanciesByActivity =>
                 await vacancies.RenderAsync(ctx, data.Id, data.Page, ct, VacancyGrouping.Activity),
 
+            CallbackAction.StatsOpen => await stats.RenderAsync(ctx, data.Id, data.Page, ct),
+            CallbackAction.StatsCustom => await stats.PromptCustomAsync(ctx, data.Id, data.Page, ct),
+
             CallbackAction.Language => language.Render(ctx),
             CallbackAction.Admin => await admin.RenderAsync(ctx, ct),
 
@@ -126,6 +130,7 @@ public sealed class ScreenRouter(
                 ctx, session.WatchlistId, PendingInputKind.FilterDescriptionExcluded, text, ct),
             PendingInputKind.CompanyQuery => await addCompany.SearchAsync(ctx, session.WatchlistId, text, ct),
             PendingInputKind.CompanyName => await companies.FindAsync(ctx, session.WatchlistId, text, ct),
+            PendingInputKind.StatsDays => await stats.ApplyCustomAsync(ctx, session.WatchlistId, text, ct),
             _ => null
         };
 

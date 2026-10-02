@@ -10,6 +10,9 @@
   Deployed by `.github/workflows/deploy-bot.yml`;
 - `webhooksetup` - one-shot: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and publishes the
   command menu. The deploy workflow runs it in the freshly built image;
+- `digest` - one-shot: the statistics of every enabled watchlist for `Digest:PeriodDays` (`DigestService`). Started
+  by cron-job.org through `digest.yml` every 3 days; its `period-days` input sets the period;
+- `historyrepair` - one-shot: `WatchlistHistoryRepair`, restores lost closures of the watchlist history. Manual;
 - `polling`, `registry`, `discovery`, `cleanup` - one-shot jobs run by `JobRunner`, scheduled by the GitHub Actions
   workflows in `.github/workflows` (`_run-job.yml` builds and runs; the others are started by cron-job.org through `workflow_dispatch` and hold no `schedule:` - GitHub fired it late and irregularly). The process exits with
   the job's code; SIGINT/SIGTERM from a cancelled workflow stop it gracefully - `_run-job.yml` starts it with `exec`,
@@ -50,6 +53,7 @@ so Telegram does not redeliver it forever.
 
 - `HostRole` - see Program.
 - `OutboxDispatchResult` - delivered count of one dispatch tick; `RetryAfter` is set when the batch failed.
+- `JobOutcome` - see JobRunner.
 
 # Options
 
@@ -65,13 +69,19 @@ so Telegram does not redeliver it forever.
 
 One iteration of a role: `polling` (filter maintenance + `RunCycleAsync`), `registry` (`TryRunSweepAsync` until
 `Job:MaxRunMinutes`, a single `TryRunCycleAsync` without one),
-`discovery` (`DiscoveryBootstrapPolicy` decides bootstrap vs incremental), `cleanup` (purge). Reaching
+`discovery` (`DiscoveryBootstrapPolicy` decides bootstrap vs incremental), `cleanup` (purge), `digest`, `historyrepair`. Reaching
 `Job:MaxRunMinutes` is a success - all routines keep their progress in the database.
 
 `polling` and `registry` run the dispatcher loop (`DispatchOnceAsync` every `Delivery:DispatchOutboxIntervalSeconds`)
 next to the cycle, so closed delivery windows leave while the walk goes on. The loop is stopped between ticks, never
 mid-delivery. Afterwards the outbox is drained, also after a failure or a deadline, so committed changes are not
 held until the next run.
+
+`polling`, `registry` and `discovery` end with a **run report** (`RunReportService`), after the drain so it arrives
+after the changes it counts. What the routine returned is collected in a `JobOutcome` while it runs - a deadline or a
+failure leaves it unset and the report says the run stopped early; a routine that did not start (switched off, gate
+busy) reports nothing. The walking jobs put their `traversal_run` id into `CurrentTraversalRun` for the walk, so the
+history their commits write carries it. A failed report is only logged.
 
 Both also hold a `traversal_run` row (`ITraversalRunStorage`) from the start to the end of the walk, refreshed every
 `Job:HeartbeatSeconds`: that row is how the other job's dispatcher knows the open window is still being filled. It is
@@ -151,3 +161,5 @@ pending, leased and dead letters stay.
 ## OutboxDispatcher
 
 `OutboxDelivery.DispatchOnceAsync` every `Delivery:DispatchOutboxIntervalSeconds`.
+
+

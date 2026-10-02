@@ -1,4 +1,4 @@
-﻿Persistence layer: PostgreSQL + Npgsql + EF Core.
+Persistence layer: PostgreSQL + Npgsql + EF Core.
 
 Implements `IStateStore` and `IOutboxStorage` from `JobsPulse.Core.Abstractions`. Domain models never leave the
 storage layer as persistent models - conversion happens in `PersistencyExtensions`.
@@ -7,6 +7,7 @@ Tables: `seen_vacancy` (current state of a board), `watchlist_vacancy` (which wa
 `outbox` (notifications to deliver), `watchlist` / `watchlist_entry` (the watchlist configuration), `bot_user` (the
 people using the bot), `board_registry` (accumulative list of boards that exist), `board_poll_state` (when each board was last polled),
 `rejected_posting` (postings whose detail was read and that no filter stored),
+`watchlist_event` (the history of changes reported to each watchlist),
 `crawl_index_state` (which crawl indexes were already mined) and `discovery_checkpoint` (where the current discovery
 walk stands).
 The watchlist configuration lives here now - there is no JSON watchlist any more.
@@ -53,6 +54,12 @@ upgrade would re-read every board at once, which is exactly the cost the table e
 `20260926190129_AddRejectedPosting` adds `rejected_posting` with its unique `(source_id, board_id, post_id)` index.
 `20260927123137_AddTraversalRun` adds `traversal_run`. `20260927132722_AddSeenVacancyDescriptionRulesHash` adds the
 nullable `seen_vacancy.description_rules_hash`; nothing backfills it - a null hash is taken as current.
+`20261002070858_AddWatchlistEventAndDigest` adds `watchlist_event` (index `(watchlist_id, occurred_at)`, cascade FK to
+`watchlist`) and a `watchlist.digest_sent_at` that `20261002073310_AddWatchlistEventRunId` drops again (the digest is
+scheduled outside now) while adding the nullable `watchlist_event.run_id`. `20261002075205_AddWatchlistEventLocation` adds the nullable
+`watchlist_event.location` and fills it for the existing rows from `seen_vacancy` (location, else the first office). The first one **seeds** the history with a `New` event per current
+`watchlist_vacancy` row, stamped with the vacancy's `first_seen_at` - otherwise every company would read as «new» in
+the first statistics. Closures before the upgrade are restored by `--role historyrepair` (`WatchlistHistoryRepair`).
 Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
@@ -157,6 +164,13 @@ must stay recorded even if the user row is ever cleaned up, the same reasoning a
 Null means a system watchlist - visible to everybody, editable by an admin only. The bot claims those rows for the
 administrator on first contact, so in a live database the column is filled everywhere.
 
+## PersistentWatchlistEvent
+
+Table `watchlist_event` - one row per change reported to a watchlist (`New`, `Closed`, `AgedOut`, `Filtered`), with
+the company name as reported and `change_kind` stored as `int`. Append-only and never purged: rows are small and the
+statistics replay the whole history of a watchlist. Deleted with the watchlist. `run_id` is the `traversal_run` of
+the job that committed the row, without a FK - those rows are dropped after a day, the history is kept.
+
 ## PersistentWatchlistVacancy
 
 Table `watchlist_vacancy` - the match layer, one row per `(watchlist, vacancy)`, unique on
@@ -223,7 +237,12 @@ be enqueued without the state change that produced it, and vice versa.
 - Close: single statement over `ANY(@post_ids)`, guarded by `closed_at IS NULL` so re-closing is a no-op.
 - Drop: single `DELETE` over `ANY(@post_ids)` for `DroppedPostIds` - still listed, no longer passing the storage
   filters.
-- Enqueue: per-item insert with `ON CONFLICT (dedup_key) DO NOTHING`, batched the same way.
+- Enqueue: per-item insert with `ON CONFLICT (dedup_key) DO NOTHING`, batched the same way
+  (`NpgsqlBatchExecutor.ExecuteEachAsync` - the per-statement count says which items were really inserted).
+- History: every really inserted notification of a tracked kind becomes a `watchlist_event` row stamped with the same
+  commit time, the current run (`CurrentTraversalRun`, registered by `AddStorage` if the host has not) and the
+  vacancy's location. A dedup hit adds nothing; a watchlist deleted meanwhile is skipped (`WHERE EXISTS`) instead of failing
+  the commit on the foreign key.
 
 An empty commit short-circuits before opening a connection.
 
@@ -249,7 +268,7 @@ own: `outbox` is purged within a day and cannot answer this.
 ### LoadAllAsync / PurgeAllAsync
 
 Admin-only paths behind bot commands. `LoadAllAsync` reads every row (closed included) ordered by source, board and
-title. `PurgeAllAsync` deletes `outbox`, `watchlist_vacancy`, `seen_vacancy`, `board_registry`, `board_poll_state`
+title. `PurgeAllAsync` deletes `outbox`, `watchlist_vacancy`, `watchlist_event`, `seen_vacancy`, `board_registry`, `board_poll_state`
 (the schedule of boards that are gone), `crawl_index_state` and
 `discovery_checkpoint` (the offset points into a dataset that no longer exists - a resumed iteration would skip
 collections nothing has mined any more) in one transaction - after it the next cycle refills the boards from scratch. The watchlists themselves are configuration and
@@ -304,6 +323,11 @@ add that landed between the check and the insert wins.
 
 Entries come back ordered `origin` then company name, so every listing gets manual boards before discovered ones
 without sorting again.
+
+## WatchlistEventStorage
+
+Pure EF read of one watchlist's history up to a moment, ordered by `occurred_at`, then `id`. The pipeline's writes are
+in `StateStore.CommitAsync`; `AppendAsync` is a plain EF insert for restored history.
 
 ## BotUserStorage
 

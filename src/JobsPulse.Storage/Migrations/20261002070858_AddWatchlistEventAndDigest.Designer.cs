@@ -3,6 +3,7 @@ using System;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JobsPulse.Storage.Migrations
 {
     [DbContext(typeof(JobsPulseDbContext))]
-    partial class JobsPulseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261002070858_AddWatchlistEventAndDigest")]
+    partial class AddWatchlistEventAndDigest
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -541,6 +544,10 @@ namespace JobsPulse.Storage.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTimeOffset?>("DigestSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("digest_sent_at");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean")
                         .HasColumnName("enabled");
@@ -661,10 +668,6 @@ namespace JobsPulse.Storage.Migrations
                         .HasColumnType("text")
                         .HasColumnName("company_name");
 
-                    b.Property<string>("Location")
-                        .HasColumnType("text")
-                        .HasColumnName("location");
-
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_at");
@@ -673,10 +676,6 @@ namespace JobsPulse.Storage.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("post_id");
-
-                    b.Property<long?>("RunId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("run_id");
 
                     b.Property<string>("SourceId")
                         .IsRequired()

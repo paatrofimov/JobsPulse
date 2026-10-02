@@ -1,4 +1,4 @@
-﻿using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Helpers;
 using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Options;
@@ -50,6 +50,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.Configure<WatchlistPollingOptions>(builder.Configuration.GetSection(WatchlistPollingOptions.SectionName));
 builder.Services.Configure<DeliveryOptions>(builder.Configuration.GetSection(DeliveryOptions.SectionName));
+builder.Services.Configure<DigestOptions>(builder.Configuration.GetSection(DigestOptions.SectionName));
 
 // --- New ATS sources should be added below. ---
 builder.Services.AddLeverSource(builder.Configuration);
@@ -98,6 +99,10 @@ builder.Services.AddSingleton<PollingOrchestrator>();
 builder.Services.AddSingleton<DiscoveredBoardPromoter>();
 builder.Services.AddSingleton<RegistryPollingService>();
 builder.Services.AddSingleton<WatchService>();
+builder.Services.AddSingleton<WatchlistStatsService>();
+builder.Services.AddSingleton<DigestService>();
+builder.Services.AddSingleton<RunReportService>();
+builder.Services.AddSingleton<WatchlistHistoryRepair>();
 builder.Services.AddSingleton<OutboxDelivery>();
 builder.Services.AddSingleton<JobRunner>();
 

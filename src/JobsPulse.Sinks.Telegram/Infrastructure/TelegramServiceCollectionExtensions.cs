@@ -23,6 +23,7 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<WebhookRegistrar>();
 
         services.AddSingleton<IVacancySink, TelegramSink>();
+        services.AddSingleton<IReportSink, TelegramReportSink>();
         services.AddSingleton<MessageFormatter>();
 
         // User interface: sessions, ownership and one screen per class.
@@ -40,6 +41,7 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<AddCompanyScreen>();
         services.AddSingleton<VacanciesScreen>();
         services.AddSingleton<LanguageScreen>();
+        services.AddSingleton<StatsScreen>();
         services.AddSingleton<AdminScreen>();
         services.AddSingleton<ScreenRouter>();
         services.AddSingleton<BotUpdateHandler>();

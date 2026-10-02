@@ -17,9 +17,19 @@ internal static class NpgsqlBatchExecutor
         string sql,
         IReadOnlyList<T> rows,
         Action<NpgsqlParameterCollection, T> bind,
+        CancellationToken ct) =>
+        (await ExecuteEachAsync(connection, tx, sql, rows, bind, ct)).Sum();
+
+    /// <summary>The same as <see cref="ExecuteAsync{T}"/>, but returns the affected row count of every row's statement.</summary>
+    public static async Task<IReadOnlyList<int>> ExecuteEachAsync<T>(
+        NpgsqlConnection connection,
+        NpgsqlTransaction tx,
+        string sql,
+        IReadOnlyList<T> rows,
+        Action<NpgsqlParameterCollection, T> bind,
         CancellationToken ct)
     {
-        var affected = 0;
+        var affected = new List<int>(rows.Count);
 
         foreach (var chunk in rows.Chunk(ChunkSize))
         {
@@ -32,7 +42,10 @@ internal static class NpgsqlBatchExecutor
                 batch.BatchCommands.Add(command);
             }
 
-            affected += await batch.ExecuteNonQueryAsync(ct);
+            await batch.ExecuteNonQueryAsync(ct);
+
+            foreach (var command in batch.BatchCommands)
+                affected.Add(command.RecordsAffected);
         }
 
         return affected;

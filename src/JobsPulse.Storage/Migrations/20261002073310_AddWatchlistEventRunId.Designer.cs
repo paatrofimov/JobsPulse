@@ -3,6 +3,7 @@ using System;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JobsPulse.Storage.Migrations
 {
     [DbContext(typeof(JobsPulseDbContext))]
-    partial class JobsPulseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261002073310_AddWatchlistEventRunId")]
+    partial class AddWatchlistEventRunId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -660,10 +663,6 @@ namespace JobsPulse.Storage.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("company_name");
-
-                    b.Property<string>("Location")
-                        .HasColumnType("text")
-                        .HasColumnName("location");
 
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone")

@@ -59,7 +59,10 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
         [CallbackAction.VacanciesOpen] = "vo",
         [CallbackAction.VacanciesByLocation] = "vl",
         [CallbackAction.VacanciesByMonth] = "vmo",
-        [CallbackAction.VacanciesByActivity] = "vac"
+        [CallbackAction.VacanciesByActivity] = "vac",
+
+        [CallbackAction.StatsOpen] = "so",
+        [CallbackAction.StatsCustom] = "sc"
     }.ToFrozenDictionary();
 
     private static readonly FrozenDictionary<string, CallbackAction> Actions =

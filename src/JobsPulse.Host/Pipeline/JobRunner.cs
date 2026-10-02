@@ -1,4 +1,6 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
+using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Options;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Discovery.Options;
@@ -18,7 +20,11 @@ public sealed class JobRunner(
     IBoardDiscoveryService discovery,
     DiscoveryBootstrapPolicy bootstrapPolicy,
     OutboxDelivery outbox,
+    DigestService digests,
+    RunReportService runReports,
+    WatchlistHistoryRepair historyRepair,
     ITraversalRunStorage runs,
+    CurrentTraversalRun currentRun,
     WebhookRegistrar webhookRegistrar,
     IOptionsMonitor<WatchlistPollingOptions> pollingOptions,
     IOptionsMonitor<RegistryPollingOptions> registryOptions,
@@ -38,6 +44,8 @@ public sealed class JobRunner(
     {
         var opts = jobOptions.CurrentValue;
         var exitCode = 0;
+        var startedAt = DateTimeOffset.UtcNow;
+        var outcome = new JobOutcome();
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 
@@ -54,6 +62,9 @@ public sealed class JobRunner(
             ? await StartRunAsync(role, stoppingToken)
             : null;
 
+        // Every commit of this process is stamped with the run, which is what the run report counts.
+        currentRun.Id = run;
+
         using var stopHeartbeat = new CancellationTokenSource();
         var heartbeat = run is { } runId
             ? HeartbeatLoopAsync(runId, opts, stopHeartbeat.Token)
@@ -68,7 +79,7 @@ public sealed class JobRunner(
 
         try
         {
-            await RunRoleAsync(role, deadline.Token);
+            await RunRoleAsync(role, outcome, deadline.Token);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
@@ -91,6 +102,8 @@ public sealed class JobRunner(
         if (run is { } finishedId)
             await FinishRunAsync(finishedId);
 
+        currentRun.Id = null;
+
         await stopDispatch.CancelAsync();
         await dispatch;
 
@@ -98,23 +111,27 @@ public sealed class JobRunner(
         if (delivers && !stoppingToken.IsCancellationRequested)
             exitCode = Math.Max(exitCode, await DrainAsync(opts, stoppingToken));
 
+        // After the drain, so the report arrives after the changes it counts rather than in the middle of them.
+        if (!stoppingToken.IsCancellationRequested && !outcome.Skipped)
+            await SendRunReportAsync(role, run, startedAt, outcome, stoppingToken);
+
         ctxLog.Info("Job {Role} has finished with exit code {ExitCode}", role, exitCode);
 
         return exitCode;
     }
 
-    private async Task RunRoleAsync(HostRole role, CancellationToken ct)
+    private async Task RunRoleAsync(HostRole role, JobOutcome outcome, CancellationToken ct)
     {
         switch (role)
         {
             case HostRole.Polling:
-                await RunPollingAsync(ct);
+                await RunPollingAsync(outcome, ct);
                 break;
             case HostRole.Registry:
-                await RunRegistryAsync(ct);
+                await RunRegistryAsync(outcome, ct);
                 break;
             case HostRole.Discovery:
-                await RunDiscoveryAsync(ct);
+                await RunDiscoveryAsync(outcome, ct);
                 break;
             case HostRole.WebhookSetup:
                 await webhookRegistrar.RegisterAsync(ct);
@@ -122,47 +139,61 @@ public sealed class JobRunner(
             case HostRole.Cleanup:
                 await outbox.PurgeDeliveredAsync(ct);
                 break;
+            case HostRole.Digest:
+                await digests.SendAsync(ct);
+                break;
+            case HostRole.HistoryRepair:
+                await historyRepair.RunAsync(ct);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(role), role, "Role is not a one-shot job");
         }
     }
 
-    private async Task RunPollingAsync(CancellationToken ct)
+    private async Task RunPollingAsync(JobOutcome outcome, CancellationToken ct)
     {
         if (pollingOptions.CurrentValue.DryRun)
             ctxLog.Warn("DRY-RUN");
 
         // Stored vacancies are re-evaluated first, so the cycle works against the current filter.
         await filterMaintenance.RunAsync(ct);
-        await orchestrator.RunCycleAsync(ct);
+        outcome.Cycle = await orchestrator.RunCycleAsync(ct);
     }
 
-    private async Task RunRegistryAsync(CancellationToken ct)
+    private async Task RunRegistryAsync(JobOutcome outcome, CancellationToken ct)
     {
         if (!registryOptions.CurrentValue.Enabled)
         {
             ctxLog.Info("Registry polling is disabled (RegistryPolling:Enabled=false)");
+            outcome.Skipped = true;
             return;
         }
 
         // Without a time box there is no budget to fill, so the job stays a single slice.
         var minutes = jobOptions.CurrentValue.MaxRunMinutes;
-        if (minutes > 0)
-            await registryPolling.TryRunSweepAsync(DateTimeOffset.UtcNow.AddMinutes(minutes), ct);
-        else
-            await registryPolling.TryRunCycleAsync(ct);
+        var result = minutes > 0
+            ? await registryPolling.TryRunSweepAsync(DateTimeOffset.UtcNow.AddMinutes(minutes), ct)
+            : await registryPolling.TryRunCycleAsync(ct);
+
+        outcome.Skipped = !result.Started;
+        outcome.Cycle = result.Report;
     }
 
-    private async Task RunDiscoveryAsync(CancellationToken ct)
+    private async Task RunDiscoveryAsync(JobOutcome outcome, CancellationToken ct)
     {
         if (!discoveryOptions.CurrentValue.Enabled)
         {
             ctxLog.Info("Board discovery is disabled (Discovery:Enabled=false)");
+            outcome.Skipped = true;
             return;
         }
 
         var full = await bootstrapPolicy.IsBootstrapDueAsync(ct);
+        outcome.DiscoveryFull = full;
+
         var report = await discovery.RunAsync(full, ct);
+        outcome.Skipped = !report.Started;
+        outcome.Discovery = report;
 
         if (report.CollectionsPending > 0)
             ctxLog.Warn(
@@ -246,6 +277,42 @@ public sealed class JobRunner(
         catch (Exception ex)
         {
             ctxLog.Warn(ex, "Run {Run} could not be finished — it stops counting once its heartbeat is stale", runId);
+        }
+    }
+
+    /// <summary>A failed report never fails the job - it is only logged.</summary>
+    private async Task SendRunReportAsync(
+        HostRole role,
+        long? runId,
+        DateTimeOffset startedAt,
+        JobOutcome outcome,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            switch (role)
+            {
+                case HostRole.Polling:
+                    await runReports.SendTraversalAsync(
+                        TraversalKind.Watchlist, runId, startedAt, outcome.Cycle, stoppingToken);
+                    break;
+                case HostRole.Registry:
+                    await runReports.SendTraversalAsync(
+                        TraversalKind.Registry, runId, startedAt, outcome.Cycle, stoppingToken);
+                    break;
+                case HostRole.Discovery:
+                    await runReports.SendDiscoveryAsync(
+                        startedAt, outcome.DiscoveryFull, outcome.Discovery, stoppingToken);
+                    break;
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            ctxLog.Warn("Run report of job {Role} is stopped by the host", role);
+        }
+        catch (Exception ex)
+        {
+            ctxLog.Error(ex, "Run report of job {Role} has failed", role);
         }
     }
 

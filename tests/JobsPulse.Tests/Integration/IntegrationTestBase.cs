@@ -1,4 +1,5 @@
 using JobsPulse.Core.Abstractions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Host.Routines;
 using JobsPulse.Sinks.Telegram.Infrastructure;
@@ -56,6 +57,12 @@ public abstract partial class IntegrationTestBase : IDisposable
     protected IVacancySink VacancySink => _services.GetRequiredService<IVacancySink>();
 
     protected IStateStore StateStore => _services.GetRequiredService<IStateStore>();
+
+    protected IWatchlistStorage WatchlistStorage => _services.GetRequiredService<IWatchlistStorage>();
+
+    protected IWatchlistEventStorage WatchlistEvents => _services.GetRequiredService<IWatchlistEventStorage>();
+
+    protected CurrentTraversalRun CurrentRun => _services.GetRequiredService<CurrentTraversalRun>();
 
     protected IOutboxStorage OutboxStorage => _services.GetRequiredService<IOutboxStorage>();
 

@@ -18,5 +18,8 @@ public enum PendingInputKind
     CompanyQuery,
 
     /// <summary>The name of a company already in the watchlist - the entry point of «change a company».</summary>
-    CompanyName
+    CompanyName,
+
+    /// <summary>The number of days of a statistics period that has no button of its own.</summary>
+    StatsDays
 }

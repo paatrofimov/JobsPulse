@@ -1,0 +1,23 @@
+name: digest
+
+on:
+  # No `schedule:` - GitHub fires it late and irregularly. cron-job.org dispatches it every 3 days; `period-days` sets
+  # the period the digest covers, independently of how often it is sent.
+  workflow_dispatch:
+    inputs:
+      period-days:
+        description: "How many days the digest covers"
+        default: "3"
+
+concurrency:
+  group: digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    uses: ./.github/workflows/_run-job.yml
+    with:
+      role: digest
+      timeout-minutes: 15
+      digest-period-days: ${{ fromJSON(inputs.period-days || '3') }}
+    secrets: inherit

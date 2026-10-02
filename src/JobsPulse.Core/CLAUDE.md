@@ -1,4 +1,4 @@
-﻿# Watchlists
+# Watchlists
 
 The watchlist is the processing boundary. A watchlist is a named set of boards plus one filter, stored in PostgreSQL
 (`watchlist`, `watchlist_entry`); there can be many of them and they are independent. Each one belongs to the bot user
@@ -301,6 +301,48 @@ instead of creating a second row. The same board in another watchlist is a separ
 After a successful add `IPollingTrigger.RequestImmediateRun` wakes the polling loop - a board with no run stamp is due
 at once.
 
+## WatchlistStatsCalculator / WatchlistStatsService
+
+The statistics of one watchlist for a period (`WatchlistStats`). The calculator is a pure function over the event
+history (`WatchlistEvent`) and the board activity; the service reads both. `ComputeAsync` is the last N days ending
+now (the bot, the digest); `ComputeRunAsync` is one run - its window, and with a run id only the events that run
+committed (`WatchlistEvent.RunId`), so a job walking at the same time does not leak into the report.
+
+- **opened / closed** - `New` / `Closed` events inside the period. `AgedOut` and `Filtered` are not closures.
+- **new companies** - companies that had no open matching vacancy when the period began and got a `New` inside it.
+  «Open at a moment» is the whole history replayed up to it (every event, not only the counted ones): the last event
+  of a post being `New` means open.
+- **emptied companies** - a `Closed` inside the period and nothing open at its end.
+- **top by opened** - the most `New` events inside the period, top 3.
+- **top by activity** - `BoardActivity.Events` since the period start (`IStateStore.CountBoardActivityAsync`), top 3,
+  among the enabled boards of the watchlist only - activity is global to a board.
+
+Companies are counted **by name**: the current entry name, falling back to the name the last event was reported
+under. One company watched through two boards (two AstraZeneca sites) is one company, its numbers summed.
+
+## DigestService
+
+`SendAsync` sends every enabled watchlist with at least one company its statistics for the last `Digest:PeriodDays`,
+through `IReportSink`. Run by `--role digest` - the cadence (every 3 days) belongs to the scheduler, so nothing here
+decides whether a digest is due and every call sends. A failed delivery is logged and the rest go on.
+
+## RunReportService
+
+The report a one-shot job sends after its drain. `SendTraversalAsync` - polling and registry: per enabled watchlist
+with companies, what the run walked (`CycleReport`, null when it stopped early) plus `ComputeRunAsync` of its run.
+`SendDiscoveryAsync` - what a discovery run mined (`BoardDiscoveryReport`). Both are off with `Digest:RunReports`.
+
+## WatchlistHistoryRepair
+
+`--role historyrepair`: restores the closures the history is missing from `seen_vacancy`. The history began with the
+open matches only, and jobs on older code did not write it, so closures were lost although `closed_at` remembers them.
+A closed row of a watchlist board that passes the watchlist filter without its description and freshness rules
+(descriptions are not stored; a vacancy is judged by its date when it is matched, not when it closes) becomes a
+`Closed` at `closed_at` - after a `New` at `first_seen_at` when the post has no history at all. A post whose history
+already ends with a removal gets nothing, so a second run adds nothing. An open vacancy is restored only from the match
+layer (`LoadMatchedVacanciesAsync`), which knows exactly what the watchlist matches: a current match without any
+history gets a `New` at `first_seen_at`. Run it once more after a deploy to fill what older jobs left unrecorded.
+
 # Infrastructure
 
 ## LoggingHttpClient
@@ -382,6 +424,12 @@ posting whether the per-posting detail endpoint is asked (`DetailDecision`):
 `FetchAsync` runs the selected requests with `DetailConcurrency` in parallel. `Detailed` and `Rejected` stamp the
 mapped vacancy with its `ListHash` (and `KnownRejected`), which is what `BoardProcessor` remembers rejections by.
 
+## CurrentTraversalRun
+
+The `traversal_run` id of the one-shot job this process runs, set by `JobRunner` for the walk. `StateStore` stamps it
+on every history event it writes - that is how a run report tells its own changes from those of a job walking in
+parallel. Null outside a job (the bot, the `all` role).
+
 ## PollingTrigger
 
 Latching wake-up signal between `WatchService` and the polling routine. `RequestImmediateRun` is a no-op when a
@@ -437,6 +485,18 @@ update reveals the telegram user id a migration would have needed.
 `AddEntryAsync` and `AddDiscoveredEntryAsync` differ on exactly one point and it matters: the manual one refreshes and
 re-enables an existing entry (and marks it manual), the discovery one refuses to touch an existing row at all -
 enabled or disabled - and returns null. That is what keeps a dropped board dropped.
+
+## IWatchlistEventStorage
+
+Reads the history of changes reported to a watchlist (`watchlist_event`), oldest first, up to a moment. It is written
+by `IStateStore.CommitAsync` in the same transaction as the outbox, so the history holds exactly the notifications
+that were enqueued. Updates are not kept - they never change whether a vacancy is open. `AppendAsync` is for
+`WatchlistHistoryRepair` only.
+
+## IReportSink
+
+Delivers the digest and the run reports: a watchlist's to wherever its notifications go, a discovery report to the
+administrators.
 
 ## IVacancySink
 
@@ -618,6 +678,24 @@ whole. `UpdatedAt` is when the offset was last written, so «how stale is this»
 The snapshot a registry sweep walks: enabled watchlists, their plan, the registry boards worth polling and the poll
 map. Loaded once per sweep by `RegistryPollingService`; the poll map is updated in memory as slices are stamped.
 
+## WatchlistEvent
+
+One change reported to one watchlist, kept after its outbox row is purged: post, company name as reported, kind
+(`New`, `Closed`, `AgedOut`, `Filtered` - `IsTracked`), where the vacancy is (`Vacancy.LocationOrOffice` - the
+location, or the first office when the board names none; recorded, not shown yet), when, and the run that committed it (`RunId`, null outside a
+job and for restored history). The history the statistics are replayed from.
+
+## WatchlistStats / CompanyCount / CompanyActivity
+
+The statistics of one period - see `WatchlistStatsCalculator`. `CompanyCount` and `CompanyActivity` are the rows of
+its two top lists. `Days` is 0 for a run report, which is not measured in days.
+
+## TraversalRunReport / DiscoveryRunReport
+
+What `RunReportService` hands the sink: the kind of traversal, its `CycleReport` and the run's `WatchlistStats`; or
+the window, the bootstrap flag and the `BoardDiscoveryReport` of a discovery run. A report of a run that stopped
+early carries null instead of the counts.
+
 ## WatchlistSubscription / BoardWorkItem
 
 One board plus every watchlist interested in it - the unit of polling work, built by `WatchlistPlan`.
@@ -704,3 +782,6 @@ everything one cycle found within `Delivery:GroupChangesWithinMinutes` reads as 
   carried a `Polling` section with other names, and nothing in it was ever applied.
 - `RegistryPollingOptions` - section `RegistryPolling`, see the class.
 - `DeliveryOptions` - section `Delivery`, see the class.
+- `DigestOptions` - section `Digest`: `PeriodDays` (3 - the period of `--role digest`; `digest.yml` passes its
+  input here), `MaxPeriodDays` (365 - the longest period the bot computes on request), `RunReports` (true - a report
+  after every polling, registry and discovery run).

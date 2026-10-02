@@ -1,9 +1,11 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Vostok.Logging.Microsoft;
@@ -43,6 +45,8 @@ public static class StorageServiceCollectionExtensions
                 .UseSnakeCaseNamingConvention();
         });
 
+        // Set by the one-shot job runner; registered here so every host of the storage can build StateStore.
+        services.TryAddSingleton<CurrentTraversalRun>();
         services.AddSingleton<IStateStore, StateStore>();
         services.AddSingleton<IOutboxStorage, OutboxStorage>();
         services.AddSingleton<IBoardRegistryStorage, BoardRegistryStorage>();
@@ -52,6 +56,7 @@ public static class StorageServiceCollectionExtensions
         services.AddSingleton<IRejectedPostingStorage, RejectedPostingStorage>();
         services.AddSingleton<IWatchlistStorage, WatchlistStorage>();
         services.AddSingleton<IBotUserStorage, BotUserStorage>();
+        services.AddSingleton<IWatchlistEventStorage, WatchlistEventStorage>();
 
         return services;
     }

@@ -114,6 +114,11 @@ itself.
   **disabled companies are left out** (`VacancyPageBuilder.OfActiveCompanies`) - a company the user switched off is not
   being watched, so its vacancies are not part of the feed; the same rule drops a match row whose board has left the
   watchlist and which the next cycle has not cleaned up yet. The browsable counterpart of the push notifications.
+- `StatsScreen` - the statistics of a watchlist (`WatchlistStatsService`) for 7, 14 or 30 days - one button each,
+  the current one marked - or for any typed number of days up to `Digest:MaxPeriodDays`
+  (`PendingInputKind.StatsDays`; a wrong answer keeps the step armed). Counted when the button is pressed. The period
+  travels in the page field of the callback (`so:<watchlist>:<days>`). Opened by `📊 Statistics` on `WatchlistScreen`,
+  read-only, so somebody else's watchlist has it too.
 - `LanguageScreen` - Russian / English, stored on the user so it also applies to notifications hours later.
 - `AdminScreen` - the door to the operator commands, and a refusal for everybody else. It opens with the traversal
   progress block (`ProgressReporter`) and a `🔄 Refresh` button, because that is the one thing an operator wants
@@ -313,6 +318,21 @@ synthetic items of `/show_state`, go to `Telegram:DefaultChatId`.
 
 Watchlists and users are read once per batch, not once per item. A failure for any chat fails the whole batch, because
 the outbox has no per-item delivery state - `OutboxDispatcher` then reschedules it unchanged.
+
+## TelegramReportSink
+
+`IReportSink`. The digest and a run report of a watchlist go where its notifications go - the owner's chat in the
+owner's language, `Telegram:DefaultChatId` for an ownerless watchlist or an owner the bot has never seen. A discovery
+report belongs to no watchlist: it goes to the administrators among the watchlist owners (`TelegramOptions.IsAdmin`
+over an `@username` display name - a first name never matches), and to the default chat only when none is known.
+`DefaultChatId` is empty in production, so the fallback alone would reach nobody.
+
+## StatsFormatter
+
+Renders `WatchlistStats` - the same body (opened / closed, the numbers of new and emptied companies - counts only, a
+list of names made the message unreadable - and the two top lists) under three headers: the digest,
+the statistics screen, and a run report, which adds what the run walked (`FormatRun`). `FormatDiscovery` renders a
+discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
 
 ## TelegramClientFacade
 

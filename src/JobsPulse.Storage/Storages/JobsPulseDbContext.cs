@@ -18,6 +18,7 @@ public class JobsPulseDbContext(
     public DbSet<PersistentWatchlist> Watchlists => Set<PersistentWatchlist>();
     public DbSet<PersistentWatchlistEntry> WatchlistEntries => Set<PersistentWatchlistEntry>();
     public DbSet<PersistentWatchlistVacancy> WatchlistVacancies => Set<PersistentWatchlistVacancy>();
+    public DbSet<PersistentWatchlistEvent> WatchlistEvents => Set<PersistentWatchlistEvent>();
     public DbSet<PersistentBotUser> BotUsers => Set<PersistentBotUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -34,6 +35,7 @@ public class JobsPulseDbContext(
         ConfigureWatchlist(modelBuilder);
         ConfigureWatchlistEntry(modelBuilder);
         ConfigureWatchlistVacancy(modelBuilder);
+        ConfigureWatchlistEvent(modelBuilder);
     }
 
     private static void ConfigureBotUser(ModelBuilder modelBuilder)
@@ -299,6 +301,30 @@ public class JobsPulseDbContext(
         {
             x.SourceId,
             x.BoardId
+        });
+
+        entity.HasOne(x => x.Watchlist)
+            .WithMany()
+            .HasForeignKey(x => x.WatchlistId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    private static void ConfigureWatchlistEvent(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentWatchlistEvent>();
+
+        entity.ToTable("watchlist_event");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // The statistics read the whole history of one watchlist in time order.
+        entity.HasIndex(x => new
+        {
+            x.WatchlistId,
+            x.OccurredAt
         });
 
         entity.HasOne(x => x.Watchlist)

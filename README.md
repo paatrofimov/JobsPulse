@@ -33,6 +33,11 @@ Interface and notifications are available in English and Russian, switchable per
 - **Browsable lists.** Vacancies and companies can be grouped by company, by region, by month, or by company activity.
 - **Company activity indicator.** Vacancy events per month on a board (opened / changed / closed) — a rough measure
   of where hiring is actually moving, and a quick way to spot a source that misreports changes.
+- **Statistics.** Every 3 days a watchlist gets a digest: how many vacancies opened and closed, how many companies
+  started hiring and how many closed every matching vacancy, plus the top 3 companies by activity and by new
+  vacancies. **📊 Statistics** counts the same for 7, 14, 30 or any number of days on request.
+- **Run reports.** Every polling and registry run reports what it changed in each watchlist (the same numbers, for
+  that run only); every discovery run reports what it mined.
 - **Discovery.** Common Crawl indexes are mined for ATS URLs to build a registry of boards that exist; a board whose
   vacancies match a watchlist filter is proposed into that watchlist automatically.
 - **Sources.** Greenhouse, Lever (global and EU), SmartRecruiters, Ashby, Workday, SuccessFactors.
@@ -45,6 +50,7 @@ Interface and notifications are available in English and Russian, switchable per
                                        registry   registry boards (ATS APIs) ──┼─> PostgreSQL ─> outbox ─> Telegram
                                        discovery  Common Crawl ─> registry ────┘
                                        cleanup    delivered outbox rows
+                                       digest     watchlist statistics ─────────────────────────────> Telegram
 
  Telegram ─ webhook ─> bot on Cloud Run ─> PostgreSQL      (adding a company starts `polling`)
 ```
@@ -91,5 +97,10 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 | `registry` | every 6 hours, up to an hour per run | Sweeps the discovered board registry, least recently polled boards first; a board whose vacancies match a watchlist filter is added to it (🔎). |
 | `discovery` | daily | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
 | `cleanup` | daily | Deletes delivered notifications from the outbox. |
+| `digest` | every 3 days | Sends every enabled watchlist its statistics; the `period-days` input sets the period (3 by default). |
+
+`polling`, `registry` and `discovery` finish with a report of their own run. `historyrepair` is not scheduled: it
+restores the watchlist history the statistics are counted from (`--role historyrepair`), for a manual run after a
+deploy that recorded none.
 
 Every push to `master` rebuilds the bot image and redeploys it to Cloud Run.

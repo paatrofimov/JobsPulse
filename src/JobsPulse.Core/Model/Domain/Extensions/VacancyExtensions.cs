@@ -22,6 +22,12 @@ public static class VacancyExtensions
     /// The watchlist is part of the key: one vacancy legitimately produces one notification per watchlist, and
     /// idempotency must still hold inside every one of them.
     /// </summary>
+    /// <summary>Where the vacancy is - its location, or its first office when the board names no location.</summary>
+    public static string? LocationOrOffice(this Vacancy vacancy) =>
+        !string.IsNullOrWhiteSpace(vacancy.Location)
+            ? vacancy.Location.Trim()
+            : vacancy.Offices.FirstOrDefault(o => !string.IsNullOrWhiteSpace(o))?.Trim();
+
     public static string ToDedupKey(
         this Vacancy vacancy,
         VacancyChangeKind changeKind,

@@ -97,6 +97,22 @@ public static class PersistencyExtensions
         };
     }
 
+    public static WatchlistEvent ToDomainModel(this PersistentWatchlistEvent persistentEvent)
+    {
+        return new WatchlistEvent
+        {
+            WatchlistId = persistentEvent.WatchlistId,
+            SourceId = persistentEvent.SourceId,
+            BoardId = persistentEvent.BoardId,
+            PostId = persistentEvent.PostId,
+            CompanyName = persistentEvent.CompanyName,
+            Kind = persistentEvent.ChangeKind,
+            Location = persistentEvent.Location,
+            OccurredAt = persistentEvent.OccurredAt,
+            RunId = persistentEvent.RunId
+        };
+    }
+
     public static WatchlistMatch ToDomainModel(this PersistentWatchlistVacancy persistentMatch)
     {
         return new WatchlistMatch

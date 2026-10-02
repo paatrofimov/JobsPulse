@@ -1,7 +1,9 @@
 using System.Text.Json;
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Helpers;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Domain;
+using JobsPulse.Core.Model.Domain.Extensions;
 using JobsPulse.Core.Model.Infrastructure;
 using JobsPulse.Core.Pipeline;
 using JobsPulse.Storage.Infrastructure;
@@ -16,6 +18,7 @@ namespace JobsPulse.Storage.Storages;
 internal class StateStore(
     IDbContextFactory<JobsPulseDbContext> factory,
     NpgsqlDataSource dataSource,
+    CurrentTraversalRun currentRun,
     TimeProvider clock,
     ILog log) : IStateStore
 {
@@ -311,6 +314,8 @@ internal class StateStore(
         var outboxDeleted = await ExecuteAsync(connection, tx, "DELETE FROM outbox", ct);
         // The match layer is derived state - it is wiped with the vacancies, the watchlists themselves are config.
         var matchesDeleted = await ExecuteAsync(connection, tx, "DELETE FROM watchlist_vacancy", ct);
+        // The history describes vacancies that are about to be forgotten - the next cycle reports them anew.
+        await ExecuteAsync(connection, tx, "DELETE FROM watchlist_event", ct);
         var vacanciesDeleted = await ExecuteAsync(connection, tx, "DELETE FROM seen_vacancy", ct);
         var boardsDeleted = await ExecuteAsync(connection, tx, "DELETE FROM board_registry", ct);
         var crawIndexStateDeleted = await ExecuteAsync(connection, tx, "DELETE FROM crawl_index_state", ct);
@@ -637,7 +642,7 @@ internal class StateStore(
             ON CONFLICT (dedup_key) DO NOTHING
             """;
 
-        return await NpgsqlBatchExecutor.ExecuteAsync(connection, tx, sql, commit.Notifications, (p, item) =>
+        var inserted = await NpgsqlBatchExecutor.ExecuteEachAsync(connection, tx, sql, commit.Notifications, (p, item) =>
         {
             p.AddWithValue("dedup", item.DedupKey);
             p.AddWithValue("kind", (int)item.ChangeKind);
@@ -651,6 +656,54 @@ internal class StateStore(
             });
             p.AddWithValue("status", (int)PersistentOutboxStatus.Pending);
             p.AddWithValue("now", now);
+        }, ct);
+
+        // Only the notifications that were really enqueued become history - a dedup hit was recorded the first time.
+        // A watchlist deleted while its board was walked has no history to keep, and must not fail the commit.
+        var events = commit.Notifications
+            .Where((item, i) => inserted[i] > 0
+                                && item.WatchlistId is not null
+                                && WatchlistEvent.IsTracked(item.ChangeKind))
+            .ToList();
+
+        await RecordEventsAsync(connection, tx, events, now, currentRun.Id, ct);
+
+        return inserted.Sum();
+    }
+
+    private static async Task RecordEventsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction tx,
+        IReadOnlyList<OutboxItem> items,
+        DateTimeOffset now,
+        long? runId,
+        CancellationToken ct)
+    {
+        if (items.Count == 0)
+            return;
+
+        const string sql =
+            """
+            INSERT INTO watchlist_event
+                (watchlist_id, source_id, board_id, post_id, company_name, location, change_kind, occurred_at, run_id)
+            SELECT @watchlist, @source, @board, @post, @company, @location, @kind, @now, @run
+            WHERE EXISTS (SELECT 1 FROM watchlist WHERE id = @watchlist)
+            """;
+
+        await NpgsqlBatchExecutor.ExecuteAsync(connection, tx, sql, items, (p, item) =>
+        {
+            p.AddWithValue("watchlist", item.WatchlistId!.Value);
+            p.AddWithValue("source", item.Vacancy.SourceId);
+            p.AddWithValue("board", item.Vacancy.BoardId);
+            p.AddWithValue("post", item.Vacancy.PostId);
+            p.AddWithValue("company", item.CompanyName);
+            p.Add(new NpgsqlParameter("location", NpgsqlDbType.Text)
+            {
+                Value = (object?)item.Vacancy.LocationOrOffice() ?? DBNull.Value
+            });
+            p.AddWithValue("kind", (int)item.ChangeKind);
+            p.AddWithValue("now", now);
+            p.Add(new NpgsqlParameter("run", NpgsqlDbType.Bigint) { Value = (object?)runId ?? DBNull.Value });
         }, ct);
     }
 }

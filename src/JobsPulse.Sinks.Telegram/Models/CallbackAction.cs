@@ -70,5 +70,11 @@ public enum CallbackAction
     VacanciesByMonth,
 
     /// <summary>The feed grouped by company again, but ordered by how hot the company is.</summary>
-    VacanciesByActivity
+    VacanciesByActivity,
+
+    /// <summary>Statistics of a watchlist; the page carries the number of days.</summary>
+    StatsOpen,
+
+    /// <summary>Asks for a number of days instead of offering a button per period.</summary>
+    StatsCustom
 }

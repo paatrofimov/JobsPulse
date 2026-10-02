@@ -9,5 +9,7 @@ public enum HostRole
     Polling,
     Registry,
     Discovery,
-    Cleanup
+    Cleanup,
+    Digest,
+    HistoryRepair
 }

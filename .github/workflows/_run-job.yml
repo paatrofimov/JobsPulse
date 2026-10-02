@@ -13,6 +13,9 @@ on:
       max-run-minutes:
         type: number
         default: 0
+      digest-period-days:
+        type: number
+        default: 3
 
 jobs:
   run:
@@ -50,6 +53,8 @@ jobs:
           WatchlistPolling__DryRun: ${{ vars.POLLING_DRY_RUN || 'false' }}
           RegistryPolling__DryRun: ${{ vars.REGISTRY_DRY_RUN || 'false' }}
           Job__MaxRunMinutes: ${{ inputs.max-run-minutes }}
+          Digest__PeriodDays: ${{ inputs.digest-period-days }}
+          Digest__RunReports: ${{ vars.RUN_REPORTS || 'true' }}
 
       - name: Upload logs
         if: failure()
