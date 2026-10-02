@@ -19,7 +19,7 @@ public sealed class StatsFormatterTests
         var html = StatsFormatter.Format(Stats(), BotLanguage.English, digest: true);
 
         html.Should().Contain("📊 Digest for the last 3 days · Back &amp; end");
-        html.Should().Contain("September 29, 12:00 – October 02, 12:00 UTC");
+        html.Should().Contain("<p>🗓 Changes: September 29, 12:00 – October 02, 12:00 UTC</p>");
         html.Should().Contain("🆕 Vacancies opened: <b>12</b>");
         html.Should().Contain("❌ Vacancies closed: <b>5</b>");
         html.Should().Contain("🏢 New companies with vacancies: <b>2</b><br>");
@@ -73,11 +73,15 @@ public sealed class StatsFormatterTests
         var stats = Stats() with { From = To.AddMinutes(-45), Days = 0 };
 
         var html = StatsFormatter.FormatRun(
-            new TraversalRunReport(TraversalKind.Watchlist, new CycleReport(120, 3000, 400, 300, 17, 2), stats),
+            new TraversalRunReport(
+                TraversalKind.Watchlist,
+                new CycleReport(120, 3000, 400, 300, 17, 2, To.AddDays(-2).AddHours(-3)),
+                stats),
             BotLanguage.English);
 
         html.Should().StartWith("<h6>🔄 Polling run · Back &amp; end</h6>");
-        html.Should().Contain("October 02, 11:15 – October 02, 12:00 UTC");
+        html.Should().Contain("<p>⏱ Run: October 02, 11:15 – October 02, 12:00 UTC<br>"
+                              + "🗓 Changes: September 30, 09:00 – October 02, 12:00 UTC</p>");
         html.Should().Contain("Boards walked: <b>120</b>, failed: 2, changes: 17");
         html.Should().Contain("🆕 Vacancies opened: <b>12</b>");
     }
@@ -91,6 +95,32 @@ public sealed class StatsFormatterTests
 
         html.Should().StartWith("<h6>🗂 Прогон реестра · Back &amp; end</h6>");
         html.Should().Contain("Прогон остановился раньше времени");
+    }
+
+    [Test]
+    public void FormatRun_should_say_every_company_was_polled_for_the_first_time()
+    {
+        var html = StatsFormatter.FormatRun(
+            new TraversalRunReport(TraversalKind.Watchlist, new CycleReport(3, 30, 10, 5, 5, 0), Stats()),
+            BotLanguage.Russian);
+
+        html.Should().Contain("<br>🗓 Изменения: все компании опрошены впервые</p>");
+    }
+
+    [Test]
+    public void FormatDiscovery_should_name_the_crawl_indexes_it_walked()
+    {
+        var report = new BoardDiscoveryReport(true, 2, 10, 1, 1, 0)
+        {
+            FirstCollection = "CC-MAIN-2026-31",
+            LastCollection = "CC-MAIN-2026-35"
+        };
+
+        var html = StatsFormatter.FormatDiscovery(
+            new DiscoveryRunReport(To.AddHours(-5), To, false, report), BotLanguage.English);
+
+        html.Should().Contain("<p>⏱ Run: October 02, 07:00 – October 02, 12:00 UTC<br>"
+                              + "🗓 Crawl indexes: CC-MAIN-2026-31 … CC-MAIN-2026-35</p>");
     }
 
     [Test]

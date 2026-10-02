@@ -199,6 +199,8 @@ returns `BoardDiscoveryReport.Busy`.
 The window is walked from the **offset**, not from its start: `DiscoveryCheckpointTracker.BeginAsync` opens (or
 resumes) the iteration and `Resume` drops everything already behind it. An offset naming a collection the window no
 longer holds is ignored rather than guessed at - the whole window is walked and `crawl_index_state` keeps that cheap.
+The report names the first and the last crawl index of what the run walked (`FirstCollection` / `LastCollection`) -
+the period of the crawl it mined, which the run report shows next to the run's own time.
 `CompleteAsync` closes the iteration at the end of a run, and the `finally` of `RunAsync` force-writes the offset, so
 a shutdown or a failure leaves the position on disk instead of throwing the walk away.
 

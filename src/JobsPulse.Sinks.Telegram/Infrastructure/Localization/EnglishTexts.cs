@@ -215,6 +215,10 @@ internal static class EnglishTexts
 
         [TextKey.RunTitlePolling] = "🔄 Polling run · {0}",
         [TextKey.RunTitleRegistry] = "🗂 Registry run · {0}",
+        [TextKey.RunPeriod] = "⏱ Run: {0}",
+        [TextKey.ChangesPeriod] = "🗓 Changes: {0}",
+        [TextKey.ChangesFirstPoll] = "🗓 Changes: every company was polled for the first time",
+        [TextKey.DiscoveryCollections] = "🗓 Crawl indexes: {0}",
         [TextKey.RunWalked] = "Boards walked: <b>{0}</b>, failed: {1}, changes: {2}",
         [TextKey.RunUnfinished] = "The run stopped before it finished — the numbers below are what it committed.",
         [TextKey.DiscoveryTitle] = "🔎 Discovery run",

@@ -224,6 +224,10 @@ internal static class RussianTexts
 
         [TextKey.RunTitlePolling] = "🔄 Прогон polling · {0}",
         [TextKey.RunTitleRegistry] = "🗂 Прогон реестра · {0}",
+        [TextKey.RunPeriod] = "⏱ Прогон: {0}",
+        [TextKey.ChangesPeriod] = "🗓 Изменения: {0}",
+        [TextKey.ChangesFirstPoll] = "🗓 Изменения: все компании опрошены впервые",
+        [TextKey.DiscoveryCollections] = "🗓 Индексы краулинга: {0}",
         [TextKey.RunWalked] = "Обойдено компаний: <b>{0}</b>, с ошибкой: {1}, изменений: {2}",
         [TextKey.RunUnfinished] = "Прогон остановился раньше времени — ниже то, что он успел сохранить.",
         [TextKey.DiscoveryTitle] = "🔎 Прогон discovery",

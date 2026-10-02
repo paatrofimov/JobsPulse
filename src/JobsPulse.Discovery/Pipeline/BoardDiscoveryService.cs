@@ -138,6 +138,13 @@ public sealed class BoardDiscoveryService(
 
         await checkpoints.CompleteAsync(ct);
 
+        // The passes add up counts only; which crawl indexes the run walked is known here.
+        report = report with
+        {
+            FirstCollection = remaining.FirstOrDefault()?.Id,
+            LastCollection = remaining.LastOrDefault()?.Id
+        };
+
         ctxLog.Info(
             "Discovery finished in {Elapsed}: {Collections} indexes scanned, {Failed} failed, {Pending} left pending, "
             + "{Records} records, {Tokens} tokens, {Added} new boards",

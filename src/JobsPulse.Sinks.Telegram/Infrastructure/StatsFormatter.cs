@@ -16,7 +16,7 @@ public static class StatsFormatter
         var name = MessageFormatter.Escape(stats.WatchlistName);
 
         return $"<h6>{BotTexts.Get(title, language, name, Days(stats.Days, language))}</h6>"
-               + Period(stats.From, stats.To, language)
+               + $"<p>{BotTexts.Get(TextKey.ChangesPeriod, language, Period(stats.From, stats.To, language))}</p>"
                + Body(stats, language);
     }
 
@@ -30,8 +30,17 @@ public static class StatsFormatter
             ? BotTexts.Get(TextKey.RunWalked, language, cycle.BoardsProcessed, cycle.Failed, cycle.Changes)
             : BotTexts.Get(TextKey.RunUnfinished, language);
 
+        // The run itself and the period its changes piled up in: a board polled days ago reports days of changes.
+        var changes = report.Cycle is { ChangesSince: { } since }
+            ? BotTexts.Get(TextKey.ChangesPeriod, language, Period(since, stats.To, language))
+            : report.Cycle is { BoardsProcessed: > 0 }
+                ? BotTexts.Get(TextKey.ChangesFirstPoll, language)
+                : null;
+
         return $"<h6>{BotTexts.Get(title, language, MessageFormatter.Escape(stats.WatchlistName))}</h6>"
-               + Period(stats.From, stats.To, language)
+               + $"<p>{BotTexts.Get(TextKey.RunPeriod, language, Period(stats.From, stats.To, language))}"
+               + (changes is null ? "" : $"<br>{changes}")
+               + "</p>"
                + $"<p>{walked}</p>"
                + Body(stats, language);
     }
@@ -54,16 +63,26 @@ public static class StatsFormatter
                 r.BoardsAdded)
             : BotTexts.Get(TextKey.RunUnfinished, language);
 
+        var collections = run.Report is { FirstCollection: { } first, LastCollection: { } last }
+            ? "<br>" + BotTexts.Get(
+                TextKey.DiscoveryCollections,
+                language,
+                first == last ? first : $"{first} … {last}")
+            : "";
+
         return $"<h6>{BotTexts.Get(title, language)}</h6>"
-               + Period(run.StartedAt, run.FinishedAt, language)
+               + $"<p>{BotTexts.Get(TextKey.RunPeriod, language, Period(run.StartedAt, run.FinishedAt, language))}"
+               + collections
+               + "</p>"
                + $"<p>{counts}</p>";
     }
 
+    /// <summary>«September 29, 07:25 – October 02, 07:25 UTC», the year added only across a new year.</summary>
     private static string Period(DateTimeOffset from, DateTimeOffset to, BotLanguage language)
     {
         var withYear = from.Year != to.Year;
 
-        return $"<p>{BotTexts.Get(TextKey.StatsPeriod, language, Moment(from, withYear, language), Moment(to, withYear, language))}</p>";
+        return BotTexts.Get(TextKey.StatsPeriod, language, Moment(from, withYear, language), Moment(to, withYear, language));
     }
 
     private static string Body(WatchlistStats stats, BotLanguage language)

@@ -335,8 +335,10 @@ over an `@username` display name - a first name never matches), and to the defau
 
 Renders `WatchlistStats` - the same body (opened / closed, the numbers of new and emptied companies - counts only, a
 list of names made the message unreadable - and the two top lists) under three headers: the digest,
-the statistics screen, and a run report, which adds what the run walked (`FormatRun`). `FormatDiscovery` renders a
-discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
+the statistics screen, and a run report, which adds what the run walked (`FormatRun`). Two periods are written apart:
+`⏱` the run itself and `🗓` the changes it covers - the digest and the screen have only the latter, a polling or
+registry run has both (`CycleReport.ChangesSince`, or «every company was polled for the first time»), a discovery run
+names the crawl indexes it walked. `FormatDiscovery` renders a discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
 
 ## TelegramClientFacade
 

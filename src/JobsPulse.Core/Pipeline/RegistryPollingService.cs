@@ -200,6 +200,9 @@ public sealed class RegistryPollingService(
             }
         }));
 
+        // Read before the stamps below overwrite the previous traversals.
+        var changesSince = CycleReport.EarliestPoll(slice.Select(b => $"{b.SourceId}/{b.BoardId}"), polled);
+
         // Every board of the slice is stamped, failures included: an unstamped board would stay the
         // least-recently-polled one forever and the walk would never get past it.
         await pollState.StampAsync([.. slice.Select(b => new BoardPollStamp(b.SourceId, b.BoardId, now))], ct);
@@ -213,7 +216,10 @@ public sealed class RegistryPollingService(
         // Only after the promotion: it enqueues notifications too, and an idle traversal lets the open window leave.
         progress.CycleFinished(TraversalKind.Registry, Coverage(boards, [], polled, now));
 
-        var report = CycleReport.Aggregate([.. results.Select(r => r.Result.Report)]);
+        var report = CycleReport.Aggregate([.. results.Select(r => r.Result.Report)]) with
+        {
+            ChangesSince = changesSince
+        };
         ctxLog.Info(
             "Registry cycle finished: boards {Boards}, fetched {Fetched}, stored {Stored}, errors {Failed}, "
             + "promotions {Promoted}",

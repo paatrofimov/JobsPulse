@@ -37,7 +37,8 @@ Interface and notifications are available in English and Russian, switchable per
   started hiring and how many closed every matching vacancy, plus the top 3 companies by activity and by new
   vacancies. **📊 Statistics** counts the same for 7, 14, 30 or any number of days on request.
 - **Run reports.** Every polling and registry run reports what it changed in each watchlist (the same numbers, for
-  that run only); every discovery run reports what it mined.
+  that run only), with both the time the run took and the period its changes cover — since the earliest previous
+  poll of the companies it walked; every discovery run reports what it mined and from which crawl indexes.
 - **Discovery.** Common Crawl indexes are mined for ATS URLs to build a registry of boards that exist; a board whose
   vacancies match a watchlist filter is proposed into that watchlist automatically.
 - **Sources.** Greenhouse, Lever (global and EU), SmartRecruiters, Ashby, Workday, SuccessFactors.

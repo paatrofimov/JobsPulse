@@ -117,6 +117,10 @@ only `when (!ct.IsCancellationRequested)` - otherwise it is a real shutdown and 
 
 `BoardReport` / `CycleReport` are logging-only aggregates, nothing reads them for control flow. `Stored` counts the
 vacancies that passed the storage filters, `Matched` the match rows - always zero for a registry board.
+`CycleReport.ChangesSince` is the earliest previous traversal among the boards a cycle walked (`EarliestPoll`, read
+before the new stamps are written; boards walked for the first time are skipped) - the changes the cycle found piled
+up since then. For the registry it is usually days back, since a board comes round once per walk. `Combine` keeps
+the earliest of its slices.
 
 ## RegistryPollingService
 
@@ -329,7 +333,8 @@ decides whether a digest is due and every call sends. A failed delivery is logge
 ## RunReportService
 
 The report a one-shot job sends after its drain. `SendTraversalAsync` - polling and registry: per enabled watchlist
-with companies, what the run walked (`CycleReport`, null when it stopped early) plus `ComputeRunAsync` of its run.
+with companies, what the run walked (`CycleReport`, null when it stopped early; its `ChangesSince` is the period the
+changes cover, next to the run's own start and end) plus `ComputeRunAsync` of its run.
 `SendDiscoveryAsync` - what a discovery run mined (`BoardDiscoveryReport`). Both are off with `Digest:RunReports`.
 
 ## WatchlistHistoryRepair

@@ -115,6 +115,9 @@ public sealed class PollingOrchestrator(
             }
         }));
 
+        // Read before the stamps below overwrite the previous traversals.
+        var changesSince = CycleReport.EarliestPoll(due.Select(b => b.BoardKey), polled);
+
         // The stamp is the cycle start time, so the interval is measured from there and a failed board is not
         // retried earlier than a successful one. It is written for every due board, failures included.
         await pollState.StampAsync([.. due.Select(b => new BoardPollStamp(b.SourceId, b.BoardId, now))], ct);
@@ -125,7 +128,7 @@ public sealed class PollingOrchestrator(
         // Coverage is reported after the stamps are written, so it is the post-cycle truth.
         progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, [], polled));
 
-        var report = CycleReport.Aggregate(results);
+        var report = CycleReport.Aggregate(results) with { ChangesSince = changesSince };
         ctxLog.Info(
             "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, watchlist matches {Matched}, changes {Changes}, errors {Failed}",
             report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Changes, report.Failed);

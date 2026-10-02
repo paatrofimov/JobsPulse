@@ -19,9 +19,18 @@ public sealed class RegistryPollingServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
 
-    private readonly IBoardRegistryStorage registry = A.Fake<IBoardRegistryStorage>();
-    private readonly IWatchlistStorage watchlists = A.Fake<IWatchlistStorage>();
-    private readonly IBoardPollStateStorage pollState = A.Fake<IBoardPollStateStorage>();
+    // NUnit reuses one fixture instance for every test, so the fakes are recreated per test.
+    private IBoardRegistryStorage registry = null!;
+    private IWatchlistStorage watchlists = null!;
+    private IBoardPollStateStorage pollState = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        registry = A.Fake<IBoardRegistryStorage>();
+        watchlists = A.Fake<IWatchlistStorage>();
+        pollState = A.Fake<IBoardPollStateStorage>();
+    }
 
     // Rereading the poll state per slice loops forever here (the fake never records stamps) - fail instead of hanging.
     [Test, CancelAfter(10_000)]
@@ -45,6 +54,27 @@ public sealed class RegistryPollingServiceTests
         A.CallTo(() => registry.ListAsync(A<string?>._, A<int>._, A<CancellationToken>._)).MustHaveHappenedOnceExactly();
         A.CallTo(() => pollState.LoadAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
         A.CallTo(() => watchlists.GetEnabledAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
+    }
+
+    [Test, CancelAfter(10_000)]
+    public async Task Sweep_should_report_since_when_the_changes_of_its_boards_piled_up(CancellationToken ct)
+    {
+        A.CallTo(() => registry.ListAsync(A<string?>._, A<int>._, A<CancellationToken>._))
+            .Returns(Enumerable.Range(1, 3).Select(Board).ToList());
+        A.CallTo(() => pollState.LoadAsync(A<CancellationToken>._))
+            .Returns(new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["greenhouse/board1"] = Now.AddDays(-2),
+                ["greenhouse/board2"] = Now.AddDays(-5)
+            });
+        A.CallTo(() => watchlists.GetEnabledAsync(A<CancellationToken>._))
+            .Returns([Watchlist()]);
+
+        var result = await Service().TryRunSweepAsync(Now.AddHours(1), ct);
+
+        // board3 is walked for the first time and has no previous traversal to count from.
+        result.Report.BoardsProcessed.Should().Be(3);
+        result.Report.ChangesSince.Should().Be(Now.AddDays(-5));
     }
 
     private RegistryPollingService Service()
