@@ -122,7 +122,18 @@ public sealed class RegistryPollingService(
             .Select(b => b.BoardKey)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var boards = (await registry.ListAsync(null, opts.MaxRegistryBoards, ct))
+        var listed = await registry.ListAsync(null, opts.MaxRegistryBoards, ct);
+
+        // The cap is taken before the filter below, biggest boards first - past it the smallest boards silently drop
+        // out of the walk.
+        if (listed.Count >= opts.MaxRegistryBoards)
+        {
+            ctxLog.Warn(
+                "Board registry holds {Cap} rows or more — the smallest boards past MaxRegistryBoards are not swept",
+                opts.MaxRegistryBoards);
+        }
+
+        var boards = listed
             .Where(b => b.IsActive && !watched.Contains($"{b.SourceId}/{b.BoardId}"))
             .ToList();
 

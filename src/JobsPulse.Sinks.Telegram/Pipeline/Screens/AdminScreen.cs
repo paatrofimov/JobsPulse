@@ -25,7 +25,7 @@ public sealed class AdminScreen(ProgressReporter progress)
             .Select(c => $"/{c.Command} — {MessageFormatter.Escape(c.Description)}");
 
         var html = "<h6>🛠 Admin</h6>"
-                   + await progress.RenderAsync(ct)
+                   + await progress.RenderAsync(ctx.Language, ct)
                    + $"<p>{string.Join("<br>", commands)}</p>"
                    + "<p>These commands take raw ids and json — they are the operator surface, not the user one.</p>";
 

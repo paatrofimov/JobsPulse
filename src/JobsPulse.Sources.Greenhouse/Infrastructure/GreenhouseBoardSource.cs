@@ -16,7 +16,8 @@ public sealed class GreenhouseBoardSource(
 
     public async Task<SourceTraverseResult> TraverseTargetAsync(SourceTarget target, CancellationToken ct)
     {
-        var response = await client.GetJobsAsync(target.BoardId, ct);
+        var includeContent = options.Value.IncludeContentOnPoll || target.NeedsDescription;
+        var response = await client.GetJobsAsync(target.BoardId, includeContent, ct);
 
         if (response.NotFound)
             return SourceTraverseResult.Failed("board not found", boardMissing: true);

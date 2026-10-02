@@ -177,7 +177,7 @@ public sealed class LeverPostingsClient(
         {
             throw;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or IOException)
         {
             return LeverFetch<List<PostingDto>>.Failure(ex.Message);
         }

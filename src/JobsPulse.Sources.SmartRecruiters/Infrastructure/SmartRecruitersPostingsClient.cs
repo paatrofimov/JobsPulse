@@ -84,7 +84,7 @@ public sealed class SmartRecruitersPostingsClient(
         {
             throw;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or IOException)
         {
             return SmartRecruitersFetch<T>.Failure(ex.Message);
         }

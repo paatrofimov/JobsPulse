@@ -79,7 +79,7 @@ public sealed partial class GreenhouseBoardResolver(
         var board = await client.GetBoardAsync(boardId, ct);
         if (!board.Success) return null;
 
-        var jobs = await client.GetJobsAsync(boardId, ct);
+        var jobs = await client.GetJobsAsync(boardId, includeContent: false, ct);
         if (!jobs.Success)
             return null;
 

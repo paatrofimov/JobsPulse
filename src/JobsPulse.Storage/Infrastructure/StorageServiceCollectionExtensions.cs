@@ -53,6 +53,7 @@ public static class StorageServiceCollectionExtensions
         services.AddSingleton<IDiscoveryCheckpointStorage, DiscoveryCheckpointStorage>();
         services.AddSingleton<IBoardPollStateStorage, BoardPollStateStorage>();
         services.AddSingleton<ITraversalRunStorage, TraversalRunStorage>();
+        services.AddSingleton<IJobRunHistoryStorage, JobRunHistoryStorage>();
         services.AddSingleton<IRejectedPostingStorage, RejectedPostingStorage>();
         services.AddSingleton<IWatchlistStorage, WatchlistStorage>();
         services.AddSingleton<IBotUserStorage, BotUserStorage>();

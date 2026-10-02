@@ -554,6 +554,12 @@ Postings the storage filters rejected after their detail was read (`rejected_pos
 keeps the current one), `SaveAsync` writes a difference. A filter change invalidates every row through its
 `FilterHash`, so nothing has to purge them.
 
+## IJobRunHistoryStorage
+
+The history of the one-shot jobs (`job_run_history`): `StartAsync` when a job begins, `FinishAsync` with its outcome,
+error and summary when it ends, `ListRecentAsync` for the bot. Kept for 30 days. Not `ITraversalRunStorage`: that one
+coordinates deliveries between jobs in flight and forgets a run a day after it ended.
+
 ## ITraversalProgressTracker
 
 Live progress of the two polling cycles - see `TraversalProgressTracker` for why it exists and what «covered» means
@@ -642,6 +648,13 @@ The vocabulary of the progress tracker. `TraversalKind` is which dataset is walk
 plan a cycle announces and the coverage it reports back; `TraversalProgress` (with `TraversalSourceProgress`) is the
 snapshot a reader gets, totals and percentages included. `Percent` treats an empty dataset as complete: nothing to do
 is done, not zero.
+
+## JobRun / JobRunOutcome / JobRunSummary / JobRunRoles
+
+One row of the job run history. `JobRunOutcome`: `Running`, `Succeeded`, `Failed`, `TimedOut` (reached
+`Job:MaxRunMinutes` - the next run continues, not a failure) and `Stopped` (cancelled from outside).
+`JobRunSummary` holds the numbers of a run, every one optional - each job fills what means something for it.
+`JobRunRoles` are the role names the host records runs under.
 
 ## BoardActivity
 

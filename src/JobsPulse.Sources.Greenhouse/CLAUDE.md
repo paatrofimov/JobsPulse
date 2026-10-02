@@ -21,6 +21,8 @@ Thin client over Job Board API.
 - no server filtering
 - no pagination - board is requested as full
 - no rate limit - rate is limited by orchestrator
+- `?content=true` (every description, ~20x heavier answer) only when `IncludeContentOnPoll` is set or a watchlist
+  filter has description rules (`SourceTarget.NeedsDescription`); the probe of the resolver never asks for it
 
 # SlugGuesser
 

@@ -53,7 +53,7 @@ public sealed class AshbyJobBoardClient(
         {
             throw;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or IOException)
         {
             return AshbyFetch<JobBoardDto>.Failure(ex.Message);
         }

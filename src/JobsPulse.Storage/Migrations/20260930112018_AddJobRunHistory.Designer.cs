@@ -3,6 +3,7 @@ using System;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JobsPulse.Storage.Migrations
 {
     [DbContext(typeof(JobsPulseDbContext))]
-    partial class JobsPulseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260930112018_AddJobRunHistory")]
+    partial class AddJobRunHistory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -682,64 +685,6 @@ namespace JobsPulse.Storage.Migrations
                     b.ToTable("watchlist_entry", (string)null);
                 });
 
-            modelBuilder.Entity("JobsPulse.Storage.PersistentModels.PersistentWatchlistEvent", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("BoardId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("board_id");
-
-                    b.Property<int>("ChangeKind")
-                        .HasColumnType("integer")
-                        .HasColumnName("change_kind");
-
-                    b.Property<string>("CompanyName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("company_name");
-
-                    b.Property<string>("Location")
-                        .HasColumnType("text")
-                        .HasColumnName("location");
-
-                    b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("occurred_at");
-
-                    b.Property<string>("PostId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("post_id");
-
-                    b.Property<long?>("RunId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("run_id");
-
-                    b.Property<string>("SourceId")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("source_id");
-
-                    b.Property<long>("WatchlistId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("watchlist_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_watchlist_event");
-
-                    b.HasIndex("WatchlistId", "OccurredAt")
-                        .HasDatabaseName("ix_watchlist_event_watchlist_id_occurred_at");
-
-                    b.ToTable("watchlist_event", (string)null);
-                });
-
             modelBuilder.Entity("JobsPulse.Storage.PersistentModels.PersistentWatchlistVacancy", b =>
                 {
                     b.Property<long>("Id")
@@ -802,18 +747,6 @@ namespace JobsPulse.Storage.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_watchlist_entry_watchlist_watchlist_id");
-
-                    b.Navigation("Watchlist");
-                });
-
-            modelBuilder.Entity("JobsPulse.Storage.PersistentModels.PersistentWatchlistEvent", b =>
-                {
-                    b.HasOne("JobsPulse.Storage.PersistentModels.PersistentWatchlist", "Watchlist")
-                        .WithMany()
-                        .HasForeignKey("WatchlistId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_watchlist_event_watchlist_watchlist_id");
 
                     b.Navigation("Watchlist");
                 });

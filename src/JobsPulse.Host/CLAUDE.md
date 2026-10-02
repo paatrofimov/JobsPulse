@@ -7,9 +7,11 @@
   `IPollingTrigger` is `GitHubWorkflowTrigger`;
 - `webhook` - the same bot served over HTTP (`TelegramWebhookEndpoint`) on a `WebApplication` listening on `$PORT`
   (8080 by default), for Cloud Run: scales to zero between messages, one instance at most, console log only.
-  Deployed by `.github/workflows/deploy-bot.yml`;
-- `webhooksetup` - one-shot: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and publishes the
-  command menu. The deploy workflow runs it in the freshly built image;
+  Deployed by Cloud Run continuous deployment: a Cloud Build trigger on the repository builds the `Dockerfile` and
+  rolls the service out on every push to `master` - nothing in this repository takes part;
+- `webhooksetup` - one-shot, run by hand: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and
+  publishes the command menu. The service url of Cloud Run is stable, so it is needed only when the url, the secret
+  or the command list changes;
 - `digest` - one-shot: the statistics of every enabled watchlist for `Digest:PeriodDays` (`DigestService`). Started
   by cron-job.org through `digest.yml` every 3 days; its `period-days` input sets the period;
 - `historyrepair` - one-shot: `WatchlistHistoryRepair`, restores lost closures of the watchlist history. Manual;
@@ -53,7 +55,7 @@ so Telegram does not redeliver it forever.
 
 - `HostRole` - see Program.
 - `OutboxDispatchResult` - delivered count of one dispatch tick; `RetryAfter` is set when the batch failed.
-- `JobOutcome` - see JobRunner.
+- `RunReportInputs` - see JobRunner.
 
 # Options
 
@@ -78,7 +80,7 @@ mid-delivery. Afterwards the outbox is drained, also after a failure or a deadli
 held until the next run.
 
 `polling`, `registry` and `discovery` end with a **run report** (`RunReportService`), after the drain so it arrives
-after the changes it counts. What the routine returned is collected in a `JobOutcome` while it runs - a deadline or a
+after the changes it counts. What the routine returned is collected in a `RunReportInputs` while it runs - a deadline or a
 failure leaves it unset and the report says the run stopped early; a routine that did not start (switched off, gate
 busy) reports nothing. The walking jobs put their `traversal_run` id into `CurrentTraversalRun` for the walk, so the
 history their commits write carries it. A failed report is only logged.
@@ -87,6 +89,12 @@ Both also hold a `traversal_run` row (`ITraversalRunStorage`) from the start to 
 `Job:HeartbeatSeconds`: that row is how the other job's dispatcher knows the open window is still being filled. It is
 finished right after the walk and before the drain, and finishing ignores cancellation - a row left open would hold
 windows back until its heartbeat goes stale (`Delivery:TraversalRunStaleSeconds`).
+
+Every role but `webhook-setup` also records itself in `job_run_history` (`IJobRunHistoryStorage`): started at the
+beginning, finished at the very end with its `JobRunOutcome` - a failed drain turns a clean walk into `Failed`, as it
+does the exit code - the error message and a `JobRunSummary` of the report the routine returned. That is what the
+bot's progress screen reads, because the bot runs on another host and the jobs leave nothing else behind. Neither
+write may fail the job: both are logged and skipped.
 
 ## OutboxDelivery
 

@@ -4,10 +4,10 @@ using JobsPulse.Core.Pipeline;
 namespace JobsPulse.Host.Models;
 
 /// <summary>
-/// What a one-shot job learned about its own run, filled while it runs - a deadline or a failure leaves the rest
-/// unset, and the run report says so.
+/// What the run report of a one-shot job is built from, filled while the routine runs - a deadline or a failure leaves
+/// the rest unset, and the report says so.
 /// </summary>
-public sealed class JobOutcome
+public sealed class RunReportInputs
 {
     /// <summary>The routine did not run at all (switched off, or another cycle held the gate) - nothing to report.</summary>
     public bool Skipped { get; set; }
