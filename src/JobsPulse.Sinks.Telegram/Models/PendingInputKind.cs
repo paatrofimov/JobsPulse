@@ -21,5 +21,8 @@ public enum PendingInputKind
     CompanyName,
 
     /// <summary>The number of days of a statistics period that has no button of its own.</summary>
-    StatsDays
+    StatsDays,
+
+    /// <summary>The number of days of a freshness shortlist that has no button of its own.</summary>
+    ShortlistDays
 }

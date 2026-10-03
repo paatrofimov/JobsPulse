@@ -186,6 +186,42 @@ public sealed class StatsFormatterTests
         CallbackData.Parse("sc:42:7").Action.Should().Be(CallbackAction.StatsCustom);
     }
 
+    [Test]
+    public void Format_should_link_the_watched_companies_of_the_tops()
+    {
+        var watchlist = new Watchlist
+        {
+            Id = 1,
+            Name = "Back & end",
+            Entries =
+            [
+                new WatchlistEntry { Id = 11, VacancySourceId = "greenhouse", BoardId = "acme", CompanyName = "Acme" },
+                new WatchlistEntry
+                {
+                    Id = 12, VacancySourceId = "greenhouse", BoardId = "delta", CompanyName = "Delta", Enabled = false
+                }
+            ]
+        };
+
+        var html = StatsFormatter.Format(
+            Stats(), BotLanguage.English, digest: true, DeepLinks.Companies(watchlist, "pulse_bot"));
+
+        html.Should().Contain("1. <a href=\"https://t.me/pulse_bot?start=c11\">Acme</a> — 7 new");
+        html.Should().Contain("2. Delta — 4 new");
+        html.Should().Contain("2. Beta — 1 events");
+    }
+
+    [Test]
+    public void DeepLinks_should_read_back_a_company_payload_only()
+    {
+        DeepLinks.TryParseCompany("c42", out var entryId).Should().BeTrue();
+        entryId.Should().Be(42);
+
+        DeepLinks.TryParseCompany("c", out _).Should().BeFalse();
+        DeepLinks.TryParseCompany("x42", out _).Should().BeFalse();
+        DeepLinks.TryParseCompany(null, out _).Should().BeFalse();
+    }
+
     private static WatchlistStats Stats() =>
         new()
         {

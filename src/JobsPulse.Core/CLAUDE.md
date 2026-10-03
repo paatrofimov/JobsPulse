@@ -324,6 +324,9 @@ committed (`WatchlistEvent.RunId`), so a job walking at the same time does not l
 Companies are counted **by name**: the current entry name, falling back to the name the last event was reported
 under. One company watched through two boards (two AstraZeneca sites) is one company, its numbers summed.
 
+**Disabled companies are left out of every number** - their events are dropped from the period (the activity top
+ranks enabled boards only anyway). A board that has left the watchlist still counts under its reported name.
+
 ## DigestService
 
 `SendAsync` sends every enabled watchlist with at least one company its statistics for the last `Digest:PeriodDays`,

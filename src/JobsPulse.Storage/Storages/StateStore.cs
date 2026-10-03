@@ -126,17 +126,39 @@ internal class StateStore(
             .ToList();
     }
 
-    public async Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
+    public Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
         long watchlistId,
+        int limit,
+        CancellationToken ct) =>
+        LoadMatchedAsync(watchlistId, null, limit, ct);
+
+    public Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
+        long watchlistId,
+        IReadOnlyCollection<string> boardKeys,
+        int limit,
+        CancellationToken ct) =>
+        LoadMatchedAsync(watchlistId, boardKeys, limit, ct);
+
+    private async Task<IReadOnlyList<Vacancy>> LoadMatchedAsync(
+        long watchlistId,
+        IReadOnlyCollection<string>? boardKeys,
         int limit,
         CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
 
-        // The match layer holds the keys only, so the payload comes from the open seen_vacancy rows behind them.
-        var rows = await db.WatchlistVacancies
+        var matches = db.WatchlistVacancies
             .AsNoTracking()
-            .Where(m => m.WatchlistId == watchlistId)
+            .Where(m => m.WatchlistId == watchlistId);
+
+        if (boardKeys is not null)
+        {
+            var keys = boardKeys.ToList();
+            matches = matches.Where(m => keys.Contains(m.SourceId + "/" + m.BoardId));
+        }
+
+        // The match layer holds the keys only, so the payload comes from the open seen_vacancy rows behind them.
+        var rows = await matches
             .Join(
                 db.SeenVacancies.AsNoTracking().Where(v => v.ClosedAt == null),
                 m => new

@@ -24,6 +24,16 @@ public interface IStateStore
         int limit,
         CancellationToken ct);
 
+    /// <summary>
+    /// <see cref="LoadMatchedVacanciesAsync"/> narrowed to some boards ('{sourceId}/{boardId}') - one company, whose
+    /// vacancies must not be cut off by the cap of the whole feed.
+    /// </summary>
+    Task<IReadOnlyList<Vacancy>> LoadMatchedVacanciesAsync(
+        long watchlistId,
+        IReadOnlyCollection<string> boardKeys,
+        int limit,
+        CancellationToken ct);
+
     Task<StateCommitResult> CommitAsync(StateCommit commit, CancellationToken ct);
 
     /// <summary>Open vacancies stored under a filter hash that is no longer in use.</summary>

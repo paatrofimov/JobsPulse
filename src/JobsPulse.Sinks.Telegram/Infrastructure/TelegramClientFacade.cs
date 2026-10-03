@@ -9,6 +9,27 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
 public sealed class TelegramClientFacade(ITelegramBotClient client)
 {
+    private string? botUsername;
+
+    /// <summary>The bot's own username, asked once - what a t.me deep link needs. Null when telegram did not answer.</summary>
+    public async Task<string?> GetBotUsernameAsync(CancellationToken ct)
+    {
+        if (botUsername is not null)
+            return botUsername;
+
+        try
+        {
+            var me = await client.GetMe(ct);
+            botUsername = me.Username;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+
+        return botUsername;
+    }
+
     public async Task<TelegramResult> SendRichMessageAsync(
         string chatId,
         InputRichMessage msg,

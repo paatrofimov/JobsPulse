@@ -151,6 +151,32 @@ public sealed class WatchlistStatsCalculatorTests
     }
 
     [Test]
+    public void Compute_should_leave_disabled_companies_out_of_every_number()
+    {
+        var watchlist = Watchlist(Entry("acme"), Entry("off", enabled: false));
+
+        var stats = WatchlistStatsCalculator.Compute(
+            watchlist,
+            [
+                Event("acme", "1", VacancyChangeKind.New, From.AddHours(1)),
+                Event("off", "1", VacancyChangeKind.New, From.AddHours(1)),
+                Event("off", "2", VacancyChangeKind.New, From.AddHours(1)),
+                Event("off", "3", VacancyChangeKind.New, From.AddDays(-1)),
+                Event("off", "3", VacancyChangeKind.Closed, From.AddHours(2))
+            ],
+            NoActivity,
+            From,
+            To,
+            3);
+
+        stats.Opened.Should().Be(1);
+        stats.Closed.Should().Be(0);
+        stats.NewCompanies.Should().Equal("Acme Inc");
+        stats.EmptiedCompanies.Should().BeEmpty();
+        stats.TopByOpened.Should().Equal(new CompanyCount("Acme Inc", 1));
+    }
+
+    [Test]
     public void Compute_should_name_companies_by_their_entry_and_fall_back_to_the_reported_name()
     {
         var watchlist = Watchlist(Entry("acme"));

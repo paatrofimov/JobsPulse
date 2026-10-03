@@ -72,6 +72,15 @@ public sealed class BotUpdateHandler(
 
         switch (command)
         {
+            // A tapped deep link (`DeepLinks`) arrives as `/start <payload>` and opens its screen instead of the menu.
+            case BotCommandCatalog.Start when DeepLinks.TryParseCompany(Argument(text), out var entryId):
+                sessions.Clear(ctx.UserId);
+                await SendAsync(
+                    ctx,
+                    (await screens.RenderAsync(ctx, new CallbackData(CallbackAction.CompanyVacancies, entryId), ct)).View,
+                    ct);
+                return;
+
             case BotCommandCatalog.Start or BotCommandCatalog.Menu or "":
                 sessions.Clear(ctx.UserId);
                 await SendAsync(ctx, (await screens.RenderAsync(ctx, new CallbackData(CallbackAction.Menu), ct)).View, ct);
@@ -208,6 +217,14 @@ public sealed class BotUpdateHandler(
         from.Username is { Length: > 0 } username
             ? $"@{username}"
             : string.Join(' ', new[] { from.FirstName, from.LastName }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+    /// <summary>`/start c12` to `c12`, null without an argument.</summary>
+    private static string? Argument(string text)
+    {
+        var space = text.IndexOf(' ');
+
+        return space < 0 ? null : text[(space + 1)..].Trim();
+    }
 
     /// <summary>`/watch@my_bot arg` to `watch`. A plain message has no command and reads as empty.</summary>
     private static string ParseCommand(string text)

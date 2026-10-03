@@ -67,6 +67,28 @@ public static class LocationRegions
                     .Key,
                 StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Whether a vacancy names a place in <paramref name="area"/>. Unlike <see cref="Of(Vacancy)"/> this is not a
+    /// single answer: a vacancy open in Berlin and Warsaw, or in «EMEA», is in both halves of Europe.
+    /// </summary>
+    public static bool IsIn(Vacancy vacancy, FocusArea area)
+    {
+        var text = Normalize(vacancy.Location, vacancy.Offices);
+
+        return text.Length > 0 && Matches(text, AreaKeys[area]);
+    }
+
+    public static string Name(FocusArea area, BotLanguage language) =>
+        BotTexts.Get(
+            area switch
+            {
+                FocusArea.WesternEurope => TextKey.AreaWesternEurope,
+                FocusArea.EasternEurope => TextKey.AreaEasternEurope,
+                FocusArea.Usa => TextKey.AreaUsa,
+                _ => TextKey.AreaAsia
+            },
+            language);
+
     public static string Name(LocationRegion region, BotLanguage language) =>
         BotTexts.Get(
             region switch
@@ -158,63 +180,106 @@ public static class LocationRegions
         "remote", "remotely", "anywhere", "worldwide", "work from home", "home office", "wfh", "telecommute",
         "distributed", "virtual", "удаленно", "удалённо", "дистанционно", "удаленная работа");
 
+    private static readonly string[] EuropeWideKeys =
+    [
+        "europe", "european union", "eu", "emea", "europa", "европа"
+    ];
+
+    private static readonly string[] WesternEuropeKeys =
+    [
+        "benelux", "dach", "nordics", "nordic",
+        "austria", "vienna", "graz", "linz", "österreich",
+        "belgium", "brussels", "antwerp", "ghent", "leuven",
+        "cyprus", "nicosia", "limassol", "larnaca",
+        "denmark", "copenhagen", "aarhus", "odense",
+        "finland", "helsinki", "espoo", "tampere", "oulu",
+        "france", "paris", "lyon", "toulouse", "bordeaux", "nantes", "lille", "marseille", "nice",
+        "grenoble", "sophia antipolis", "rennes", "strasbourg",
+        "germany", "deutschland", "berlin", "munich", "muenchen", "münchen", "hamburg", "frankfurt",
+        "cologne", "koeln", "köln", "stuttgart", "duesseldorf", "düsseldorf", "dusseldorf", "leipzig",
+        "dresden", "karlsruhe", "nuremberg", "nürnberg", "hannover", "bremen", "bonn", "mannheim", "aachen",
+        "greece", "athens", "thessaloniki",
+        "iceland", "reykjavik",
+        "ireland", "dublin", "cork", "galway", "limerick",
+        "italy", "italia", "milan", "milano", "rome", "roma", "turin", "torino", "bologna", "naples",
+        "florence", "firenze", "pisa", "padova", "genoa",
+        "luxembourg",
+        "malta", "valletta",
+        "monaco", "andorra", "liechtenstein", "san marino",
+        "netherlands", "holland", "nederland", "amsterdam", "rotterdam", "utrecht", "eindhoven", "the hague",
+        "hague", "den haag", "delft", "groningen", "haarlem", "leiden", "nijmegen", "amstelveen",
+        "norway", "oslo", "bergen", "trondheim", "stavanger",
+        "portugal", "lisbon", "lisboa", "porto", "braga", "coimbra", "aveiro",
+        "spain", "espana", "españa", "madrid", "barcelona", "valencia", "malaga", "málaga", "seville",
+        "sevilla", "bilbao", "zaragoza", "alicante", "palma", "santander",
+        "sweden", "sverige", "stockholm", "gothenburg", "goteborg", "göteborg", "malmo", "malmö", "lund",
+        "uppsala", "linkoping", "linköping",
+        "switzerland", "schweiz", "suisse", "zurich", "zuerich", "zürich", "geneva", "geneve", "genève",
+        "basel", "lausanne", "bern", "zug", "lugano", "winterthur",
+        "united kingdom", "uk", "great britain", "britain", "england", "scotland", "wales",
+        "northern ireland", "london", "manchester", "edinburgh", "glasgow", "bristol", "cambridge", "oxford",
+        "birmingham", "leeds", "liverpool", "sheffield", "newcastle", "nottingham", "belfast", "cardiff",
+        "reading", "brighton", "milton keynes", "aberdeen", "leicester"
+    ];
+
+    /// <summary>Central and Eastern Europe, the Baltics and the Balkans - the CIS is a region of its own.</summary>
+    private static readonly string[] EasternEuropeKeys =
+    [
+        "baltics", "cee", "central europe", "eastern europe",
+        "bulgaria", "sofia", "plovdiv", "varna",
+        "croatia", "zagreb", "split",
+        "czech", "czechia", "czech republic", "prague", "praha", "brno", "ostrava",
+        "estonia", "tallinn", "tartu",
+        "hungary", "budapest", "debrecen", "szeged",
+        "latvia", "riga",
+        "lithuania", "vilnius", "kaunas",
+        "moldova", "chisinau",
+        "montenegro", "podgorica", "albania", "tirana", "bosnia", "sarajevo", "banja luka",
+        "serbia", "belgrade", "beograd", "novi sad", "nis",
+        "north macedonia", "macedonia", "skopje",
+        "poland", "polska", "warsaw", "warszawa", "krakow", "kraków", "cracow", "wroclaw", "wrocław",
+        "poznan", "poznań", "gdansk", "gdańsk", "gdynia", "katowice", "lodz", "łódź", "szczecin", "lublin",
+        "romania", "bucharest", "bucuresti", "bucurești", "cluj", "cluj napoca", "timisoara", "timișoara",
+        "iasi", "iași", "brasov", "sibiu",
+        "slovakia", "bratislava", "kosice", "košice",
+        "slovenia", "ljubljana", "maribor",
+        "ukraine", "kyiv", "kiev", "lviv", "kharkiv", "odesa", "odessa", "dnipro", "vinnytsia", "україна",
+        "київ", "львів"
+    ];
+
+    /// <summary>«North America» counts as the USA: a role open there is open to a US applicant.</summary>
+    private static readonly string[] UsaKeys =
+    [
+        "usa", "u s a", "united states", "us", "north america",
+        "new york", "nyc", "brooklyn", "san francisco", "bay area", "silicon valley", "seattle", "bellevue",
+        "austin", "boston", "cambridge ma", "chicago", "los angeles", "san diego", "san jose", "sunnyvale",
+        "mountain view", "palo alto", "santa clara", "denver", "boulder", "atlanta", "dallas", "houston",
+        "miami", "orlando", "tampa", "portland", "phoenix", "philadelphia", "pittsburgh", "detroit",
+        "minneapolis", "salt lake city", "las vegas", "nashville", "charlotte", "raleigh", "durham",
+        "washington dc", "arlington", "reston", "mclean", "columbus", "cleveland", "kansas city",
+        "california", "texas", "florida", "virginia", "massachusetts", "washington state", "new jersey",
+        "illinois", "colorado", "oregon", "utah", "arizona", "north carolina", "pennsylvania", "michigan"
+    ];
+
+    /// <summary>«America» alone is here, not in <see cref="UsaKeys"/> - it is also a word of «Latin America».</summary>
+    private static readonly string[] OtherAmericasKeys =
+    [
+        "americas", "south america", "latam", "latin america", "america",
+        "canada", "toronto", "vancouver", "montreal", "ottawa", "calgary", "edmonton", "waterloo",
+        "mississauga", "quebec", "ontario", "british columbia", "halifax", "winnipeg",
+        "mexico", "mexico city", "guadalajara", "monterrey", "queretaro",
+        "brazil", "brasil", "sao paulo", "são paulo", "rio de janeiro", "belo horizonte", "curitiba",
+        "porto alegre", "recife", "florianopolis",
+        "argentina", "buenos aires", "cordoba", "rosario",
+        "chile", "santiago", "colombia", "bogota", "bogotá", "medellin", "medellín", "peru", "lima",
+        "uruguay", "montevideo", "paraguay", "asuncion", "ecuador", "quito", "guayaquil",
+        "costa rica", "san jose costa rica", "panama", "guatemala", "dominican republic", "santo domingo"
+    ];
+
     private static readonly FrozenDictionary<LocationRegion, FrozenSet<string>> Keys =
         new Dictionary<LocationRegion, FrozenSet<string>>
         {
-            [LocationRegion.Europe] = Set(
-                "europe", "european union", "eu", "emea", "benelux", "dach", "nordics", "nordic", "baltics", "europa",
-                "европа",
-                "austria", "vienna", "graz", "linz", "österreich",
-                "belgium", "brussels", "antwerp", "ghent", "leuven",
-                "bulgaria", "sofia", "plovdiv", "varna",
-                "croatia", "zagreb", "split",
-                "cyprus", "nicosia", "limassol", "larnaca",
-                "czech", "czechia", "czech republic", "prague", "praha", "brno", "ostrava",
-                "denmark", "copenhagen", "aarhus", "odense",
-                "estonia", "tallinn", "tartu",
-                "finland", "helsinki", "espoo", "tampere", "oulu",
-                "france", "paris", "lyon", "toulouse", "bordeaux", "nantes", "lille", "marseille", "nice",
-                "grenoble", "sophia antipolis", "rennes", "strasbourg",
-                "germany", "deutschland", "berlin", "munich", "muenchen", "münchen", "hamburg", "frankfurt",
-                "cologne", "koeln", "köln", "stuttgart", "duesseldorf", "düsseldorf", "dusseldorf", "leipzig",
-                "dresden", "karlsruhe", "nuremberg", "nürnberg", "hannover", "bremen", "bonn", "mannheim", "aachen",
-                "greece", "athens", "thessaloniki",
-                "hungary", "budapest", "debrecen", "szeged",
-                "iceland", "reykjavik",
-                "ireland", "dublin", "cork", "galway", "limerick",
-                "italy", "italia", "milan", "milano", "rome", "roma", "turin", "torino", "bologna", "naples",
-                "florence", "firenze", "pisa", "padova", "genoa",
-                "latvia", "riga",
-                "lithuania", "vilnius", "kaunas",
-                "luxembourg",
-                "malta", "valletta",
-                "moldova", "chisinau",
-                "monaco", "andorra", "liechtenstein", "san marino",
-                "montenegro", "podgorica", "albania", "tirana", "bosnia", "sarajevo", "banja luka",
-                "serbia", "belgrade", "beograd", "novi sad", "nis",
-                "north macedonia", "macedonia", "skopje",
-                "netherlands", "holland", "nederland", "amsterdam", "rotterdam", "utrecht", "eindhoven", "the hague",
-                "hague", "den haag", "delft", "groningen", "haarlem", "leiden", "nijmegen", "amstelveen",
-                "norway", "oslo", "bergen", "trondheim", "stavanger",
-                "poland", "polska", "warsaw", "warszawa", "krakow", "kraków", "cracow", "wroclaw", "wrocław",
-                "poznan", "poznań", "gdansk", "gdańsk", "gdynia", "katowice", "lodz", "łódź", "szczecin", "lublin",
-                "portugal", "lisbon", "lisboa", "porto", "braga", "coimbra", "aveiro",
-                "romania", "bucharest", "bucuresti", "bucurești", "cluj", "cluj napoca", "timisoara", "timișoara",
-                "iasi", "iași", "brasov", "sibiu",
-                "slovakia", "bratislava", "kosice", "košice",
-                "slovenia", "ljubljana", "maribor",
-                "spain", "espana", "españa", "madrid", "barcelona", "valencia", "malaga", "málaga", "seville",
-                "sevilla", "bilbao", "zaragoza", "alicante", "palma", "santander",
-                "sweden", "sverige", "stockholm", "gothenburg", "goteborg", "göteborg", "malmo", "malmö", "lund",
-                "uppsala", "linkoping", "linköping",
-                "switzerland", "schweiz", "suisse", "zurich", "zuerich", "zürich", "geneva", "geneve", "genève",
-                "basel", "lausanne", "bern", "zug", "lugano", "winterthur",
-                "ukraine", "kyiv", "kiev", "lviv", "kharkiv", "odesa", "odessa", "dnipro", "vinnytsia", "україна",
-                "київ", "львів",
-                "united kingdom", "uk", "great britain", "britain", "england", "scotland", "wales",
-                "northern ireland", "london", "manchester", "edinburgh", "glasgow", "bristol", "cambridge", "oxford",
-                "birmingham", "leeds", "liverpool", "sheffield", "newcastle", "nottingham", "belfast", "cardiff",
-                "reading", "brighton", "milton keynes", "aberdeen", "leicester"),
+            [LocationRegion.Europe] = Set([.. EuropeWideKeys, .. WesternEuropeKeys, .. EasternEuropeKeys]),
 
             [LocationRegion.Cis] = Set(
                 "cis", "снг",
@@ -233,26 +298,7 @@ public static class LocationRegions
                 "georgia country", "tbilisi", "тбилиси", "грузия", "batumi", "батуми",
                 "azerbaijan", "азербайджан", "baku", "баку"),
 
-            [LocationRegion.Americas] = Set(
-                "americas", "north america", "south america", "latam", "latin america",
-                "usa", "u s a", "united states", "us", "america",
-                "new york", "nyc", "brooklyn", "san francisco", "bay area", "silicon valley", "seattle", "bellevue",
-                "austin", "boston", "cambridge ma", "chicago", "los angeles", "san diego", "san jose", "sunnyvale",
-                "mountain view", "palo alto", "santa clara", "denver", "boulder", "atlanta", "dallas", "houston",
-                "miami", "orlando", "tampa", "portland", "phoenix", "philadelphia", "pittsburgh", "detroit",
-                "minneapolis", "salt lake city", "las vegas", "nashville", "charlotte", "raleigh", "durham",
-                "washington dc", "arlington", "reston", "mclean", "columbus", "cleveland", "kansas city",
-                "california", "texas", "florida", "virginia", "massachusetts", "washington state", "new jersey",
-                "illinois", "colorado", "oregon", "utah", "arizona", "north carolina", "pennsylvania", "michigan",
-                "canada", "toronto", "vancouver", "montreal", "ottawa", "calgary", "edmonton", "waterloo",
-                "mississauga", "quebec", "ontario", "british columbia", "halifax", "winnipeg",
-                "mexico", "mexico city", "guadalajara", "monterrey", "queretaro",
-                "brazil", "brasil", "sao paulo", "são paulo", "rio de janeiro", "belo horizonte", "curitiba",
-                "porto alegre", "recife", "florianopolis",
-                "argentina", "buenos aires", "cordoba", "rosario",
-                "chile", "santiago", "colombia", "bogota", "bogotá", "medellin", "medellín", "peru", "lima",
-                "uruguay", "montevideo", "paraguay", "asuncion", "ecuador", "quito", "guayaquil",
-                "costa rica", "san jose costa rica", "panama", "guatemala", "dominican republic", "santo domingo"),
+            [LocationRegion.Americas] = Set([.. UsaKeys, .. OtherAmericasKeys]),
 
             [LocationRegion.Asia] = Set(
                 "asia", "apac", "southeast asia", "south asia",
@@ -295,5 +341,14 @@ public static class LocationRegions
                 "gold coast", "hobart", "new south wales", "victoria australia", "queensland",
                 "new zealand", "auckland", "wellington", "christchurch", "dunedin",
                 "fiji", "suva", "papua new guinea", "port moresby")
+        }.ToFrozenDictionary();
+
+    private static readonly FrozenDictionary<FocusArea, FrozenSet<string>> AreaKeys =
+        new Dictionary<FocusArea, FrozenSet<string>>
+        {
+            [FocusArea.WesternEurope] = Set([.. EuropeWideKeys, .. WesternEuropeKeys]),
+            [FocusArea.EasternEurope] = Set([.. EuropeWideKeys, .. EasternEuropeKeys]),
+            [FocusArea.Usa] = Set(UsaKeys),
+            [FocusArea.Asia] = Keys[LocationRegion.Asia]
         }.ToFrozenDictionary();
 }

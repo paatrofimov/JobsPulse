@@ -6,22 +6,30 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 
 /// <summary>
 /// Renders <see cref="WatchlistStats"/> - the same body for the periodic digest and for the statistics screen, only
-/// the header differs. Static and IO-free, so it is testable on its own.
+/// the header differs. Static and IO-free, so it is testable on its own. A company in a top list is a link when
+/// <c>links</c> knows it (<see cref="DeepLinks.Companies"/>) - a tap opens its vacancies.
 /// </summary>
 public static class StatsFormatter
 {
-    public static string Format(WatchlistStats stats, BotLanguage language, bool digest)
+    public static string Format(
+        WatchlistStats stats,
+        BotLanguage language,
+        bool digest,
+        Func<string, string?>? links = null)
     {
         var title = digest ? TextKey.StatsDigestTitle : TextKey.StatsTitle;
         var name = MessageFormatter.Escape(stats.WatchlistName);
 
         return $"<h6>{BotTexts.Get(title, language, name, Days(stats.Days, language))}</h6>"
                + $"<p>{BotTexts.Get(TextKey.ChangesPeriod, language, Period(stats.From, stats.To, language))}</p>"
-               + Body(stats, language);
+               + Body(stats, language, links);
     }
 
     /// <summary>What one polling or registry run changed in a watchlist, under what the run walked.</summary>
-    public static string FormatRun(TraversalRunReport report, BotLanguage language)
+    public static string FormatRun(
+        TraversalRunReport report,
+        BotLanguage language,
+        Func<string, string?>? links = null)
     {
         var title = report.Kind == TraversalKind.Registry ? TextKey.RunTitleRegistry : TextKey.RunTitlePolling;
         var stats = report.Stats;
@@ -42,7 +50,7 @@ public static class StatsFormatter
                + (changes is null ? "" : $"<br>{changes}")
                + "</p>"
                + $"<p>{walked}</p>"
-               + Body(stats, language);
+               + Body(stats, language, links);
     }
 
     /// <summary>What one discovery run mined. Not bound to a watchlist.</summary>
@@ -85,7 +93,7 @@ public static class StatsFormatter
         return BotTexts.Get(TextKey.StatsPeriod, language, Moment(from, withYear, language), Moment(to, withYear, language));
     }
 
-    private static string Body(WatchlistStats stats, BotLanguage language)
+    private static string Body(WatchlistStats stats, BotLanguage language, Func<string, string?>? links)
     {
         var sb = new StringBuilder();
 
@@ -103,6 +111,7 @@ public static class StatsFormatter
                 language,
                 x.Activity.Events,
                 ActivityRanks.Breakdown(x.Activity, language)),
+            links,
             language));
         sb.Append("</p>");
 
@@ -111,6 +120,7 @@ public static class StatsFormatter
             stats.TopByOpened,
             x => x.CompanyName,
             x => BotTexts.Get(TextKey.StatsOpenedRow, language, x.Count),
+            links,
             language));
         sb.Append("</p>");
 
@@ -148,6 +158,7 @@ public static class StatsFormatter
         IReadOnlyList<T> rows,
         Func<T, string> name,
         Func<T, string> value,
+        Func<string, string?>? links,
         BotLanguage language)
     {
         if (rows.Count == 0)
@@ -155,6 +166,11 @@ public static class StatsFormatter
 
         return string.Join(
             "<br>",
-            rows.Select((row, i) => $"{i + 1}. {MessageFormatter.Escape(name(row))} — {value(row)}"));
+            rows.Select((row, i) => $"{i + 1}. {Company(name(row), links)} — {value(row)}"));
     }
+
+    private static string Company(string name, Func<string, string?>? links) =>
+        links?.Invoke(name) is { } url
+            ? $"<a href=\"{MessageFormatter.Escape(url)}\">{MessageFormatter.Escape(name)}</a>"
+            : MessageFormatter.Escape(name);
 }

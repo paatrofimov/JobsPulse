@@ -42,6 +42,8 @@ public static class TelegramServiceCollectionExtensions
         services.AddSingleton<VacanciesScreen>();
         services.AddSingleton<LanguageScreen>();
         services.AddSingleton<StatsScreen>();
+        services.AddSingleton<ShortlistScreen>();
+        services.AddSingleton<CompanyVacanciesScreen>();
         services.AddSingleton<AdminScreen>();
         services.AddSingleton<ScreenRouter>();
         services.AddSingleton<BotUpdateHandler>();

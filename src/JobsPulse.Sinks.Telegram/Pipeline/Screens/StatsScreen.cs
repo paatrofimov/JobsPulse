@@ -17,6 +17,7 @@ public sealed class StatsScreen(
     WatchlistAccess access,
     WatchlistStatsService stats,
     UserSessionStore sessions,
+    TelegramClientFacade client,
     IOptionsMonitor<DigestOptions> options)
 {
     public const int DefaultDays = 7;
@@ -44,7 +45,9 @@ public sealed class StatsScreen(
             .Button(TextKey.StatsCustom, CallbackAction.StatsCustom, watchlistId, days)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
 
-        return new ScreenView(StatsFormatter.Format(result, ctx.Language, digest: false), keyboard);
+        var links = DeepLinks.Companies(watchlist, await client.GetBotUsernameAsync(ct));
+
+        return new ScreenView(StatsFormatter.Format(result, ctx.Language, digest: false, links), keyboard);
     }
 
     public async Task<ScreenView> PromptCustomAsync(BotContext ctx, long watchlistId, int days, CancellationToken ct)

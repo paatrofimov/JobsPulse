@@ -47,7 +47,8 @@ where `SystemWatchlistClaimer` runs - then decides what the update is:
   An un-editable message (too old) falls back to sending a new one.
 - **plain text while a step is armed** - the answer to a question the bot just asked (`UserSessionStore`). A session
   holding only candidate buttons is left alone: it waits for a tap, not for text.
-- a **user command** - `/start`, `/menu`, `/language`, `/help`.
+- a **user command** - `/start`, `/menu`, `/language`, `/help`. `/start c<entryId>` is a tapped company link
+  (`DeepLinks`) and opens `CompanyVacanciesScreen` instead of the menu.
 - an **admin command** - handed to `CommandRouter`, but only from an admin chat; everybody else gets a localized
   refusal and the menu.
 
@@ -119,6 +120,15 @@ itself.
   (`PendingInputKind.StatsDays`; a wrong answer keeps the step armed). Counted when the button is pressed. The period
   travels in the page field of the callback (`so:<watchlist>:<days>`). Opened by `📊 Statistics` on `WatchlistScreen`,
   read-only, so somebody else's watchlist has it too.
+- `ShortlistScreen` - «where to apply first» (`🎯 Shortlist` on `WatchlistScreen`, read-only): the top 10 enabled
+  companies of a watchlist by matching vacancies inside one slice, each with its 3 best vacancies (`Shortlist`). A
+  slice is a `FocusArea` (Western / Eastern Europe, USA, Asia - `sr:<watchlist>:<area>`) or the vacancies published
+  in the last 3 / 7 / 14 / typed days (`sf:<watchlist>:<days>`, `PendingInputKind.ShortlistDays`). The whole feed is
+  ranked (capped at 5000). Company names are deep links to `CompanyVacanciesScreen`.
+- `CompanyVacanciesScreen` - the matching vacancies of one company, freshest first and unfolded
+  (`cv:<entry>:<page>`), the target of every company link. All enabled boards under the company name are shown; the
+  linked entry is shown even when disabled. Loaded per board (`IStateStore.LoadMatchedVacanciesAsync` with board
+  keys), so the cap of the whole feed does not cut a company off.
 - `LanguageScreen` - Russian / English, stored on the user so it also applies to notifications hours later.
 - `AdminScreen` - the door to the operator commands, and a refusal for everybody else. It opens with the traversal
   progress block (`ProgressReporter`) and a `🔄 Refresh` button, because that is the one thing an operator wants
@@ -193,7 +203,8 @@ under them is an empty page to a reader. Size is bounded twice - by the **visibl
 counts against the message limit, and by the **raw** html, which is what it has to accept. A page of long link targets
 can be five times its visible size, and a rejected message shows the reader no screen at all.
 
-**Every** block is a collapsed `<details><summary>glyph, name, count…` block, whatever its size - the rich message HTML
+**Every** block is a collapsed `<details><summary>glyph, name, count…` block (unless `fold: false` - one company's
+screen, where a fold would only hide the list the reader asked for), whatever its size - the rich message HTML
 telegram takes supports it, and the page then opens as the list of headers, which is what makes a whole watchlist
 readable on one screen. Folding only long blocks was tried first and dropped: a list where some blocks are open and
 some are not reads as two different lists. A block continued on the next page closes its `</details>` before the page
@@ -214,6 +225,26 @@ reader wants to know), and the regions are tested in enum order, so a vacancy op
 European - the priority the whole location grouping exists for. An unrecognized location is `Unknown` and is still
 shown last, never dropped. `ByBoard` is the company-level answer: the region most of a company's vacancies name, with
 a tie going to the earlier region and therefore to Europe.
+
+`IsIn(vacancy, FocusArea)` is the shortlist's finer question, and not a single answer: Europe is split into Western
+and Eastern (CEE, the Baltics, the Balkans, Ukraine; the CIS stays apart), the USA is apart from the rest of the
+Americas («North America» counts as the USA, a bare «America» does not - it is a word of «Latin America»), and a
+pan-European key («EMEA», «EU») is in both halves. The region tables are the unions of the same key lists, so
+`LocationRegion` grouping is unchanged.
+
+## Shortlist
+
+Pure ranking behind `ShortlistScreen`. Only enabled entries count; companies are grouped by name (`ShortlistCompany`:
+name, the entry its link opens, worked-through mark, count in the slice, top vacancies). Companies: most vacancies in
+the slice, then the best relevance, then the freshest vacancy, then name. Vacancies: **relevance** - how many wanted
+title words of the filter (`TitleAnyOf`, in its match mode) the title hits - then freshness (the listing date,
+falling back to `FirstSeenAt`), then title. `PublishedWithin` is the freshness slice.
+
+## DeepLinks
+
+`https://t.me/<bot>?start=c<entryId>` - a link inside a message that opens a screen: telegram sends
+`/start c<entryId>` back. `Companies(watchlist, bot)` maps a company name to the link of its first enabled entry and
+returns null for anything else (a disabled or departed company, an unknown bot username), so such names stay text.
 
 Pages are packed by size rather than by a fixed count: blocks are appended while the *visible* length stays under
 `PageBudget`, so a screen carries every vacancy that still fits. Visible length is measured with the markup and the
@@ -338,7 +369,8 @@ list of names made the message unreadable - and the two top lists) under three h
 the statistics screen, and a run report, which adds what the run walked (`FormatRun`). Two periods are written apart:
 `⏱` the run itself and `🗓` the changes it covers - the digest and the screen have only the latter, a polling or
 registry run has both (`CycleReport.ChangesSince`, or «every company was polled for the first time»), a discovery run
-names the crawl indexes it walked. `FormatDiscovery` renders a discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
+names the crawl indexes it walked. With a `links` resolver (`DeepLinks.Companies`) the companies of both tops are
+links to their vacancies - the digest, a run report and the screen all pass one. `FormatDiscovery` renders a discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
 
 ## TelegramClientFacade
 
@@ -347,7 +379,8 @@ publish the command menu, poll for updates. «Message is not modified» from an 
 same button twice is not an error. A failure to answer a callback query is swallowed: it must never break the screen
 that was just rendered.
 
-`SetWebhookAsync` / `GetWebhookUrlAsync` serve the webhook mode.
+`SetWebhookAsync` / `GetWebhookUrlAsync` serve the webhook mode. `GetBotUsernameAsync` asks `getMe` once and keeps
+the answer - deep links need it, and it does not change while the process lives.
 
 ## BotMenuPublisher
 

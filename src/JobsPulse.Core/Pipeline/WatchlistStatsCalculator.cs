@@ -6,7 +6,7 @@ namespace JobsPulse.Core.Pipeline;
 /// Pure function from the event history of a watchlist to its statistics for one period - no IO, no clock.
 /// Whether a vacancy is open at a moment is decided by replaying the history up to it: the last event of a post
 /// being <see cref="VacancyChangeKind.New"/> means it is open. Companies are counted by name, so one company watched
-/// through two boards is one company.
+/// through two boards is one company. A disabled company is not counted anywhere - the user switched it off.
 /// </summary>
 public static class WatchlistStatsCalculator
 {
@@ -30,8 +30,14 @@ public static class WatchlistStatsCalculator
 
         var names = CompanyNames(watchlist, events);
 
+        var disabled = watchlist.Entries
+            .Where(e => !e.Enabled)
+            .Select(e => e.BoardKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var window = events
             .Where(e => e.OccurredAt >= from && e.OccurredAt <= to && (counts is null || counts(e)))
+            .Where(e => !disabled.Contains(e.BoardKey))
             .ToList();
 
         var openAtStart = CompaniesWithOpenPosts(events.Where(e => e.OccurredAt < from), names);

@@ -257,6 +257,9 @@ notification, the state that produced it and the match row that proves it was re
 guarded by `content_hash IS DISTINCT FROM` (plus the filter hash), so an unchanged match is a no-op; removals are one
 statement per watchlist, because the composite key cannot be passed as a single array.
 
+`LoadMatchedVacanciesAsync` reads the open vacancies behind a watchlist's match rows, freshest first; the overload
+with board keys (`{sourceId}/{boardId}`) narrows it to one company before the cap.
+
 `CountMatchesByBoardAsync` is the per-board read of that layer for one watchlist - a grouped count keyed
 `{sourceId}/{boardId}`, the same key shape `CountOpenByBoardAsync` uses, so the bot's company list pairs the two
 without translating anything.

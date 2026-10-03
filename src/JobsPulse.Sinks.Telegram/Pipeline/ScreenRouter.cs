@@ -20,6 +20,8 @@ public sealed class ScreenRouter(
     VacanciesScreen vacancies,
     LanguageScreen language,
     StatsScreen stats,
+    ShortlistScreen shortlist,
+    CompanyVacanciesScreen companyVacancies,
     AdminScreen admin)
 {
     public async Task<(ScreenView View, BotContext Context)> RenderAsync(
@@ -99,6 +101,12 @@ public sealed class ScreenRouter(
             CallbackAction.StatsOpen => await stats.RenderAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.StatsCustom => await stats.PromptCustomAsync(ctx, data.Id, data.Page, ct),
 
+            CallbackAction.ShortlistFresh => await shortlist.RenderFreshAsync(ctx, data.Id, data.Page, ct),
+            CallbackAction.ShortlistRegion => await shortlist.RenderRegionAsync(ctx, data.Id, data.Page, ct),
+            CallbackAction.ShortlistCustom => await shortlist.PromptCustomAsync(ctx, data.Id, data.Page, ct),
+
+            CallbackAction.CompanyVacancies => await companyVacancies.RenderAsync(ctx, data.Id, data.Page, ct),
+
             CallbackAction.Language => language.Render(ctx),
             CallbackAction.Admin => await admin.RenderAsync(ctx, ct),
 
@@ -131,6 +139,7 @@ public sealed class ScreenRouter(
             PendingInputKind.CompanyQuery => await addCompany.SearchAsync(ctx, session.WatchlistId, text, ct),
             PendingInputKind.CompanyName => await companies.FindAsync(ctx, session.WatchlistId, text, ct),
             PendingInputKind.StatsDays => await stats.ApplyCustomAsync(ctx, session.WatchlistId, text, ct),
+            PendingInputKind.ShortlistDays => await shortlist.ApplyCustomAsync(ctx, session.WatchlistId, text, ct),
             _ => null
         };
 

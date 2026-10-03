@@ -27,7 +27,9 @@ public sealed class TelegramReportSink(
     {
         var (chatId, language) = await RouteAsync(watchlist, ct);
 
-        return await SendAsync(chatId, StatsFormatter.Format(stats, language, digest: true), ct);
+        var links = DeepLinks.Companies(watchlist, await client.GetBotUsernameAsync(ct));
+
+        return await SendAsync(chatId, StatsFormatter.Format(stats, language, digest: true, links), ct);
     }
 
     public async Task<DeliveryResult> DeliverRunAsync(
@@ -37,7 +39,9 @@ public sealed class TelegramReportSink(
     {
         var (chatId, language) = await RouteAsync(watchlist, ct);
 
-        return await SendAsync(chatId, StatsFormatter.FormatRun(report, language), ct);
+        var links = DeepLinks.Companies(watchlist, await client.GetBotUsernameAsync(ct));
+
+        return await SendAsync(chatId, StatsFormatter.FormatRun(report, language, links), ct);
     }
 
     public async Task<DeliveryResult> DeliverDiscoveryAsync(DiscoveryRunReport report, CancellationToken ct)

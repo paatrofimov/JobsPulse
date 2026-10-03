@@ -53,6 +53,7 @@ public enum TextKey
     WatchlistOpenVacancies,
     WatchlistOpenCompanies,
     WatchlistStats,
+    WatchlistShortlist,
     WatchlistEditFilter,
     WatchlistAddCompany,
     WatchlistPause,
@@ -192,6 +193,23 @@ public enum TextKey
     StatsCustom,
     StatsCustomPrompt,
     StatsCustomInvalid,
+
+    // Shortlist and the vacancies of one company
+    AreaWesternEurope,
+    AreaEasternEurope,
+    AreaUsa,
+    AreaAsia,
+    ShortlistTitle,
+    ShortlistFresh,
+    ShortlistRegion,
+    ShortlistHint,
+    ShortlistCompanyRow,
+    ShortlistWorked,
+    ShortlistEmpty,
+    ShortlistCustomPrompt,
+    CompanyVacanciesTitle,
+    CompanyVacanciesEmpty,
+    CompanyVacanciesAll,
 
     // Run reports
     RunTitlePolling,

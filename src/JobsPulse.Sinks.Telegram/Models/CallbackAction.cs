@@ -76,5 +76,17 @@ public enum CallbackAction
     StatsOpen,
 
     /// <summary>Asks for a number of days instead of offering a button per period.</summary>
-    StatsCustom
+    StatsCustom,
+
+    /// <summary>The vacancies of one company, freshest first; the id is a watchlist entry. Also a deep link target.</summary>
+    CompanyVacancies,
+
+    /// <summary>The shortlist of a watchlist over the vacancies published in the last days; the page carries the days.</summary>
+    ShortlistFresh,
+
+    /// <summary>The shortlist of a watchlist in one <c>FocusArea</c>; the page carries the area.</summary>
+    ShortlistRegion,
+
+    /// <summary>Asks for the number of days of a freshness shortlist.</summary>
+    ShortlistCustom
 }

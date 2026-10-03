@@ -57,8 +57,10 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
         IReadOnlyList<Vacancy> vacancies,
         BotLanguage language,
         VacancyGrouping grouping = VacancyGrouping.Company,
-        IReadOnlyDictionary<string, BoardActivity>? activity = null)
+        IReadOnlyDictionary<string, BoardActivity>? activity = null,
+        bool fold = true)
     {
+        var close = fold ? DetailsClose : string.Empty;
         var pages = new List<string>();
         var page = new StringBuilder();
         var used = 0;
@@ -71,7 +73,7 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
             if (block.Lines.Count == 0)
                 continue;
 
-            var header = RenderHeader(block);
+            var header = RenderHeader(block, fold);
             var headerLength = VisibleLength(header);
 
             var pending = true;
@@ -88,7 +90,7 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
                 {
                     // A block continued on the next page is closed here, or the markup of the page would stay open.
                     if (!pending)
-                        page.Append(DetailsClose);
+                        page.Append(close);
 
                     pages.Add(page.ToString());
                     page.Clear();
@@ -110,7 +112,7 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
             }
 
             if (!pending)
-                page.Append(DetailsClose);
+                page.Append(close);
         }
 
         if (lines > 0)
@@ -257,16 +259,18 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
 
     /// <summary>
     /// The header lives in the <c>&lt;summary&gt;</c> - that line is what stays on screen while the block is
-    /// collapsed, so it has to name the group and its size on its own.
+    /// collapsed, so it has to name the group and its size on its own. Unfolded, it is a plain bold line.
     /// </summary>
-    private static string RenderHeader(Block block)
+    private static string RenderHeader(Block block, bool fold)
     {
         var note = block.Note is null ? string.Empty : $" · {block.Note}";
+        var text = $"<b>{block.Glyph} {block.Title} · {block.Count}{note}</b>";
 
-        return $"<details><summary><b>{block.Glyph} {block.Title} · {block.Count}{note}</b></summary>";
+        return fold ? $"<details><summary>{text}</summary>" : $"<p>{text}</p>";
     }
 
-    private string RenderVacancy(Vacancy vacancy, string? company, BotLanguage language)
+    /// <summary>One vacancy: the title as a link, then the company (when given), the location and the date.</summary>
+    public string RenderVacancy(Vacancy vacancy, string? company, BotLanguage language)
     {
         var title = $"<a href=\"{MessageFormatter.Escape(vacancy.Url)}\">"
                     + $"<b>{MessageFormatter.Escape(vacancy.Title)}</b></a>";
@@ -286,7 +290,8 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
         return $"<p>{title}<br> {prefix}{MessageFormatter.Escape(location)} · {date}</p>";
     }
 
-    private static DateTimeOffset? PublishedAt(Vacancy vacancy) => vacancy.FirstPublishedAt ?? vacancy.UpdatedAt;
+    /// <summary>The date every listing sorts by - «freshest first» means this one.</summary>
+    public static DateTimeOffset? PublishedAt(Vacancy vacancy) => vacancy.FirstPublishedAt ?? vacancy.UpdatedAt;
 
     /// <summary>
     /// What telegram counts against the message limit: the text the reader sees, without the markup and without the

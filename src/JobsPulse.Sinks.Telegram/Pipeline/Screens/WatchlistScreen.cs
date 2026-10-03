@@ -54,7 +54,11 @@ public sealed class WatchlistScreen(
         var keyboard = new KeyboardBuilder(ctx.Language)
             .Button(TextKey.WatchlistOpenVacancies, CallbackAction.VacanciesOpen, watchlist.Id)
             .Button(TextKey.WatchlistOpenCompanies, CallbackAction.CompaniesOpen, watchlist.Id)
-            .Button(TextKey.WatchlistStats, CallbackAction.StatsOpen, watchlist.Id, StatsScreen.DefaultDays)
+            .Pair(
+                (TextKey.WatchlistShortlist, CallbackAction.ShortlistFresh),
+                (TextKey.WatchlistStats, CallbackAction.StatsOpen),
+                watchlist.Id,
+                StatsScreen.DefaultDays)
             .ButtonIf(resolved.CanEdit, TextKey.WatchlistAddCompany, CallbackAction.CompanyAdd, watchlist.Id)
             .ButtonIf(resolved.CanEdit, TextKey.WatchlistEditFilter, CallbackAction.FilterOpen, watchlist.Id)
             .ButtonIf(resolved.CanEdit, TextKey.WatchlistRename, CallbackAction.WatchlistRename, watchlist.Id)
