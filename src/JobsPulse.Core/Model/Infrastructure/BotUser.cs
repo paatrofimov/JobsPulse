@@ -16,6 +16,9 @@ public sealed record BotUser
 
     public BotLanguage Language { get; init; } = BotLanguage.English;
 
+    /// <summary>No run reports: neither the summary of a polling or registry run nor what a discovery run mined.</summary>
+    public bool SilentMode { get; init; }
+
     public DateTimeOffset CreatedAt { get; init; }
 
     public DateTimeOffset LastSeenAt { get; init; }

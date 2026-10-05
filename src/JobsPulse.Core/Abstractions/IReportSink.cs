@@ -5,8 +5,12 @@ namespace JobsPulse.Core.Abstractions;
 /// <summary>Delivers statistics and run reports. A watchlist's report goes wherever its notifications go.</summary>
 public interface IReportSink
 {
-    /// <summary>The scheduled statistics of a watchlist for a period.</summary>
-    Task<DeliveryResult> DeliverDigestAsync(Watchlist watchlist, WatchlistStats stats, CancellationToken ct);
+    /// <summary>The scheduled statistics of a watchlist since its previous digest, with a way to open every change.</summary>
+    Task<DeliveryResult> DeliverDigestAsync(
+        Watchlist watchlist,
+        WatchlistStats stats,
+        WatchlistDigest digest,
+        CancellationToken ct);
 
     /// <summary>What one polling or registry run changed in a watchlist.</summary>
     Task<DeliveryResult> DeliverRunAsync(Watchlist watchlist, TraversalRunReport report, CancellationToken ct);

@@ -25,4 +25,6 @@ public interface IBotUserStorage
     Task<IReadOnlyDictionary<long, BotUser>> GetManyAsync(IReadOnlyList<long> telegramUserIds, CancellationToken ct);
 
     Task<bool> SetLanguageAsync(long telegramUserId, BotLanguage language, CancellationToken ct);
+
+    Task<bool> SetSilentModeAsync(long telegramUserId, bool silent, CancellationToken ct);
 }

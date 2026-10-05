@@ -26,7 +26,8 @@ The watchlist configuration lives here now - there is no JSON watchlist any more
   hand-written SQL in `StateStore` matches the EF model without explicit column mappings.
 - `IStateStore`, `IOutboxStorage`, `IBoardRegistryStorage`, `IBoardPollStateStorage`, `ITraversalRunStorage`,
   `IJobRunHistoryStorage`,
-  `IWatchlistStorage`, `IDiscoveryCheckpointStorage` and `IBotUserStorage` as singletons; implementations are `internal`.
+  `IWatchlistStorage`, `IDiscoveryCheckpointStorage`, `IBotUserStorage`, `IWatchlistEventStorage` and
+  `IWatchlistDigestStorage` as singletons; implementations are `internal`.
 
 ## NpgsqlBatchExecutor
 
@@ -64,6 +65,8 @@ scheduled outside now) while adding the nullable `watchlist_event.run_id`. `2026
 `watchlist_event.location` and fills it for the existing rows from `seen_vacancy` (location, else the first office). The first one **seeds** the history with a `New` event per current
 `watchlist_vacancy` row, stamped with the vacancy's `first_seen_at` - otherwise every company would read as «new» in
 the first statistics. Closures before the upgrade are restored by `--role historyrepair` (`WatchlistHistoryRepair`).
+`20261005095244_AddBotUserSilentMode` adds `bot_user.silent_mode` (false). `20261005100232_AddWatchlistDigest` adds `watchlist_digest`
+(index `(watchlist_id, period_to)`, cascade FK to `watchlist`).
 Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
@@ -175,6 +178,11 @@ the company name as reported and `change_kind` stored as `int`. Append-only and 
 statistics replay the whole history of a watchlist. Deleted with the watchlist. `run_id` is the `traversal_run` of
 the job that committed the row, without a FK - those rows are dropped after a day, the history is kept.
 
+## PersistentWatchlistDigest
+
+Table `watchlist_digest` - one row per scheduled digest: `period_from` / `period_to`, `previous_id` (the digest it
+continues, no FK), `created_at` and `delivered_at` (null until the message is sent). Deleted with the watchlist.
+
 ## PersistentWatchlistVacancy
 
 Table `watchlist_vacancy` - the match layer, one row per `(watchlist, vacancy)`, unique on
@@ -189,7 +197,7 @@ what was sent stays in `outbox`. `content_hash` is the content last reported to 
 
 Table `bot_user` - one row per person talking to the bot, unique on `telegram_user_id` (the identity a watchlist owner
 is stored as; a chat id is not stable enough for that). `chat_id`, `display_name` and `last_seen_at` are refreshed on
-every incoming update; `language` is a setting and is only ever written by the user.
+every incoming update; `language` and `silent_mode` are settings and are only ever written by the user.
 
 ## PersistentCrawlIndexState
 
@@ -334,7 +342,12 @@ without sorting again.
 ## WatchlistEventStorage
 
 Pure EF read of one watchlist's history up to a moment, ordered by `occurred_at`, then `id`. The pipeline's writes are
-in `StateStore.CommitAsync`; `AppendAsync` is a plain EF insert for restored history.
+in `StateStore.CommitAsync`; `AppendAsync` is a plain EF insert for restored history. `LoadChangesAsync` left-joins
+`seen_vacancy` on `(source_id, board_id, post_id)` for the title and the url - closed rows are kept there.
+
+## WatchlistDigestStorage
+
+Pure EF over `watchlist_digest`: a handful of rows per watchlist and digest run.
 
 ## BotUserStorage
 

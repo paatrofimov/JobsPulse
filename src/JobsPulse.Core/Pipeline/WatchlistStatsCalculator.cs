@@ -40,8 +40,11 @@ public static class WatchlistStatsCalculator
             .Where(e => !disabled.Contains(e.BoardKey))
             .ToList();
 
-        var openAtStart = CompaniesWithOpenPosts(events.Where(e => e.OccurredAt < from), names);
-        var openAtEnd = CompaniesWithOpenPosts(events.Where(e => e.OccurredAt <= to), names);
+        var postsAtStart = OpenPosts(events.Where(e => e.OccurredAt < from), disabled);
+        var postsAtEnd = OpenPosts(events.Where(e => e.OccurredAt <= to), disabled);
+
+        var openAtStart = Companies(postsAtStart, names);
+        var openAtEnd = Companies(postsAtEnd, names);
 
         var openedByCompany = window
             .Where(e => e.Kind == VacancyChangeKind.New)
@@ -94,30 +97,35 @@ public static class WatchlistStatsCalculator
             NewCompanies = newCompanies,
             EmptiedCompanies = emptiedCompanies,
             TopByActivity = topByActivity,
-            TopByOpened = topByOpened
+            TopByOpened = topByOpened,
+            OpenAtStart = new OpenCounts(postsAtStart.Count, openAtStart.Count),
+            OpenAtEnd = new OpenCounts(postsAtEnd.Count, openAtEnd.Count)
         };
     }
 
-    /// <summary>Companies with at least one open post after replaying <paramref name="history"/> (oldest first).</summary>
-    private static HashSet<string> CompaniesWithOpenPosts(
+    /// <summary>
+    /// The posts open after replaying <paramref name="history"/> (oldest first), as (board, post), the disabled boards
+    /// left out.
+    /// </summary>
+    private static HashSet<(string Board, string Post)> OpenPosts(
         IEnumerable<WatchlistEvent> history,
-        Func<string, string> names)
+        HashSet<string> disabled)
     {
-        var byBoard = new Dictionary<string, Dictionary<string, bool>>(StringComparer.OrdinalIgnoreCase);
+        var open = new Dictionary<(string Board, string Post), bool>();
 
         foreach (var e in history)
-        {
-            if (!byBoard.TryGetValue(e.BoardKey, out var posts))
-                byBoard[e.BoardKey] = posts = new Dictionary<string, bool>(StringComparer.Ordinal);
+            open[(e.BoardKey.ToLowerInvariant(), e.PostId)] = e.Kind == VacancyChangeKind.New;
 
-            posts[e.PostId] = e.Kind == VacancyChangeKind.New;
-        }
-
-        return byBoard
-            .Where(x => x.Value.Values.Any(open => open))
-            .Select(x => names(x.Key))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return open
+            .Where(x => x.Value && !disabled.Contains(x.Key.Board))
+            .Select(x => x.Key)
+            .ToHashSet();
     }
+
+    private static HashSet<string> Companies(HashSet<(string Board, string Post)> posts, Func<string, string> names) =>
+        posts
+            .Select(x => names(x.Board))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static BoardActivity Sum(IEnumerable<BoardActivity> boards)
     {

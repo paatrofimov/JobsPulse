@@ -19,9 +19,11 @@ public sealed class ScreenRouter(
     AddCompanyScreen addCompany,
     VacanciesScreen vacancies,
     LanguageScreen language,
+    SilentModeScreen silentMode,
     StatsScreen stats,
     ShortlistScreen shortlist,
     CompanyVacanciesScreen companyVacancies,
+    DigestChangesScreen digestChanges,
     AdminScreen admin)
 {
     public async Task<(ScreenView View, BotContext Context)> RenderAsync(
@@ -29,9 +31,12 @@ public sealed class ScreenRouter(
         CallbackData data,
         CancellationToken ct)
     {
-        // The language screen is the one action that changes the context it is rendered in.
+        // The two user settings change the context they are rendered in.
         if (data.Action == CallbackAction.SetLanguage)
             return await language.SetAsync(ctx, data.Id, menu, ct);
+
+        if (data.Action == CallbackAction.ToggleSilentMode)
+            return await silentMode.ToggleAsync(ctx, menu, ct);
 
         var view = await DispatchAsync(ctx, data, ct);
 
@@ -106,6 +111,9 @@ public sealed class ScreenRouter(
             CallbackAction.ShortlistCustom => await shortlist.PromptCustomAsync(ctx, data.Id, data.Page, ct),
 
             CallbackAction.CompanyVacancies => await companyVacancies.RenderAsync(ctx, data.Id, data.Page, ct),
+
+            CallbackAction.DigestChanges or CallbackAction.DigestChangesOpen =>
+                await digestChanges.RenderAsync(ctx, data.Id, data.Page, ct),
 
             CallbackAction.Language => language.Render(ctx),
             CallbackAction.Admin => await admin.RenderAsync(ctx, ct),

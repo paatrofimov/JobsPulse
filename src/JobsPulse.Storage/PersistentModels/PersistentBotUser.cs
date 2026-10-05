@@ -17,6 +17,8 @@ public class PersistentBotUser
     /// <summary>Stored as int, so reordering the enum breaks nothing.</summary>
     public BotLanguage Language { get; set; } = BotLanguage.English;
 
+    public bool SilentMode { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset LastSeenAt { get; set; }

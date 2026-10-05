@@ -20,6 +20,7 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
         [CallbackAction.AllWatchlists] = "aw",
         [CallbackAction.Language] = "l",
         [CallbackAction.SetLanguage] = "ls",
+        [CallbackAction.ToggleSilentMode] = "sm",
         [CallbackAction.Admin] = "ad",
 
         [CallbackAction.WatchlistNew] = "wn",
@@ -68,7 +69,10 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
 
         [CallbackAction.ShortlistFresh] = "sf",
         [CallbackAction.ShortlistRegion] = "sr",
-        [CallbackAction.ShortlistCustom] = "sx"
+        [CallbackAction.ShortlistCustom] = "sx",
+
+        [CallbackAction.DigestChanges] = "dg",
+        [CallbackAction.DigestChangesOpen] = "dgo"
     }.ToFrozenDictionary();
 
     private static readonly FrozenDictionary<string, CallbackAction> Actions =

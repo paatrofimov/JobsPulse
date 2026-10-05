@@ -20,6 +20,7 @@ public class JobsPulseDbContext(
     public DbSet<PersistentWatchlistEntry> WatchlistEntries => Set<PersistentWatchlistEntry>();
     public DbSet<PersistentWatchlistVacancy> WatchlistVacancies => Set<PersistentWatchlistVacancy>();
     public DbSet<PersistentWatchlistEvent> WatchlistEvents => Set<PersistentWatchlistEvent>();
+    public DbSet<PersistentWatchlistDigest> WatchlistDigests => Set<PersistentWatchlistDigest>();
     public DbSet<PersistentBotUser> BotUsers => Set<PersistentBotUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -38,6 +39,7 @@ public class JobsPulseDbContext(
         ConfigureWatchlistEntry(modelBuilder);
         ConfigureWatchlistVacancy(modelBuilder);
         ConfigureWatchlistEvent(modelBuilder);
+        ConfigureWatchlistDigest(modelBuilder);
     }
 
     private static void ConfigureBotUser(ModelBuilder modelBuilder)
@@ -345,6 +347,30 @@ public class JobsPulseDbContext(
         {
             x.WatchlistId,
             x.OccurredAt
+        });
+
+        entity.HasOne(x => x.Watchlist)
+            .WithMany()
+            .HasForeignKey(x => x.WatchlistId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    private static void ConfigureWatchlistDigest(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<PersistentWatchlistDigest>();
+
+        entity.ToTable("watchlist_digest");
+
+        entity.HasKey(x => x.Id);
+
+        entity.Property(x => x.Id)
+            .UseIdentityByDefaultColumn();
+
+        // The next digest starts where the last delivered one of the watchlist ended.
+        entity.HasIndex(x => new
+        {
+            x.WatchlistId,
+            x.PeriodTo
         });
 
         entity.HasOne(x => x.Watchlist)

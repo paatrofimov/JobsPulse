@@ -1,8 +1,11 @@
 using JobsPulse.Core.Abstractions;
 using JobsPulse.Core.Model.Infrastructure;
+using JobsPulse.Sinks.Telegram.Infrastructure.Localization;
+using JobsPulse.Sinks.Telegram.Models;
 using JobsPulse.Sinks.Telegram.Options;
 using Microsoft.Extensions.Options;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.ReplyMarkups;
 using Vostok.Logging.Abstractions;
 
 namespace JobsPulse.Sinks.Telegram.Infrastructure;
@@ -12,7 +15,7 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 /// owner's language, or to <c>Telegram:DefaultChatId</c> for a watchlist nobody owns (the routing of
 /// <see cref="TelegramSink"/>). A discovery report belongs to no watchlist: it goes to the administrators among the
 /// watchlist owners - an administrator is named by username, and the owners are the users the bot has a chat for -
-/// and to the default chat only when none of them is known.
+/// and to the default chat only when none of them is known. An administrator in silent mode gets none.
 /// </summary>
 public sealed class TelegramReportSink(
     TelegramClientFacade client,
@@ -23,13 +26,22 @@ public sealed class TelegramReportSink(
 {
     private readonly ILog ctxLog = log.ForContext<TelegramReportSink>();
 
-    public async Task<DeliveryResult> DeliverDigestAsync(Watchlist watchlist, WatchlistStats stats, CancellationToken ct)
+    public async Task<DeliveryResult> DeliverDigestAsync(
+        Watchlist watchlist,
+        WatchlistStats stats,
+        WatchlistDigest digest,
+        CancellationToken ct)
     {
         var (chatId, language) = await RouteAsync(watchlist, ct);
 
         var links = DeepLinks.Companies(watchlist, await client.GetBotUsernameAsync(ct));
+        var html = StatsFormatter.Format(stats, language, digest: true, links, sincePrevious: digest.PreviousId is not null);
 
-        return await SendAsync(chatId, StatsFormatter.Format(stats, language, digest: true, links), ct);
+        var keyboard = new KeyboardBuilder(language)
+            .Button(TextKey.DigestAllChanges, CallbackAction.DigestChangesOpen, digest.Id)
+            .BuildBare();
+
+        return await SendAsync(chatId, html, ct, keyboard);
     }
 
     public async Task<DeliveryResult> DeliverRunAsync(
@@ -46,10 +58,20 @@ public sealed class TelegramReportSink(
 
     public async Task<DeliveryResult> DeliverDiscoveryAsync(DiscoveryRunReport report, CancellationToken ct)
     {
-        var targets = await AdministratorsAsync(ct);
+        var administrators = await AdministratorsAsync(ct);
 
-        if (targets.Count == 0 && tgOpts.CurrentValue.DefaultChatId is { Length: > 0 } fallback)
+        var targets = administrators
+            .Where(u => !u.SilentMode)
+            .Select(u => (u.ChatId, u.Language))
+            .Distinct()
+            .ToList();
+
+        // Silent administrators are known - the default chat stands in only when nobody is.
+        if (administrators.Count == 0 && tgOpts.CurrentValue.DefaultChatId is { Length: > 0 } fallback)
             targets = [(fallback, BotLanguage.English)];
+
+        if (administrators.Count > 0 && targets.Count == 0)
+            return DeliveryResult.Ok;
 
         if (targets.Count == 0)
             return DeliveryResult.Fail("no administrator chat is known");
@@ -64,7 +86,7 @@ public sealed class TelegramReportSink(
         return DeliveryResult.Ok;
     }
 
-    private async Task<List<(string ChatId, BotLanguage Language)>> AdministratorsAsync(CancellationToken ct)
+    private async Task<List<BotUser>> AdministratorsAsync(CancellationToken ct)
     {
         var ownerIds = (await watchlists.GetAllAsync(ct))
             .Select(w => w.OwnerUserId)
@@ -82,14 +104,16 @@ public sealed class TelegramReportSink(
                 .Where(u => opts.IsAdmin(
                     u.DisplayName is ['@', .. var username] ? username : null,
                     u.ChatId))
-                .Select(u => (u.ChatId, u.Language))
-                .Distinct()
         ];
     }
 
-    private async Task<DeliveryResult> SendAsync(string chatId, string html, CancellationToken ct)
+    private async Task<DeliveryResult> SendAsync(
+        string chatId,
+        string html,
+        CancellationToken ct,
+        ReplyMarkup? keyboard = null)
     {
-        var result = await client.SendRichMessageAsync(chatId, new InputRichMessage { Html = html }, ct);
+        var result = await client.SendRichMessageAsync(chatId, new InputRichMessage { Html = html }, ct, keyboard);
 
         return result.Success
             ? DeliveryResult.Ok

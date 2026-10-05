@@ -130,6 +130,12 @@ itself.
   linked entry is shown even when disabled. Loaded per board (`IStateStore.LoadMatchedVacanciesAsync` with board
   keys), so the cap of the whole feed does not cut a company off.
 - `LanguageScreen` - Russian / English, stored on the user so it also applies to notifications hours later.
+- `DigestChangesScreen` - every change of one digest's period (`dg:<digest>:<page>`): the new and the emptied
+  companies by name, then the vacancies folded by company, busiest first, one line per vacancy with its last change
+  (`🆕❌` - opened and ended inside the period), a link when `seen_vacancy` still has the row. Disabled companies are
+  left out. The digest's button is `dgo` - the same screen sent as a new message, so the digest is not edited away;
+  its pages are `dg` and edit in place.
+- `SilentModeScreen` - the `🔕/🔔` toggle of the main menu (`sm`): flips `BotUser.SilentMode` and re-renders the menu.
 - `AdminScreen` - the door to the operator commands, and a refusal for everybody else. It opens with the traversal
   progress block (`ProgressReporter`) and a `🔄 Refresh` button, because that is the one thing an operator wants
   without typing anything; the commands stay a typed list.
@@ -360,7 +366,9 @@ the outbox has no per-item delivery state - `OutboxDispatcher` then reschedules 
 owner's language, `Telegram:DefaultChatId` for an ownerless watchlist or an owner the bot has never seen. A discovery
 report belongs to no watchlist: it goes to the administrators among the watchlist owners (`TelegramOptions.IsAdmin`
 over an `@username` display name - a first name never matches), and to the default chat only when none is known.
-`DefaultChatId` is empty in production, so the fallback alone would reach nobody.
+An administrator in silent mode is skipped; when every one of them is, nothing is sent and the default chat is not used.
+`DefaultChatId` is empty in production, so the fallback alone would reach nobody. A digest carries a `📋 All changes`
+button (`DigestChangesScreen`).
 
 ## StatsFormatter
 
@@ -370,7 +378,9 @@ the statistics screen, and a run report, which adds what the run walked (`Format
 `⏱` the run itself and `🗓` the changes it covers - the digest and the screen have only the latter, a polling or
 registry run has both (`CycleReport.ChangesSince`, or «every company was polled for the first time»), a discovery run
 names the crawl indexes it walked. With a `links` resolver (`DeepLinks.Companies`) the companies of both tops are
-links to their vacancies - the digest, a run report and the screen all pass one. `FormatDiscovery` renders a discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
+links to their vacancies - the digest, a run report and the screen all pass one. With `OpenAtStart` / `OpenAtEnd`
+(the digest and the screen) it adds `📦` open vacancies and companies against the start of the period with the
+signed delta; a digest that continues a previous one is titled «since the last digest». `FormatDiscovery` renders a discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
 
 ## TelegramClientFacade
 

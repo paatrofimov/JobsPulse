@@ -55,6 +55,7 @@ public static class PersistencyExtensions
             ChatId = persistentUser.ChatId,
             DisplayName = persistentUser.DisplayName,
             Language = persistentUser.Language,
+            SilentMode = persistentUser.SilentMode,
             CreatedAt = persistentUser.CreatedAt,
             LastSeenAt = persistentUser.LastSeenAt
         };
@@ -110,6 +111,19 @@ public static class PersistencyExtensions
             Location = persistentEvent.Location,
             OccurredAt = persistentEvent.OccurredAt,
             RunId = persistentEvent.RunId
+        };
+    }
+
+    public static WatchlistDigest ToDomainModel(this PersistentWatchlistDigest persistentDigest)
+    {
+        return new WatchlistDigest
+        {
+            Id = persistentDigest.Id,
+            WatchlistId = persistentDigest.WatchlistId,
+            From = persistentDigest.PeriodFrom,
+            To = persistentDigest.PeriodTo,
+            PreviousId = persistentDigest.PreviousId,
+            DeliveredAt = persistentDigest.DeliveredAt
         };
     }
 

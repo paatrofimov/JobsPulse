@@ -17,6 +17,18 @@ public sealed class WatchlistStatsService(
         return await ComputeAsync(watchlist, to.AddDays(-days), to, days, counts: null, ct);
     }
 
+    /// <summary>An arbitrary period - a digest since the previous one. <c>Days</c> is the period rounded up.</summary>
+    public async Task<WatchlistStats> ComputeAsync(
+        Watchlist watchlist,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken ct)
+    {
+        var days = Math.Max(1, (int)Math.Ceiling((to - from).TotalDays));
+
+        return await ComputeAsync(watchlist, from, to, days, counts: null, ct);
+    }
+
     /// <summary>
     /// What one run changed between its start and its end. With a run id only the events that run committed are
     /// counted, so a job walking at the same time does not leak into the report; without one, the whole window is.

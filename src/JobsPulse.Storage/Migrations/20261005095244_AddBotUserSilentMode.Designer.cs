@@ -3,6 +3,7 @@ using System;
 using JobsPulse.Storage.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JobsPulse.Storage.Migrations
 {
     [DbContext(typeof(JobsPulseDbContext))]
-    partial class JobsPulseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261005095244_AddBotUserSilentMode")]
+    partial class AddBotUserSilentMode
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -628,48 +631,6 @@ namespace JobsPulse.Storage.Migrations
                     b.ToTable("watchlist", (string)null);
                 });
 
-            modelBuilder.Entity("JobsPulse.Storage.PersistentModels.PersistentWatchlistDigest", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<DateTimeOffset?>("DeliveredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("delivered_at");
-
-                    b.Property<DateTimeOffset>("PeriodFrom")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("period_from");
-
-                    b.Property<DateTimeOffset>("PeriodTo")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("period_to");
-
-                    b.Property<long?>("PreviousId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("previous_id");
-
-                    b.Property<long>("WatchlistId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("watchlist_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_watchlist_digest");
-
-                    b.HasIndex("WatchlistId", "PeriodTo")
-                        .HasDatabaseName("ix_watchlist_digest_watchlist_id_period_to");
-
-                    b.ToTable("watchlist_digest", (string)null);
-                });
-
             modelBuilder.Entity("JobsPulse.Storage.PersistentModels.PersistentWatchlistEntry", b =>
                 {
                     b.Property<long>("Id")
@@ -838,18 +799,6 @@ namespace JobsPulse.Storage.Migrations
                         .HasDatabaseName("ix_watchlist_vacancy_watchlist_id_source_id_board_id_post_id");
 
                     b.ToTable("watchlist_vacancy", (string)null);
-                });
-
-            modelBuilder.Entity("JobsPulse.Storage.PersistentModels.PersistentWatchlistDigest", b =>
-                {
-                    b.HasOne("JobsPulse.Storage.PersistentModels.PersistentWatchlist", "Watchlist")
-                        .WithMany()
-                        .HasForeignKey("WatchlistId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_watchlist_digest_watchlist_watchlist_id");
-
-                    b.Navigation("Watchlist");
                 });
 
             modelBuilder.Entity("JobsPulse.Storage.PersistentModels.PersistentWatchlistEntry", b =>

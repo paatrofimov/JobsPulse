@@ -28,6 +28,28 @@ internal class WatchlistEventStorage(IDbContextFactory<JobsPulseDbContext> facto
         return [.. rows.Select(x => x.ToDomainModel())];
     }
 
+    public async Task<IReadOnlyList<WatchlistChange>> LoadChangesAsync(
+        long watchlistId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var rows = await (
+                from e in db.WatchlistEvents.AsNoTracking()
+                where e.WatchlistId == watchlistId && e.OccurredAt >= @from && e.OccurredAt <= to
+                join v in db.SeenVacancies.AsNoTracking()
+                    on new { e.SourceId, e.BoardId, e.PostId } equals new { v.SourceId, v.BoardId, v.PostId }
+                    into vacancies
+                from v in vacancies.DefaultIfEmpty()
+                orderby e.OccurredAt, e.Id
+                select new { Event = e, Title = v == null ? null : v.Title, Url = v == null ? null : v.Url })
+            .ToListAsync(ct);
+
+        return [.. rows.Select(x => new WatchlistChange(x.Event.ToDomainModel(), x.Title, x.Url))];
+    }
+
     public async Task<int> AppendAsync(IReadOnlyList<WatchlistEvent> events, CancellationToken ct)
     {
         if (events.Count == 0)

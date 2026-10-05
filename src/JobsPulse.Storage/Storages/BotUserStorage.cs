@@ -112,4 +112,15 @@ internal class BotUserStorage(
 
         return affected > 0;
     }
+
+    public async Task<bool> SetSilentModeAsync(long telegramUserId, bool silent, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        var affected = await db.BotUsers
+            .Where(x => x.TelegramUserId == telegramUserId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.SilentMode, silent), ct);
+
+        return affected > 0;
+    }
 }

@@ -159,6 +159,12 @@ public sealed class BotUpdateHandler(
         // The spinner is stopped first: the edit below may take a moment, and a stuck button looks broken.
         await client.AnswerCallbackAsync(callback.Id, view.Toast, ct);
 
+        if (data.Action == CallbackAction.DigestChangesOpen)
+        {
+            await SendAsync(updated, view, ct);
+            return;
+        }
+
         var edited = await client.EditRichMessageAsync(
             updated.ChatId,
             callback.Message!.MessageId,

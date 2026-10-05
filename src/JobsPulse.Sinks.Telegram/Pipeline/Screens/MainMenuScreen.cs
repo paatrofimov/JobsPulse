@@ -21,6 +21,7 @@ public sealed class MainMenuScreen
             .Button(TextKey.MenuDisabledCompanies, CallbackAction.DisabledCompanies)
             .Button(TextKey.MenuAllWatchlists, CallbackAction.AllWatchlists)
             .Button(TextKey.MenuLanguage, CallbackAction.Language)
+            .Button(ctx.User.SilentMode ? TextKey.MenuSilentOn : TextKey.MenuSilentOff, CallbackAction.ToggleSilentMode)
             .Button(TextKey.MenuHelp, CallbackAction.Help)
             .ButtonIf(ctx.IsAdmin, TextKey.MenuAdmin, CallbackAction.Admin)
             .BuildBare();

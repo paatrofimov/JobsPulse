@@ -28,6 +28,8 @@ internal static class RussianTexts
         [TextKey.MenuVacancies] = "💼 Вакансии",
         [TextKey.MenuDisabledCompanies] = "⏸ Отключённые компании",
         [TextKey.MenuLanguage] = "🌐 Язык",
+        [TextKey.MenuSilentOn] = "🔕 Тихий режим: вкл",
+        [TextKey.MenuSilentOff] = "🔔 Тихий режим: выкл",
         [TextKey.MenuAdmin] = "🛠 Администрирование",
         [TextKey.MenuHelp] = "❓ Как это работает",
 
@@ -205,6 +207,9 @@ internal static class RussianTexts
 
         [TextKey.StatsTitle] = "📊 {0} · за {1}",
         [TextKey.StatsDigestTitle] = "📊 Сводка за {1} · {0}",
+        [TextKey.StatsDigestSinceTitle] = "📊 Что изменилось с прошлой сводки · {0}",
+        [TextKey.StatsOpenVacancies] = "📦 Открытых вакансий: <b>{0}</b> (было {1}, {2})",
+        [TextKey.StatsOpenCompanies] = "🏢 Компаний с вакансиями: <b>{0}</b> (было {1}, {2})",
         [TextKey.StatsPeriod] = "{0} – {1} UTC",
         [TextKey.StatsDaysOne] = "{0} день",
         [TextKey.StatsDaysFew] = "{0} дня",
@@ -255,6 +260,17 @@ internal static class RussianTexts
 
         [TextKey.LanguageTitle] = "Выберите язык",
         [TextKey.LanguageChanged] = "Язык переключён на русский.",
+
+        [TextKey.DigestAllChanges] = "📋 Все изменения",
+        [TextKey.DigestChangesTitle] = "📋 Изменения · {0}",
+        [TextKey.DigestChangesEmpty] = "За этот период ничего не изменилось.",
+        [TextKey.DigestNewCompanies] = "🏢 Новые компании: <b>{0}</b>",
+        [TextKey.DigestEmptiedCompanies] = "🏁 Компании, оставшиеся без вакансий: <b>{0}</b>",
+        [TextKey.DigestCompanyRow] = "🆕 {0} · ушло {1}",
+        [TextKey.DigestUnknownTitle] = "вакансия {0}",
+
+        [TextKey.SilentModeOn] = "Тихий режим включён: отчётов после прогонов не будет. Вакансии и дайджест приходят.",
+        [TextKey.SilentModeOff] = "Тихий режим выключен: отчёт после каждого прогона.",
 
         [TextKey.Help] =
             "<b>Как это работает</b><br>"

@@ -21,6 +21,8 @@ internal static class EnglishTexts
         [TextKey.MenuVacancies] = "💼 Vacancies",
         [TextKey.MenuDisabledCompanies] = "⏸ Disabled companies",
         [TextKey.MenuLanguage] = "🌐 Language",
+        [TextKey.MenuSilentOn] = "🔕 Silent mode: on",
+        [TextKey.MenuSilentOff] = "🔔 Silent mode: off",
         [TextKey.MenuAdmin] = "🛠 Admin",
         [TextKey.MenuHelp] = "❓ How it works",
 
@@ -196,6 +198,9 @@ internal static class EnglishTexts
 
         [TextKey.StatsTitle] = "📊 {0} · last {1}",
         [TextKey.StatsDigestTitle] = "📊 Digest for the last {1} · {0}",
+        [TextKey.StatsDigestSinceTitle] = "📊 What changed since the last digest · {0}",
+        [TextKey.StatsOpenVacancies] = "📦 Open vacancies: <b>{0}</b> (were {1}, {2})",
+        [TextKey.StatsOpenCompanies] = "🏢 Companies with vacancies: <b>{0}</b> (were {1}, {2})",
         [TextKey.StatsPeriod] = "{0} – {1} UTC",
         [TextKey.StatsDaysOne] = "{0} day",
         [TextKey.StatsDaysFew] = "{0} days",
@@ -246,6 +251,17 @@ internal static class EnglishTexts
 
         [TextKey.LanguageTitle] = "Choose a language",
         [TextKey.LanguageChanged] = "Language switched to English.",
+
+        [TextKey.DigestAllChanges] = "📋 All changes",
+        [TextKey.DigestChangesTitle] = "📋 Changes · {0}",
+        [TextKey.DigestChangesEmpty] = "Nothing changed in this period.",
+        [TextKey.DigestNewCompanies] = "🏢 New companies: <b>{0}</b>",
+        [TextKey.DigestEmptiedCompanies] = "🏁 Companies left without vacancies: <b>{0}</b>",
+        [TextKey.DigestCompanyRow] = "🆕 {0} · ended {1}",
+        [TextKey.DigestUnknownTitle] = "vacancy {0}",
+
+        [TextKey.SilentModeOn] = "Silent mode is on: no reports after runs. Vacancies and the digest still arrive.",
+        [TextKey.SilentModeOff] = "Silent mode is off: a report after every run.",
 
         [TextKey.Help] =
             "<b>How it works</b><br>"

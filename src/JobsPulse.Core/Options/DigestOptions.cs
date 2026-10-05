@@ -6,7 +6,7 @@ public sealed class DigestOptions
 {
     public const string SectionName = "Digest";
 
-    // The period the scheduled digest (`--role digest`) covers; its cadence is the scheduler's business
+    // The period of the first scheduled digest of a watchlist - the next ones cover the time since the previous one
     [Range(1, 3650)] public int PeriodDays { get; set; } = 3;
 
     // The longest period a user may ask the bot for

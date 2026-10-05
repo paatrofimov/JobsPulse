@@ -15,15 +15,41 @@ public static class StatsFormatter
         WatchlistStats stats,
         BotLanguage language,
         bool digest,
-        Func<string, string?>? links = null)
+        Func<string, string?>? links = null,
+        bool sincePrevious = false)
     {
-        var title = digest ? TextKey.StatsDigestTitle : TextKey.StatsTitle;
+        var title = !digest ? TextKey.StatsTitle
+            : sincePrevious ? TextKey.StatsDigestSinceTitle
+            : TextKey.StatsDigestTitle;
         var name = MessageFormatter.Escape(stats.WatchlistName);
 
         return $"<h6>{BotTexts.Get(title, language, name, Days(stats.Days, language))}</h6>"
                + $"<p>{BotTexts.Get(TextKey.ChangesPeriod, language, Period(stats.From, stats.To, language))}</p>"
+               + OpenDiff(stats, language)
                + Body(stats, language, links);
     }
+
+    /// <summary>What is open at the end of the period against what was open when it began - the diff of a digest.</summary>
+    private static string OpenDiff(WatchlistStats stats, BotLanguage language)
+    {
+        if (stats is not { OpenAtStart: { } before, OpenAtEnd: { } after })
+            return "";
+
+        var vacancies = BotTexts.Get(
+            TextKey.StatsOpenVacancies, language, after.Vacancies, before.Vacancies, Delta(after.Vacancies - before.Vacancies));
+        var companies = BotTexts.Get(
+            TextKey.StatsOpenCompanies, language, after.Companies, before.Companies, Delta(after.Companies - before.Companies));
+
+        return $"<p>{vacancies}<br>{companies}</p>";
+    }
+
+    private static string Delta(int delta) =>
+        delta switch
+        {
+            > 0 => $"+{delta}",
+            < 0 => $"−{-delta}",
+            _ => "±0"
+        };
 
     /// <summary>What one polling or registry run changed in a watchlist, under what the run walked.</summary>
     public static string FormatRun(
@@ -86,7 +112,7 @@ public static class StatsFormatter
     }
 
     /// <summary>«September 29, 07:25 – October 02, 07:25 UTC», the year added only across a new year.</summary>
-    private static string Period(DateTimeOffset from, DateTimeOffset to, BotLanguage language)
+    public static string Period(DateTimeOffset from, DateTimeOffset to, BotLanguage language)
     {
         var withYear = from.Year != to.Year;
 

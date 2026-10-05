@@ -222,6 +222,18 @@ public sealed class StatsFormatterTests
         DeepLinks.TryParseCompany(null, out _).Should().BeFalse();
     }
 
+    [Test]
+    public void Format_should_show_what_is_open_against_the_previous_digest()
+    {
+        var stats = Stats() with { OpenAtStart = new OpenCounts(40, 10), OpenAtEnd = new OpenCounts(47, 9) };
+
+        var html = StatsFormatter.Format(stats, BotLanguage.English, digest: true, sincePrevious: true);
+
+        html.Should().Contain("📊 What changed since the last digest · Back &amp; end");
+        html.Should().Contain("📦 Open vacancies: <b>47</b> (were 40, +7)");
+        html.Should().Contain("🏢 Companies with vacancies: <b>9</b> (were 10, −1)");
+    }
+
     private static WatchlistStats Stats() =>
         new()
         {

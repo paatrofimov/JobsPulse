@@ -8,10 +8,12 @@ namespace JobsPulse.Core.Pipeline;
 
 /// <summary>
 /// The report a one-shot job sends when it is done: polling and registry report what they changed in every enabled
-/// watchlist, discovery reports what it mined. Switched off by <c>Digest:RunReports</c>.
+/// watchlist, discovery reports what it mined. Switched off by <c>Digest:RunReports</c>, and per owner by
+/// <see cref="BotUser.SilentMode"/>.
 /// </summary>
 public sealed class RunReportService(
     IWatchlistStorage watchlists,
+    IBotUserStorage users,
     WatchlistStatsService stats,
     IReportSink sink,
     IOptionsMonitor<DigestOptions> digestOptions,
@@ -34,8 +36,18 @@ public sealed class RunReportService(
 
         var finishedAt = clock.GetUtcNow();
 
-        var targets = (await watchlists.GetEnabledAsync(ct))
+        var withCompanies = (await watchlists.GetEnabledAsync(ct))
             .Where(w => w.Entries.Count > 0)
+            .ToList();
+
+        var owners = await users.GetManyAsync(
+            withCompanies.Select(w => w.OwnerUserId).OfType<long>().Distinct().ToList(),
+            ct);
+
+        var targets = withCompanies
+            .Where(w => w.OwnerUserId is not { } ownerId
+                        || !owners.TryGetValue(ownerId, out var owner)
+                        || !owner.SilentMode)
             .ToList();
 
         var pause = TimeSpan.FromSeconds(deliveryOptions.CurrentValue.DelayBetweenMessagesSeconds);

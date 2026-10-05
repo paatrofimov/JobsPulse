@@ -58,6 +58,7 @@ public static class StorageServiceCollectionExtensions
         services.AddSingleton<IWatchlistStorage, WatchlistStorage>();
         services.AddSingleton<IBotUserStorage, BotUserStorage>();
         services.AddSingleton<IWatchlistEventStorage, WatchlistEventStorage>();
+        services.AddSingleton<IWatchlistDigestStorage, WatchlistDigestStorage>();
 
         return services;
     }

@@ -30,4 +30,10 @@ public sealed record WatchlistStats
 
     /// <summary>Companies with the most vacancies opened in the period.</summary>
     public required IReadOnlyList<CompanyCount> TopByOpened { get; init; }
+
+    /// <summary>What was open when the period began - the «before» of a digest.</summary>
+    public OpenCounts? OpenAtStart { get; init; }
+
+    /// <summary>What is open when the period ends - the «after» of a digest.</summary>
+    public OpenCounts? OpenAtEnd { get; init; }
 }

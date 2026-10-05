@@ -14,6 +14,9 @@ public enum CallbackAction
     AllWatchlists,
     Language,
     SetLanguage,
+
+    /// <summary>Switches the run reports of the user off or back on - see <c>BotUser.SilentMode</c>.</summary>
+    ToggleSilentMode,
     Admin,
 
     WatchlistNew,
@@ -88,5 +91,14 @@ public enum CallbackAction
     ShortlistRegion,
 
     /// <summary>Asks for the number of days of a freshness shortlist.</summary>
-    ShortlistCustom
+    ShortlistCustom,
+
+    /// <summary>Every change of one digest's period; the id is a `watchlist_digest` row.</summary>
+    DigestChanges,
+
+    /// <summary>
+    /// The button of a digest message: <see cref="DigestChanges"/> sent as a new message, so the digest stays in the
+    /// chat instead of being edited into the screen.
+    /// </summary>
+    DigestChangesOpen
 }

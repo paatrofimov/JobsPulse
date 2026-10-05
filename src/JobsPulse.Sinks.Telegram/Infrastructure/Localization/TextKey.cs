@@ -14,6 +14,8 @@ public enum TextKey
     MenuVacancies,
     MenuDisabledCompanies,
     MenuLanguage,
+    MenuSilentOn,
+    MenuSilentOff,
     MenuAdmin,
     MenuHelp,
 
@@ -176,6 +178,9 @@ public enum TextKey
     // Statistics of a period
     StatsTitle,
     StatsDigestTitle,
+    StatsDigestSinceTitle,
+    StatsOpenVacancies,
+    StatsOpenCompanies,
     StatsPeriod,
     StatsDaysOne,
     StatsDaysFew,
@@ -227,6 +232,19 @@ public enum TextKey
     // Language
     LanguageTitle,
     LanguageChanged,
+
+    // Digest changes
+    DigestAllChanges,
+    DigestChangesTitle,
+    DigestChangesEmpty,
+    DigestNewCompanies,
+    DigestEmptiedCompanies,
+    DigestCompanyRow,
+    DigestUnknownTitle,
+
+    // Silent mode
+    SilentModeOn,
+    SilentModeOff,
 
     // Errors and generic
     Help,

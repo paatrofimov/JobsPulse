@@ -17,6 +17,7 @@ public sealed class RunReportServiceTests
     private static readonly DateTimeOffset FinishedAt = StartedAt.AddMinutes(45);
 
     private IWatchlistStorage watchlists = null!;
+    private IBotUserStorage users = null!;
     private IWatchlistEventStorage events = null!;
     private IStateStore stateStore = null!;
     private IReportSink sink = null!;
@@ -27,6 +28,7 @@ public sealed class RunReportServiceTests
     public void SetUp()
     {
         watchlists = A.Fake<IWatchlistStorage>();
+        users = A.Fake<IBotUserStorage>();
         events = A.Fake<IWatchlistEventStorage>();
         stateStore = A.Fake<IStateStore>();
         sink = A.Fake<IReportSink>();
@@ -35,6 +37,8 @@ public sealed class RunReportServiceTests
 
         A.CallTo(() => watchlists.GetEnabledAsync(A<CancellationToken>._))
             .Returns([DigestServiceTests.Watchlist(1), DigestServiceTests.Watchlist(2, withEntry: false)]);
+        A.CallTo(() => users.GetManyAsync(A<IReadOnlyList<long>>._, A<CancellationToken>._))
+            .Returns(new Dictionary<long, BotUser>());
         A.CallTo(() => stateStore.CountBoardActivityAsync(A<DateTimeOffset>._, A<CancellationToken>._))
             .Returns(new Dictionary<string, BoardActivity>());
         A.CallTo(() => sink.DeliverRunAsync(A<Watchlist>._, A<TraversalRunReport>._, A<CancellationToken>._))
@@ -103,6 +107,33 @@ public sealed class RunReportServiceTests
     }
 
     [Test]
+    public async Task SendTraversalAsync_should_skip_the_watchlists_of_a_silent_owner()
+    {
+        A.CallTo(() => watchlists.GetEnabledAsync(A<CancellationToken>._))
+            .Returns(
+            [
+                DigestServiceTests.Watchlist(1) with { OwnerUserId = 10 },
+                DigestServiceTests.Watchlist(3) with { OwnerUserId = 20 }
+            ]);
+        A.CallTo(() => users.GetManyAsync(A<IReadOnlyList<long>>._, A<CancellationToken>._))
+            .Returns(new Dictionary<long, BotUser>
+            {
+                [10] = new() { TelegramUserId = 10, ChatId = "10", SilentMode = true },
+                [20] = new() { TelegramUserId = 20, ChatId = "20" }
+            });
+
+        var delivered = await Service().SendTraversalAsync(TraversalKind.Watchlist, 7, StartedAt, null, CancellationToken.None);
+
+        delivered.Should().Be(1);
+        A.CallTo(() => sink.DeliverRunAsync(
+                A<Watchlist>.That.Matches(w => w.Id == 3), A<TraversalRunReport>._, A<CancellationToken>._))
+            .MustHaveHappenedOnceExactly();
+        A.CallTo(() => sink.DeliverRunAsync(
+                A<Watchlist>.That.Matches(w => w.Id == 1), A<TraversalRunReport>._, A<CancellationToken>._))
+            .MustNotHaveHappened();
+    }
+
+    [Test]
     public async Task Reports_should_not_be_sent_when_switched_off()
     {
         digestOptions.RunReports = false;
@@ -116,6 +147,7 @@ public sealed class RunReportServiceTests
     private RunReportService Service() =>
         new(
             watchlists,
+            users,
             new WatchlistStatsService(events, stateStore, clock),
             sink,
             DigestServiceTests.Monitor(digestOptions),

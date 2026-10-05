@@ -259,7 +259,7 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         offices.Select(Escape).JoinStrings(" · ");
 
     /// <summary>The kind of a change in one character - a folded block mixes all of them.</summary>
-    private static string KindGlyph(VacancyChangeKind kind) =>
+    public static string KindGlyph(VacancyChangeKind kind) =>
         kind switch
         {
             VacancyChangeKind.New => "🆕",

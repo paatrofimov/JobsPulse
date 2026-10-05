@@ -271,6 +271,31 @@ public sealed class WatchlistStatsCalculatorTests
         stats.EmptiedCompanies.Should().BeEmpty();
     }
 
+    [Test]
+    public void Compute_should_count_what_was_open_at_both_ends_of_the_period()
+    {
+        var watchlist = Watchlist(Entry("acme"), Entry("beta"), Entry("off", enabled: false));
+
+        var stats = WatchlistStatsCalculator.Compute(
+            watchlist,
+            [
+                Event("acme", "1", VacancyChangeKind.New, From.AddDays(-2)),
+                Event("acme", "2", VacancyChangeKind.New, From.AddDays(-1)),
+                Event("off", "1", VacancyChangeKind.New, From.AddDays(-1)),
+                Event("acme", "1", VacancyChangeKind.Closed, From.AddHours(1)),
+                Event("beta", "1", VacancyChangeKind.New, From.AddHours(2)),
+                Event("beta", "2", VacancyChangeKind.New, From.AddHours(3))
+            ],
+            NoActivity,
+            From,
+            To,
+            3);
+
+        // The disabled company is counted at neither end.
+        stats.OpenAtStart.Should().Be(new OpenCounts(2, 1));
+        stats.OpenAtEnd.Should().Be(new OpenCounts(3, 2));
+    }
+
     private static WatchlistStats Compute(IReadOnlyList<WatchlistEvent> events) =>
         WatchlistStatsCalculator.Compute(Watchlist(), events, NoActivity, From, To, 3);
 

@@ -309,7 +309,7 @@ at once.
 
 The statistics of one watchlist for a period (`WatchlistStats`). The calculator is a pure function over the event
 history (`WatchlistEvent`) and the board activity; the service reads both. `ComputeAsync` is the last N days ending
-now (the bot, the digest); `ComputeRunAsync` is one run - its window, and with a run id only the events that run
+now (the bot) or any period (the digest, since the previous one); `ComputeRunAsync` is one run - its window, and with a run id only the events that run
 committed (`WatchlistEvent.RunId`), so a job walking at the same time does not leak into the report.
 
 - **opened / closed** - `New` / `Closed` events inside the period. `AgedOut` and `Filtered` are not closures.
@@ -318,6 +318,8 @@ committed (`WatchlistEvent.RunId`), so a job walking at the same time does not l
   of a post being `New` means open.
 - **emptied companies** - a `Closed` inside the period and nothing open at its end.
 - **top by opened** - the most `New` events inside the period, top 3.
+- **open at start / at end** (`OpenAtStart`, `OpenAtEnd`) - open vacancies and the companies holding them, replayed
+  up to each end of the period: the «was → is» of a digest.
 - **top by activity** - `BoardActivity.Events` since the period start (`IStateStore.CountBoardActivityAsync`), top 3,
   among the enabled boards of the watchlist only - activity is global to a board.
 
@@ -329,16 +331,22 @@ ranks enabled boards only anyway). A board that has left the watchlist still cou
 
 ## DigestService
 
-`SendAsync` sends every enabled watchlist with at least one company its statistics for the last `Digest:PeriodDays`,
-through `IReportSink`. Run by `--role digest` - the cadence (every 3 days) belongs to the scheduler, so nothing here
-decides whether a digest is due and every call sends. A failed delivery is logged and the rest go on.
+`SendAsync` sends every enabled watchlist with at least one company what changed since its previous **delivered**
+digest (`IWatchlistDigestStorage`), through `IReportSink`; the first digest of a watchlist covers the last
+`Digest:PeriodDays`, a gap is cut at `Digest:MaxPeriodDays`. Every digest is stored before it is sent - the message
+carries its id in the «all changes» button - and marked delivered after; a failed one does not move the start of the
+next, so nothing falls between two digests. An empty digest - nothing opened or closed, the open counts unchanged -
+is neither sent nor stored, so the next one covers the quiet stretch too. Run by `--role digest` - the cadence (every 8 hours) belongs to the
+scheduler, so nothing here decides whether a digest is due and every call sends. A failed delivery is logged and the
+rest go on.
 
 ## RunReportService
 
 The report a one-shot job sends after its drain. `SendTraversalAsync` - polling and registry: per enabled watchlist
 with companies, what the run walked (`CycleReport`, null when it stopped early; its `ChangesSince` is the period the
 changes cover, next to the run's own start and end) plus `ComputeRunAsync` of its run.
-`SendDiscoveryAsync` - what a discovery run mined (`BoardDiscoveryReport`). Both are off with `Digest:RunReports`.
+`SendDiscoveryAsync` - what a discovery run mined (`BoardDiscoveryReport`). Both are off with `Digest:RunReports`;
+a watchlist whose owner is in `BotUser.SilentMode` gets no traversal report (silent administrators are skipped by the sink).
 
 ## WatchlistHistoryRepair
 
@@ -477,9 +485,9 @@ The rest is retry bookkeeping - lease, deliver, fail with a backoff, dead-letter
 ## IBotUserStorage
 
 The people using the bot (`bot_user`): the telegram user id a watchlist owner is stored as, the chat to deliver to, the
-display name shown as the owner, and the interface language. `UpsertOnContactAsync` runs on every incoming update and
-refreshes the chat id, the name and the last-seen stamp - but never the language, which is a setting only the user
-changes. `GetManyAsync` resolves the owners of a whole listing in one query.
+display name shown as the owner, the interface language and the silent mode. `UpsertOnContactAsync` runs on every incoming update and
+refreshes the chat id, the name and the last-seen stamp - but never the language or the silent mode, settings only the
+user changes. `GetManyAsync` resolves the owners of a whole listing in one query.
 
 ## IWatchlistStorage
 
@@ -501,10 +509,18 @@ by `IStateStore.CommitAsync` in the same transaction as the outbox, so the histo
 that were enqueued. Updates are not kept - they never change whether a vacancy is open. `AppendAsync` is for
 `WatchlistHistoryRepair` only.
 
+`LoadChangesAsync` is the same history inside a period with the title and the url of each vacancy (`WatchlistChange`)
+- the «all changes» screen of a digest.
+
+## IWatchlistDigestStorage
+
+The scheduled digests (`watchlist_digest`): the period each one covered and whether it was delivered.
+`GetLastDeliveredAsync` is where the next digest starts, `GetAsync` is what the «all changes» button reopens.
+
 ## IReportSink
 
 Delivers the digest and the run reports: a watchlist's to wherever its notifications go, a discovery report to the
-administrators.
+administrators. A digest is delivered with its `WatchlistDigest`, so the message can link to its own changes.
 
 ## IVacancySink
 
@@ -633,7 +649,8 @@ The configuration aggregate: a watchlist with its filter and its entries. An ent
 
 One person talking to the bot. The telegram user id is the identity - it owns watchlists and survives a chat being
 recreated, which a chat id does not. `BotLanguage` (`English` / `Russian`) is stored per user, so it applies to the
-notifications that arrive hours after the switch, not just to the current screen.
+notifications that arrive hours after the switch, not just to the current screen. `SilentMode` mutes the run reports
+(polling, registry, discovery) of the user; vacancy notifications and the scheduled digest still arrive.
 
 ## WatchlistEntry.WorkedAt
 
@@ -706,10 +723,20 @@ One change reported to one watchlist, kept after its outbox row is purged: post,
 location, or the first office when the board names none; recorded, not shown yet), when, and the run that committed it (`RunId`, null outside a
 job and for restored history). The history the statistics are replayed from.
 
-## WatchlistStats / CompanyCount / CompanyActivity
+## WatchlistStats / CompanyCount / CompanyActivity / OpenCounts
 
 The statistics of one period - see `WatchlistStatsCalculator`. `CompanyCount` and `CompanyActivity` are the rows of
-its two top lists. `Days` is 0 for a run report, which is not measured in days.
+its two top lists, `OpenCounts` (vacancies, companies) is what was open at either end. `Days` is 0 for a run report,
+which is not measured in days, and the period rounded up for a digest.
+
+## WatchlistDigest
+
+One scheduled digest: its watchlist, the period, the digest it continues (`PreviousId`, null for the first) and when
+it was delivered (null until then).
+
+## WatchlistChange
+
+A `WatchlistEvent` with the title and the url its vacancy has in `seen_vacancy` now - null when the row was deleted.
 
 ## TraversalRunReport / DiscoveryRunReport
 
@@ -803,6 +830,6 @@ everything one cycle found within `Delivery:GroupChangesWithinMinutes` reads as 
   carried a `Polling` section with other names, and nothing in it was ever applied.
 - `RegistryPollingOptions` - section `RegistryPolling`, see the class.
 - `DeliveryOptions` - section `Delivery`, see the class.
-- `DigestOptions` - section `Digest`: `PeriodDays` (3 - the period of `--role digest`; `digest.yml` passes its
-  input here), `MaxPeriodDays` (365 - the longest period the bot computes on request), `RunReports` (true - a report
+- `DigestOptions` - section `Digest`: `PeriodDays` (3 - the period of the first digest of a watchlist;
+  `digest.yml` passes its input here), `MaxPeriodDays` (365 - the longest period the bot computes on request), `RunReports` (true - a report
   after every polling, registry and discovery run).

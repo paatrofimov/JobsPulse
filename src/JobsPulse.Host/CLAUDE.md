@@ -12,8 +12,9 @@
 - `webhooksetup` - one-shot, run by hand: `WebhookRegistrar` points Telegram at `TelegramWebhook:PublicUrl` and
   publishes the command menu. The service url of Cloud Run is stable, so it is needed only when the url, the secret
   or the command list changes;
-- `digest` - one-shot: the statistics of every enabled watchlist for `Digest:PeriodDays` (`DigestService`). Started
-  by cron-job.org through `digest.yml` every 3 days; its `period-days` input sets the period;
+- `digest` - one-shot: what changed in every enabled watchlist since its previous digest (`DigestService`; the first
+  one covers `Digest:PeriodDays`). Started by cron-job.org through `digest.yml` every 8 hours; its `period-days`
+  input sets the period of a first digest only;
 - `historyrepair` - one-shot: `WatchlistHistoryRepair`, restores lost closures of the watchlist history. Manual;
 - `polling`, `registry`, `discovery`, `cleanup` - one-shot jobs run by `JobRunner`, scheduled by the GitHub Actions
   workflows in `.github/workflows` (`_run-job.yml` builds and runs; the others are started by cron-job.org through `workflow_dispatch` and hold no `schedule:` - GitHub fired it late and irregularly). The process exits with
