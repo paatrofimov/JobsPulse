@@ -50,6 +50,9 @@ public sealed class RunReportService(
                         || !owner.SilentMode)
             .ToList();
 
+        ctxLog.Info("{Kind} run report goes to {Targets} of {Watchlists} watchlists, the rest belong to silent owners",
+            kind, targets.Count, withCompanies.Count);
+
         var pause = TimeSpan.FromSeconds(deliveryOptions.CurrentValue.DelayBetweenMessagesSeconds);
         var delivered = 0;
 

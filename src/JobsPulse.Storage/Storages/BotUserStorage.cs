@@ -123,4 +123,13 @@ internal class BotUserStorage(
 
         return affected > 0;
     }
+
+    public async Task<bool> IsChatSilentAsync(string chatId, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+
+        return await db.BotUsers
+            .AsNoTracking()
+            .AnyAsync(x => x.ChatId == chatId && x.SilentMode, ct);
+    }
 }

@@ -367,6 +367,8 @@ owner's language, `Telegram:DefaultChatId` for an ownerless watchlist or an owne
 report belongs to no watchlist: it goes to the administrators among the watchlist owners (`TelegramOptions.IsAdmin`
 over an `@username` display name - a first name never matches), and to the default chat only when none is known.
 An administrator in silent mode is skipped; when every one of them is, nothing is sent and the default chat is not used.
+No run report reaches a chat whose user is in silent mode (`IsChatSilentAsync`) - this also covers an ownerless
+watchlist routed to the default chat; a muted report is logged and counts as delivered.
 `DefaultChatId` is empty in production, so the fallback alone would reach nobody. A digest carries a `📋 All changes`
 button (`DigestChangesScreen`).
 

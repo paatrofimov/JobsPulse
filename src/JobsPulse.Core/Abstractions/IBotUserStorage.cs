@@ -27,4 +27,10 @@ public interface IBotUserStorage
     Task<bool> SetLanguageAsync(long telegramUserId, BotLanguage language, CancellationToken ct);
 
     Task<bool> SetSilentModeAsync(long telegramUserId, bool silent, CancellationToken ct);
+
+    /// <summary>
+    /// Whether a user who reads this chat is in silent mode - a report routed to <c>Telegram:DefaultChatId</c> has no
+    /// owner to ask, but the chat may still be someone's.
+    /// </summary>
+    Task<bool> IsChatSilentAsync(string chatId, CancellationToken ct);
 }

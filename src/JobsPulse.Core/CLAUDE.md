@@ -346,7 +346,8 @@ The report a one-shot job sends after its drain. `SendTraversalAsync` - polling 
 with companies, what the run walked (`CycleReport`, null when it stopped early; its `ChangesSince` is the period the
 changes cover, next to the run's own start and end) plus `ComputeRunAsync` of its run.
 `SendDiscoveryAsync` - what a discovery run mined (`BoardDiscoveryReport`). Both are off with `Digest:RunReports`;
-a watchlist whose owner is in `BotUser.SilentMode` gets no traversal report (silent administrators are skipped by the sink).
+a watchlist whose owner is in `BotUser.SilentMode` gets no traversal report (silent administrators and silent chats
+are skipped by the sink). Logs how many watchlists the report goes to.
 
 ## WatchlistHistoryRepair
 
@@ -487,7 +488,8 @@ The rest is retry bookkeeping - lease, deliver, fail with a backoff, dead-letter
 The people using the bot (`bot_user`): the telegram user id a watchlist owner is stored as, the chat to deliver to, the
 display name shown as the owner, the interface language and the silent mode. `UpsertOnContactAsync` runs on every incoming update and
 refreshes the chat id, the name and the last-seen stamp - but never the language or the silent mode, settings only the
-user changes. `GetManyAsync` resolves the owners of a whole listing in one query.
+user changes. `GetManyAsync` resolves the owners of a whole listing in one query. `IsChatSilentAsync` tells whether a
+user reading a chat is in silent mode - for a report routed to the default chat.
 
 ## IWatchlistStorage
 

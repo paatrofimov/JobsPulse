@@ -15,7 +15,8 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 /// owner's language, or to <c>Telegram:DefaultChatId</c> for a watchlist nobody owns (the routing of
 /// <see cref="TelegramSink"/>). A discovery report belongs to no watchlist: it goes to the administrators among the
 /// watchlist owners - an administrator is named by username, and the owners are the users the bot has a chat for -
-/// and to the default chat only when none of them is known. An administrator in silent mode gets none.
+/// and to the default chat only when none of them is known. An administrator in silent mode gets none, and no run
+/// report reaches a chat whose user is in silent mode - even one routed to the default chat.
 /// </summary>
 public sealed class TelegramReportSink(
     TelegramClientFacade client,
@@ -51,6 +52,14 @@ public sealed class TelegramReportSink(
     {
         var (chatId, language) = await RouteAsync(watchlist, ct);
 
+        // The owner filter of RunReportService misses a watchlist nobody owns: its report lands in the default chat.
+        if (await users.IsChatSilentAsync(chatId, ct))
+        {
+            ctxLog.Info("Run report of watchlist {Watchlist} is muted: chat {Chat} is in silent mode", watchlist.Id, chatId);
+
+            return DeliveryResult.Ok;
+        }
+
         var links = DeepLinks.Companies(watchlist, await client.GetBotUsernameAsync(ct));
 
         return await SendAsync(chatId, StatsFormatter.FormatRun(report, language, links), ct);
@@ -68,7 +77,12 @@ public sealed class TelegramReportSink(
 
         // Silent administrators are known - the default chat stands in only when nobody is.
         if (administrators.Count == 0 && tgOpts.CurrentValue.DefaultChatId is { Length: > 0 } fallback)
+        {
+            if (await users.IsChatSilentAsync(fallback, ct))
+                return DeliveryResult.Ok;
+
             targets = [(fallback, BotLanguage.English)];
+        }
 
         if (administrators.Count > 0 && targets.Count == 0)
             return DeliveryResult.Ok;
