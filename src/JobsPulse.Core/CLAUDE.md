@@ -489,7 +489,7 @@ The people using the bot (`bot_user`): the telegram user id a watchlist owner is
 display name shown as the owner, the interface language and the silent mode. `UpsertOnContactAsync` runs on every incoming update and
 refreshes the chat id, the name and the last-seen stamp - but never the language or the silent mode, settings only the
 user changes. `GetManyAsync` resolves the owners of a whole listing in one query. `IsChatSilentAsync` tells whether a
-user reading a chat is in silent mode - for a report routed to the default chat.
+user reading a chat is in silent mode - for a report or a notification about to be sent there.
 
 ## IWatchlistStorage
 
@@ -652,7 +652,7 @@ The configuration aggregate: a watchlist with its filter and its entries. An ent
 One person talking to the bot. The telegram user id is the identity - it owns watchlists and survives a chat being
 recreated, which a chat id does not. `BotLanguage` (`English` / `Russian`) is stored per user, so it applies to the
 notifications that arrive hours after the switch, not just to the current screen. `SilentMode` mutes the run reports
-(polling, registry, discovery) of the user; vacancy notifications and the scheduled digest still arrive.
+(polling, registry, discovery) and the vacancy notifications of the user; only the scheduled digest arrives.
 
 ## WatchlistEntry.WorkedAt
 

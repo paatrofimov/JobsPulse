@@ -269,8 +269,8 @@ internal static class RussianTexts
         [TextKey.DigestCompanyRow] = "🆕 {0} · ушло {1}",
         [TextKey.DigestUnknownTitle] = "вакансия {0}",
 
-        [TextKey.SilentModeOn] = "Тихий режим включён: отчётов после прогонов не будет. Вакансии и дайджест приходят.",
-        [TextKey.SilentModeOff] = "Тихий режим выключен: отчёт после каждого прогона.",
+        [TextKey.SilentModeOn] = "Тихий режим включён: ни отчётов после прогонов, ни уведомлений о вакансиях. Приходит только дайджест.",
+        [TextKey.SilentModeOff] = "Тихий режим выключен: вакансии и отчёт после каждого прогона.",
 
         [TextKey.Help] =
             "<b>Как это работает</b><br>"

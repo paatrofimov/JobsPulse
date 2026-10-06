@@ -135,7 +135,7 @@ itself.
   (`🆕❌` - opened and ended inside the period), a link when `seen_vacancy` still has the row. Disabled companies are
   left out. The digest's button is `dgo` - the same screen sent as a new message, so the digest is not edited away;
   its pages are `dg` and edit in place.
-- `SilentModeScreen` - the `🔕/🔔` toggle of the main menu (`sm`): flips `BotUser.SilentMode` and re-renders the menu.
+- `SilentModeScreen` - the `🔕/🔔` toggle of the main menu (`sm`): flips `BotUser.SilentMode` (only the digest arrives) and re-renders the menu.
 - `AdminScreen` - the door to the operator commands, and a refusal for everybody else. It opens with the traversal
   progress block (`ProgressReporter`) and a `🔄 Refresh` button, because that is the one thing an operator wants
   without typing anything; the commands stay a typed list.
@@ -355,7 +355,9 @@ highlighted with 🔥 and bold text. Headers and dates are localized.
 
 Delivers each notification to the **owner of the watchlist that produced it**, in that owner's language: watchlists are
 per user, so one destination chat would hand somebody another person's vacancies. A watchlist with no owner, and the
-synthetic items of `/show_state`, go to `Telegram:DefaultChatId`.
+synthetic items of `/show_state`, go to `Telegram:DefaultChatId`. Notifications for a chat whose user is in silent mode
+(`IsChatSilentAsync`, which also covers an ownerless watchlist in the default chat) are logged and dropped as
+delivered - the changes stay in the history for the digest and its `All changes`. `/show_state` is never muted.
 
 Watchlists and users are read once per batch, not once per item. A failure for any chat fails the whole batch, because
 the outbox has no per-item delivery state - `OutboxDispatcher` then reschedules it unchanged.

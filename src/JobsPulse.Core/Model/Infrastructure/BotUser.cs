@@ -16,7 +16,7 @@ public sealed record BotUser
 
     public BotLanguage Language { get; init; } = BotLanguage.English;
 
-    /// <summary>No run reports: neither the summary of a polling or registry run nor what a discovery run mined.</summary>
+    /// <summary>Only the digest arrives: no run reports and no vacancy notifications.</summary>
     public bool SilentMode { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; }

@@ -260,8 +260,8 @@ internal static class EnglishTexts
         [TextKey.DigestCompanyRow] = "🆕 {0} · ended {1}",
         [TextKey.DigestUnknownTitle] = "vacancy {0}",
 
-        [TextKey.SilentModeOn] = "Silent mode is on: no reports after runs. Vacancies and the digest still arrive.",
-        [TextKey.SilentModeOff] = "Silent mode is off: a report after every run.",
+        [TextKey.SilentModeOn] = "Silent mode is on: no reports after runs and no vacancy notifications. Only the digest arrives.",
+        [TextKey.SilentModeOff] = "Silent mode is off: vacancies and a report after every run.",
 
         [TextKey.Help] =
             "<b>How it works</b><br>"

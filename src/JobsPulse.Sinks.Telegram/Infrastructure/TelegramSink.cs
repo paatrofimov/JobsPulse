@@ -12,7 +12,8 @@ namespace JobsPulse.Sinks.Telegram.Infrastructure;
 /// <summary>
 /// Delivers a notification to the owner of the watchlist that produced it, in that owner's language. Watchlists are
 /// per user now, so a single destination chat would hand one person another person's vacancies; a watchlist without an
-/// owner (a system one) still goes to <c>Telegram:DefaultChatId</c>.
+/// owner (a system one) still goes to <c>Telegram:DefaultChatId</c>. A chat whose user is in silent mode gets nothing:
+/// its notifications are dropped as delivered - the changes stay in the watchlist history for the digest.
 /// </summary>
 public sealed class TelegramSink(
     TelegramClientFacade client,
@@ -43,6 +44,12 @@ public sealed class TelegramSink(
 
         foreach (var (target, items) in routes)
         {
+            if (target.Muted)
+            {
+                ctxLog.Info("{Count} notifications for chat {Chat} are muted: silent mode", items.Count, target.ChatId);
+                continue;
+            }
+
             var messages = messageFormatter.Format(items, target.Language);
 
             foreach (var message in messages)
@@ -86,10 +93,21 @@ public sealed class TelegramSink(
         var botUsers = await users.GetManyAsync(userIds, ct);
 
         var grouped = new Dictionary<DeliveryTarget, List<OutboxItem>>();
+        var silentChats = new Dictionary<string, bool>();
 
         foreach (var item in batch)
         {
             var target = Route(item, owners, botUsers, fallbackChat);
+
+            // A synthetic item is an answer the user asked for, never muted. The chat check also covers a watchlist
+            // routed to the default chat, which has no owner to ask.
+            if (item.WatchlistId is not null)
+            {
+                if (!silentChats.TryGetValue(target.ChatId, out var silent))
+                    silentChats[target.ChatId] = silent = await users.IsChatSilentAsync(target.ChatId, ct);
+
+                target = target with { Muted = silent };
+            }
 
             if (!grouped.TryGetValue(target, out var items))
                 grouped[target] = items = [];
@@ -122,5 +140,5 @@ public sealed class TelegramSink(
         return new DeliveryTarget(fallbackChat, BotLanguage.English);
     }
 
-    private readonly record struct DeliveryTarget(string ChatId, BotLanguage Language);
+    private readonly record struct DeliveryTarget(string ChatId, BotLanguage Language, bool Muted = false);
 }
