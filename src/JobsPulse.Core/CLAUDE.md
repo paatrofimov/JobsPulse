@@ -312,11 +312,20 @@ history (`WatchlistEvent`) and the board activity; the service reads both. `Comp
 now (the bot) or any period (the digest, since the previous one); `ComputeRunAsync` is one run - its window, and with a run id only the events that run
 committed (`WatchlistEvent.RunId`), so a job walking at the same time does not leak into the report.
 
-- **opened / closed** - `New` / `Closed` events inside the period. `AgedOut` and `Filtered` are not closures.
-- **new companies** - companies that had no open matching vacancy when the period began and got a `New` inside it.
+Only a **transition** is counted: an event inside the period that flips its post between open and not open. A
+repeated close, or a close of a post never seen open, moves nothing - which is what makes
+`OpenAtStart + Opened − Closed − Dropped = OpenAtEnd` hold exactly for a digest (not for a run, which counts its own
+events only).
+
+- **opened / closed / dropped** - transitions to `New` / to `Closed` / to `AgedOut` or `Filtered`.
+- **opened and ended** (`OpenedAndEnded`) - the part of `Opened` that already closed or dropped inside the period.
+- **new companies** - companies that had no open matching vacancy when the period began and opened one inside it.
   «Open at a moment» is the whole history replayed up to it (every event, not only the counted ones): the last event
   of a post being `New` means open.
-- **emptied companies** - a `Closed` inside the period and nothing open at its end.
+- **emptied companies** - closed or dropped something inside the period and have nothing open at its end. So
+  «companies at start + new − emptied = at end»; one both new and emptied appeared and emptied inside the period.
+- **by company** (`ByCompany`, `CompanyChanges`) - opened / closed / dropped and the net of every company with a
+  transition, the most changes first: the company rows of a digest's changes screen.
 - **top by opened** - the most `New` events inside the period, top 3.
 - **open at start / at end** (`OpenAtStart`, `OpenAtEnd`) - open vacancies and the companies holding them, replayed
   up to each end of the period: the «was → is» of a digest.
@@ -725,10 +734,10 @@ One change reported to one watchlist, kept after its outbox row is purged: post,
 location, or the first office when the board names none; recorded, not shown yet), when, and the run that committed it (`RunId`, null outside a
 job and for restored history). The history the statistics are replayed from.
 
-## WatchlistStats / CompanyCount / CompanyActivity / OpenCounts
+## WatchlistStats / CompanyCount / CompanyActivity / OpenCounts / CompanyChanges
 
 The statistics of one period - see `WatchlistStatsCalculator`. `CompanyCount` and `CompanyActivity` are the rows of
-its two top lists, `OpenCounts` (vacancies, companies) is what was open at either end. `Days` is 0 for a run report,
+its two top lists, `CompanyChanges` a row of `ByCompany`, `OpenCounts` (vacancies, companies) is what was open at either end. `Days` is 0 for a run report,
 which is not measured in days, and the period rounded up for a digest.
 
 ## WatchlistDigest

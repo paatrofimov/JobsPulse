@@ -72,7 +72,11 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
         [CallbackAction.ShortlistCustom] = "sx",
 
         [CallbackAction.DigestChanges] = "dg",
-        [CallbackAction.DigestChangesOpen] = "dgo"
+        [CallbackAction.DigestChangesOpen] = "dgo",
+        [CallbackAction.DigestOpened] = "dgn",
+        [CallbackAction.DigestClosed] = "dgc",
+        [CallbackAction.DigestOpenedOpen] = "dgno",
+        [CallbackAction.DigestClosedOpen] = "dgco"
     }.ToFrozenDictionary();
 
     private static readonly FrozenDictionary<string, CallbackAction> Actions =

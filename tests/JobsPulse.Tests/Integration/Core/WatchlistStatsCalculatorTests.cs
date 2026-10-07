@@ -32,6 +32,45 @@ public sealed class WatchlistStatsCalculatorTests
 
         stats.Opened.Should().Be(2);
         stats.Closed.Should().Be(1);
+        stats.Dropped.Should().Be(2);
+        stats.OpenedAndEnded.Should().Be(2);
+    }
+
+    [Test]
+    public void Compute_should_make_open_at_start_plus_opened_minus_ended_equal_open_at_end()
+    {
+        var stats = Compute(
+        [
+            Event("acme", "1", VacancyChangeKind.New, From.AddDays(-1)),
+            Event("acme", "2", VacancyChangeKind.New, From.AddDays(-1)),
+
+            // A repeated close moves nothing and is not counted twice.
+            Event("acme", "1", VacancyChangeKind.Closed, From.AddHours(1)),
+            Event("acme", "1", VacancyChangeKind.Closed, From.AddHours(2)),
+
+            // Reopened inside the period - opened again, and still open at the end.
+            Event("acme", "1", VacancyChangeKind.New, From.AddHours(3)),
+
+            // A close of a post never seen open moves nothing either.
+            Event("acme", "9", VacancyChangeKind.Closed, From.AddHours(3)),
+
+            Event("beta", "1", VacancyChangeKind.New, From.AddHours(4)),
+            Event("beta", "1", VacancyChangeKind.Filtered, From.AddHours(5)),
+            Event("beta", "2", VacancyChangeKind.New, From.AddHours(6))
+        ]);
+
+        stats.OpenAtStart!.Vacancies.Should().Be(2);
+        stats.OpenAtEnd!.Vacancies.Should().Be(3);
+        (stats.Opened, stats.Closed, stats.Dropped, stats.OpenedAndEnded).Should().Be((3, 1, 1, 1));
+        (stats.OpenAtStart.Vacancies + stats.Opened - stats.Closed - stats.Dropped).Should().Be(stats.OpenAtEnd.Vacancies);
+
+        stats.ByCompany.Should().BeEquivalentTo(
+            [
+                new CompanyChanges { CompanyName = "acme", Opened = 1, Closed = 1, Dropped = 0 },
+                new CompanyChanges { CompanyName = "beta", Opened = 2, Closed = 0, Dropped = 1 }
+            ],
+            o => o.WithoutStrictOrdering());
+        stats.ByCompany.Single(x => x.CompanyName == "beta").Net.Should().Be(1);
     }
 
     [Test]
@@ -74,7 +113,7 @@ public sealed class WatchlistStatsCalculatorTests
             Event("rehiring", "1", VacancyChangeKind.Closed, From.AddHours(1)),
             Event("rehiring", "2", VacancyChangeKind.New, From.AddHours(2)),
 
-            // Nothing open any more, but nothing closed either - the filter ruled the vacancy out.
+            // Nothing open any more because the filter ruled the vacancy out - emptied all the same.
             Event("filtered", "1", VacancyChangeKind.New, From.AddDays(-5)),
             Event("filtered", "1", VacancyChangeKind.Filtered, From.AddHours(1)),
 
@@ -83,7 +122,7 @@ public sealed class WatchlistStatsCalculatorTests
             Event("long-gone", "1", VacancyChangeKind.Closed, From.AddDays(-8))
         ]);
 
-        stats.EmptiedCompanies.Should().Equal("gone");
+        stats.EmptiedCompanies.Should().Equal("filtered", "gone");
     }
 
     [Test]

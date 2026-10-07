@@ -5,7 +5,7 @@ namespace JobsPulse.Core.Pipeline;
 /// <summary>
 /// Pure function from the event history of a watchlist to its statistics for one period - no IO, no clock.
 /// Whether a vacancy is open at a moment is decided by replaying the history up to it: the last event of a post
-/// being <see cref="VacancyChangeKind.New"/> means it is open. Companies are counted by name, so one company watched
+/// being <see cref="VacancyChangeKind.New"/> means it is open, and only an event that flips that is counted. Companies are counted by name, so one company watched
 /// through two boards is one company. A disabled company is not counted anywhere - the user switched it off.
 /// </summary>
 public static class WatchlistStatsCalculator
@@ -35,20 +35,19 @@ public static class WatchlistStatsCalculator
             .Select(e => e.BoardKey)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var window = events
-            .Where(e => e.OccurredAt >= from && e.OccurredAt <= to && (counts is null || counts(e)))
-            .Where(e => !disabled.Contains(e.BoardKey))
-            .ToList();
-
         var postsAtStart = OpenPosts(events.Where(e => e.OccurredAt < from), disabled);
         var postsAtEnd = OpenPosts(events.Where(e => e.OccurredAt <= to), disabled);
 
         var openAtStart = Companies(postsAtStart, names);
         var openAtEnd = Companies(postsAtEnd, names);
 
-        var openedByCompany = window
-            .Where(e => e.Kind == VacancyChangeKind.New)
-            .GroupBy(e => names(e.BoardKey), StringComparer.OrdinalIgnoreCase)
+        var transitions = Transitions(events, disabled, from, to, counts);
+
+        var opened = transitions.Where(t => t.Opened).ToList();
+        var ended = transitions.Where(t => !t.Opened).ToList();
+
+        var openedByCompany = opened
+            .GroupBy(t => names(t.Event.BoardKey), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         var newCompanies = openedByCompany.Keys
@@ -56,12 +55,24 @@ public static class WatchlistStatsCalculator
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var emptiedCompanies = window
-            .Where(e => e.Kind == VacancyChangeKind.Closed)
-            .Select(e => names(e.BoardKey))
+        var emptiedCompanies = ended
+            .Select(t => names(t.Event.BoardKey))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(company => !openAtEnd.Contains(company))
             .Order(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var byCompany = transitions
+            .GroupBy(t => names(t.Event.BoardKey), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new CompanyChanges
+            {
+                CompanyName = g.Key,
+                Opened = g.Count(t => t.Opened),
+                Closed = g.Count(t => !t.Opened && t.Event.Kind == VacancyChangeKind.Closed),
+                Dropped = g.Count(t => !t.Opened && t.Event.Kind != VacancyChangeKind.Closed)
+            })
+            .OrderByDescending(x => x.Opened + x.Closed + x.Dropped)
+            .ThenBy(x => x.CompanyName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var topByOpened = openedByCompany
@@ -92,16 +103,66 @@ public static class WatchlistStatsCalculator
             Days = days,
             From = from,
             To = to,
-            Opened = window.Count(e => e.Kind == VacancyChangeKind.New),
-            Closed = window.Count(e => e.Kind == VacancyChangeKind.Closed),
+            Opened = opened.Count,
+            Closed = ended.Count(t => t.Event.Kind == VacancyChangeKind.Closed),
+            Dropped = ended.Count(t => t.Event.Kind != VacancyChangeKind.Closed),
+            OpenedAndEnded = ended.Count(t => t.EndsOpenedInPeriod),
             NewCompanies = newCompanies,
             EmptiedCompanies = emptiedCompanies,
+            ByCompany = byCompany,
             TopByActivity = topByActivity,
             TopByOpened = topByOpened,
             OpenAtStart = new OpenCounts(postsAtStart.Count, openAtStart.Count),
             OpenAtEnd = new OpenCounts(postsAtEnd.Count, openAtEnd.Count)
         };
     }
+
+    /// <summary>
+    /// The counted events of the period that moved a vacancy between open and not open. A repeated event (a second
+    /// close of a closed post) moves nothing and is skipped, which is what makes «open at start + opened − ended»
+    /// equal «open at end».
+    /// </summary>
+    private static List<Transition> Transitions(
+        IReadOnlyList<WatchlistEvent> events,
+        HashSet<string> disabled,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        Func<WatchlistEvent, bool>? counts)
+    {
+        var open = new Dictionary<(string Board, string Post), bool>();
+        var openedInPeriod = new HashSet<(string Board, string Post)>();
+        var transitions = new List<Transition>();
+
+        foreach (var e in events)
+        {
+            if (e.OccurredAt > to)
+                break;
+
+            var key = (e.BoardKey.ToLowerInvariant(), e.PostId);
+            var wasOpen = open.GetValueOrDefault(key);
+            var isOpen = e.Kind == VacancyChangeKind.New;
+
+            open[key] = isOpen;
+
+            if (wasOpen == isOpen || e.OccurredAt < from || disabled.Contains(key.Item1))
+                continue;
+
+            var counted = counts is null || counts(e);
+
+            if (isOpen && counted)
+                openedInPeriod.Add(key);
+
+            var endsOpened = !isOpen && openedInPeriod.Remove(key);
+
+            if (counted)
+                transitions.Add(new Transition(e, isOpen, endsOpened));
+        }
+
+        return transitions;
+    }
+
+    /// <param name="EndsOpenedInPeriod">An end of a vacancy whose opening was counted in the same period.</param>
+    private sealed record Transition(WatchlistEvent Event, bool Opened, bool EndsOpenedInPeriod);
 
     /// <summary>
     /// The posts open after replaying <paramref name="history"/> (oldest first), as (board, post), the disabled boards

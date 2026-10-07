@@ -22,8 +22,10 @@ public sealed class StatsFormatterTests
         html.Should().Contain("<p>🗓 Changes: September 29, 12:00 – October 02, 12:00 UTC</p>");
         html.Should().Contain("🆕 Vacancies opened: <b>12</b>");
         html.Should().Contain("❌ Vacancies closed: <b>5</b>");
-        html.Should().Contain("🏢 New companies with vacancies: <b>2</b><br>");
-        html.Should().Contain("🏁 Companies that closed every matching vacancy: <b>1</b></p>");
+        html.Should().Contain("🆕 New companies with vacancies: <b>2</b><br>");
+        html.Should().Contain("🏁 Companies left without vacancies: <b>1</b></p>");
+        html.Should().NotContain("already");
+        html.Should().NotContain("Aged out");
         html.Should().NotContain("Gamma");
         html.Should().Contain("1. Acme — 10 events (+5 / ✏️3 / ❌2)");
         html.Should().Contain("2. Beta — 1 events (+1 / ✏️0 / ❌0)");
@@ -37,7 +39,7 @@ public sealed class StatsFormatterTests
 
         html.Should().Contain("📊 Back &amp; end · за 14 дней");
         html.Should().Contain("🆕 Открылось вакансий: <b>12</b>");
-        html.Should().Contain("🏢 Новых компаний с вакансиями: <b>2</b><br>");
+        html.Should().Contain("🆕 Новых компаний с вакансиями: <b>2</b><br>");
         html.Should().Contain("1. Acme — новых: 7");
     }
 
@@ -49,7 +51,7 @@ public sealed class StatsFormatterTests
             BotLanguage.English,
             digest: false);
 
-        html.Should().Contain("🏢 New companies with vacancies: <b>0</b><br>");
+        html.Should().Contain("🆕 New companies with vacancies: <b>0</b><br>");
         html.Should().Contain("<b>🔥 Most active companies</b><br>nothing in this period</p>");
         html.Should().Contain("<b>📈 Most new vacancies</b><br>nothing in this period</p>");
     }
@@ -230,8 +232,51 @@ public sealed class StatsFormatterTests
         var html = StatsFormatter.Format(stats, BotLanguage.English, digest: true, sincePrevious: true);
 
         html.Should().Contain("📊 What changed since the last digest · Back &amp; end");
-        html.Should().Contain("📦 Open vacancies: <b>47</b> (were 40, +7)");
-        html.Should().Contain("🏢 Companies with vacancies: <b>9</b> (were 10, −1)");
+        html.Should().Contain("📦 Open vacancies: <b>47</b> (were 40, +7)<br>🆕 Vacancies opened: <b>12</b>");
+        html.Should().Contain("🏢 Companies with vacancies: <b>9</b> (were 10, −1)<br>🆕 New companies");
+    }
+
+    [Test]
+    public void Format_should_say_how_much_of_what_opened_already_ended()
+    {
+        var stats = Stats() with
+        {
+            OpenAtStart = new OpenCounts(40, 10),
+            OpenAtEnd = new OpenCounts(45, 11),
+            Dropped = 2,
+            OpenedAndEnded = 3,
+            EmptiedCompanies = ["Acme", "Gamma"]
+        };
+
+        var html = StatsFormatter.Format(stats, BotLanguage.Russian, digest: true, sincePrevious: true);
+
+        html.Should().Contain("🆕 Открылось вакансий: <b>12</b>, из них уже закрылись: 3<br>"
+                              + "❌ Закрылось вакансий: <b>5</b><br>"
+                              + "🧹 Устарели или выпали из фильтра: <b>2</b></p>");
+        html.Should().Contain("🆕 Новых компаний с вакансиями: <b>2</b>, из них уже без вакансий: 1<br>"
+                              + "🏁 Компаний, оставшихся без вакансий: <b>2</b></p>");
+    }
+
+    [Test]
+    public void FormatRun_should_not_compare_with_what_was_open()
+    {
+        var stats = Stats() with { OpenAtStart = new OpenCounts(40, 10), OpenAtEnd = new OpenCounts(47, 9) };
+
+        var html = StatsFormatter.FormatRun(
+            new TraversalRunReport(TraversalKind.Watchlist, null, stats), BotLanguage.English);
+
+        html.Should().NotContain("📦");
+        html.Should().NotContain("Companies with vacancies");
+    }
+
+    [TestCase(CallbackAction.DigestOpened, "dgn:5:1")]
+    [TestCase(CallbackAction.DigestClosed, "dgc:5:1")]
+    [TestCase(CallbackAction.DigestOpenedOpen, "dgno:5:1")]
+    [TestCase(CallbackAction.DigestClosedOpen, "dgco:5:1")]
+    public void CallbackData_should_round_trip_the_digest_filters(CallbackAction action, string raw)
+    {
+        new CallbackData(action, 5, 1).ToString().Should().Be(raw);
+        CallbackData.Parse(raw).Should().Be(new CallbackData(action, 5, 1));
     }
 
     private static WatchlistStats Stats() =>

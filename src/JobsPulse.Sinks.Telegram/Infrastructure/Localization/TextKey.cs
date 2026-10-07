@@ -187,6 +187,9 @@ public enum TextKey
     StatsDaysMany,
     StatsOpened,
     StatsClosed,
+    StatsOpenedThenEnded,
+    StatsDropped,
+    StatsNewThenEmptied,
     StatsNewCompanies,
     StatsEmptiedCompanies,
     StatsTopActivity,
@@ -235,6 +238,10 @@ public enum TextKey
 
     // Digest changes
     DigestAllChanges,
+    DigestOpenedButton,
+    DigestClosedButton,
+    DigestOpenedTitle,
+    DigestClosedTitle,
     DigestChangesTitle,
     DigestChangesEmpty,
     DigestNewCompanies,

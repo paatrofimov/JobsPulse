@@ -100,5 +100,17 @@ public enum CallbackAction
     /// The button of a digest message: <see cref="DigestChanges"/> sent as a new message, so the digest stays in the
     /// chat instead of being edited into the screen.
     /// </summary>
-    DigestChangesOpen
+    DigestChangesOpen,
+
+    /// <summary><see cref="DigestChanges"/> narrowed to the vacancies that opened.</summary>
+    DigestOpened,
+
+    /// <summary><see cref="DigestChanges"/> narrowed to the vacancies that ended.</summary>
+    DigestClosed,
+
+    /// <summary>The digest message button of <see cref="DigestOpened"/>, sent as a new message.</summary>
+    DigestOpenedOpen,
+
+    /// <summary>The digest message button of <see cref="DigestClosed"/>, sent as a new message.</summary>
+    DigestClosedOpen
 }

@@ -79,7 +79,7 @@ public sealed class DigestService(
 
     /// <summary>Nothing opened or closed, and nothing aged out or was filtered away either - the open counts held.</summary>
     private static bool IsEmpty(WatchlistStats stats) =>
-        stats is { Opened: 0, Closed: 0 } && stats.OpenAtStart == stats.OpenAtEnd;
+        stats is { Opened: 0, Closed: 0, Dropped: 0 } && stats.OpenAtStart == stats.OpenAtEnd;
 
     private static DateTimeOffset Max(DateTimeOffset a, DateTimeOffset b) =>
         a > b ? a : b;

@@ -113,7 +113,11 @@ public sealed class ScreenRouter(
             CallbackAction.CompanyVacancies => await companyVacancies.RenderAsync(ctx, data.Id, data.Page, ct),
 
             CallbackAction.DigestChanges or CallbackAction.DigestChangesOpen =>
-                await digestChanges.RenderAsync(ctx, data.Id, data.Page, ct),
+                await digestChanges.RenderAsync(ctx, data.Id, data.Page, DigestChangesFilter.All, ct),
+            CallbackAction.DigestOpened or CallbackAction.DigestOpenedOpen =>
+                await digestChanges.RenderAsync(ctx, data.Id, data.Page, DigestChangesFilter.Opened, ct),
+            CallbackAction.DigestClosed or CallbackAction.DigestClosedOpen =>
+                await digestChanges.RenderAsync(ctx, data.Id, data.Page, DigestChangesFilter.Closed, ct),
 
             CallbackAction.Language => language.Render(ctx),
             CallbackAction.Admin => await admin.RenderAsync(ctx, ct),

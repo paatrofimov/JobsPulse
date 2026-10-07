@@ -132,9 +132,12 @@ itself.
 - `LanguageScreen` - Russian / English, stored on the user so it also applies to notifications hours later.
 - `DigestChangesScreen` - every change of one digest's period (`dg:<digest>:<page>`): the new and the emptied
   companies by name, then the vacancies folded by company, busiest first, one line per vacancy with its last change
-  (`🆕❌` - opened and ended inside the period), a link when `seen_vacancy` still has the row. Disabled companies are
-  left out. The digest's button is `dgo` - the same screen sent as a new message, so the digest is not edited away;
-  its pages are `dg` and edit in place.
+  (`🆕❌` - opened and ended inside the period), a link when `seen_vacancy` still has the row. A company header carries
+  `🆕 opened · ❌ ended · net` from `WatchlistStats.ByCompany`. `DigestChangesFilter` narrows it: `dgn` - only the
+  vacancies that opened (and only the new companies), `dgc` - only those that closed, aged out or were filtered away
+  (and only the emptied companies); the other two filters are one row of buttons. Disabled companies are left out.
+  The digest's buttons are `dgo` / `dgno` / `dgco` - the same screen sent as a new message, so the digest is not
+  edited away; its pages edit in place.
 - `SilentModeScreen` - the `🔕/🔔` toggle of the main menu (`sm`): flips `BotUser.SilentMode` (only the digest arrives) and re-renders the menu.
 - `AdminScreen` - the door to the operator commands, and a refusal for everybody else. It opens with the traversal
   progress block (`ProgressReporter`) and a `🔄 Refresh` button, because that is the one thing an operator wants
@@ -372,19 +375,20 @@ An administrator in silent mode is skipped; when every one of them is, nothing i
 No run report reaches a chat whose user is in silent mode (`IsChatSilentAsync`) - this also covers an ownerless
 watchlist routed to the default chat; a muted report is logged and counts as delivered.
 `DefaultChatId` is empty in production, so the fallback alone would reach nobody. A digest carries a `📋 All changes`
-button (`DigestChangesScreen`).
+button and, when there is something to show, `🆕 Opened` / `❌ Closed` (`DigestChangesScreen`).
 
 ## StatsFormatter
 
-Renders `WatchlistStats` - the same body (opened / closed, the numbers of new and emptied companies - counts only, a
-list of names made the message unreadable - and the two top lists) under three headers: the digest,
+Renders `WatchlistStats` - the same body (vacancies: opened with how many of them already ended, closed, aged out or
+filtered away; companies: new with how many already emptied, emptied - counts only, a list of names made the message
+unreadable - and the two top lists) under three headers: the digest,
 the statistics screen, and a run report, which adds what the run walked (`FormatRun`). Two periods are written apart:
 `⏱` the run itself and `🗓` the changes it covers - the digest and the screen have only the latter, a polling or
 registry run has both (`CycleReport.ChangesSince`, or «every company was polled for the first time»), a discovery run
 names the crawl indexes it walked. With a `links` resolver (`DeepLinks.Companies`) the companies of both tops are
 links to their vacancies - the digest, a run report and the screen all pass one. With `OpenAtStart` / `OpenAtEnd`
-(the digest and the screen) it adds `📦` open vacancies and companies against the start of the period with the
-signed delta; a digest that continues a previous one is titled «since the last digest». `FormatDiscovery` renders a discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
+(the digest and the screen) each block opens with what is open against the start of the period and the signed
+delta (`📦` vacancies, `🏢` companies), so «were + opened − closed − dropped = now» reads off the message; a digest that continues a previous one is titled «since the last digest». `FormatDiscovery` renders a discovery run. `Days` picks the plural form - three in Russian, two in English. Static and IO-free.
 
 ## TelegramClientFacade
 

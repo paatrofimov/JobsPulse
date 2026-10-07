@@ -38,8 +38,15 @@ public sealed class TelegramReportSink(
         var links = DeepLinks.Companies(watchlist, await client.GetBotUsernameAsync(ct));
         var html = StatsFormatter.Format(stats, language, digest: true, links, sincePrevious: digest.PreviousId is not null);
 
+        var narrowed = new List<(TextKey Label, CallbackAction Action)>();
+        if (stats.Opened > 0)
+            narrowed.Add((TextKey.DigestOpenedButton, CallbackAction.DigestOpenedOpen));
+        if (stats.Closed + stats.Dropped > 0)
+            narrowed.Add((TextKey.DigestClosedButton, CallbackAction.DigestClosedOpen));
+
         var keyboard = new KeyboardBuilder(language)
             .Button(TextKey.DigestAllChanges, CallbackAction.DigestChangesOpen, digest.Id)
+            .Modes(narrowed, digest.Id)
             .BuildBare();
 
         return await SendAsync(chatId, html, ct, keyboard);

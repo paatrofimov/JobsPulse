@@ -159,7 +159,8 @@ public sealed class BotUpdateHandler(
         // The spinner is stopped first: the edit below may take a moment, and a stuck button looks broken.
         await client.AnswerCallbackAsync(callback.Id, view.Toast, ct);
 
-        if (data.Action == CallbackAction.DigestChangesOpen)
+        if (data.Action is CallbackAction.DigestChangesOpen or CallbackAction.DigestOpenedOpen
+            or CallbackAction.DigestClosedOpen)
         {
             await SendAsync(updated, view, ct);
             return;

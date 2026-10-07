@@ -25,25 +25,11 @@ public static class StatsFormatter
 
         return $"<h6>{BotTexts.Get(title, language, name, Days(stats.Days, language))}</h6>"
                + $"<p>{BotTexts.Get(TextKey.ChangesPeriod, language, Period(stats.From, stats.To, language))}</p>"
-               + OpenDiff(stats, language)
-               + Body(stats, language, links);
+               + Body(stats, language, links, withOpen: true);
     }
 
-    /// <summary>What is open at the end of the period against what was open when it began - the diff of a digest.</summary>
-    private static string OpenDiff(WatchlistStats stats, BotLanguage language)
-    {
-        if (stats is not { OpenAtStart: { } before, OpenAtEnd: { } after })
-            return "";
-
-        var vacancies = BotTexts.Get(
-            TextKey.StatsOpenVacancies, language, after.Vacancies, before.Vacancies, Delta(after.Vacancies - before.Vacancies));
-        var companies = BotTexts.Get(
-            TextKey.StatsOpenCompanies, language, after.Companies, before.Companies, Delta(after.Companies - before.Companies));
-
-        return $"<p>{vacancies}<br>{companies}</p>";
-    }
-
-    private static string Delta(int delta) =>
+    /// <summary>«+3» / «−2» / «±0».</summary>
+    public static string Delta(int delta) =>
         delta switch
         {
             > 0 => $"+{delta}",
@@ -76,7 +62,7 @@ public static class StatsFormatter
                + (changes is null ? "" : $"<br>{changes}")
                + "</p>"
                + $"<p>{walked}</p>"
-               + Body(stats, language, links);
+               + Body(stats, language, links, withOpen: false);
     }
 
     /// <summary>What one discovery run mined. Not bound to a watchlist.</summary>
@@ -119,14 +105,51 @@ public static class StatsFormatter
         return BotTexts.Get(TextKey.StatsPeriod, language, Moment(from, withYear, language), Moment(to, withYear, language));
     }
 
-    private static string Body(WatchlistStats stats, BotLanguage language, Func<string, string?>? links)
+    /// <summary>
+    /// The vacancies, then the companies: what is open against the start of the period (<paramref name="withOpen"/>;
+    /// a run counts only its own events, so its numbers do not add up to that), what opened and what ended - so that
+    /// «were + opened − closed − dropped = open now» - and how much of what opened already ended.
+    /// </summary>
+    private static string Body(WatchlistStats stats, BotLanguage language, Func<string, string?>? links, bool withOpen)
     {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder("<p>");
+        var before = withOpen ? stats.OpenAtStart : null;
+        var after = withOpen ? stats.OpenAtEnd : null;
+        var open = before is not null && after is not null;
 
-        sb.Append($"<p>{BotTexts.Get(TextKey.StatsOpened, language, stats.Opened)}<br>");
-        sb.Append($"{BotTexts.Get(TextKey.StatsClosed, language, stats.Closed)}<br>");
-        sb.Append($"{BotTexts.Get(TextKey.StatsNewCompanies, language, stats.NewCompanies.Count)}<br>");
-        sb.Append($"{BotTexts.Get(TextKey.StatsEmptiedCompanies, language, stats.EmptiedCompanies.Count)}</p>");
+        if (open)
+        {
+            sb.Append(BotTexts.Get(
+                TextKey.StatsOpenVacancies, language, after!.Vacancies, before!.Vacancies, Delta(after.Vacancies - before.Vacancies)));
+            sb.Append("<br>");
+        }
+
+        sb.Append(BotTexts.Get(TextKey.StatsOpened, language, stats.Opened));
+        if (stats.OpenedAndEnded > 0)
+            sb.Append(BotTexts.Get(TextKey.StatsOpenedThenEnded, language, stats.OpenedAndEnded));
+
+        sb.Append("<br>").Append(BotTexts.Get(TextKey.StatsClosed, language, stats.Closed));
+        if (stats.Dropped > 0)
+            sb.Append("<br>").Append(BotTexts.Get(TextKey.StatsDropped, language, stats.Dropped));
+
+        sb.Append("</p><p>");
+
+        if (open)
+        {
+            sb.Append(BotTexts.Get(
+                TextKey.StatsOpenCompanies, language, after!.Companies, before!.Companies, Delta(after.Companies - before.Companies)));
+            sb.Append("<br>");
+        }
+
+        // A company both new and emptied got its first vacancy and lost its last one inside the period.
+        var newThenEmptied = stats.NewCompanies.Intersect(stats.EmptiedCompanies, StringComparer.OrdinalIgnoreCase).Count();
+
+        sb.Append(BotTexts.Get(TextKey.StatsNewCompanies, language, stats.NewCompanies.Count));
+        if (newThenEmptied > 0)
+            sb.Append(BotTexts.Get(TextKey.StatsNewThenEmptied, language, newThenEmptied));
+
+        sb.Append("<br>").Append(BotTexts.Get(TextKey.StatsEmptiedCompanies, language, stats.EmptiedCompanies.Count));
+        sb.Append("</p>");
 
         sb.Append($"<p><b>{BotTexts.Get(TextKey.StatsTopActivity, language)}</b><br>");
         sb.Append(Top(
