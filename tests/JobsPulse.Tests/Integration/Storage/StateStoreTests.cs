@@ -222,4 +222,24 @@ public sealed class StateStoreTests : IntegrationTestBase
         var repeated = await CommitAsync(BuildStateCommit(notifications: [], vacancies: [vacancy], closed: []));
         repeated.UpsertVacanciesAffectedRows.Should().Be(0);
     }
+
+    [Test]
+    public async Task LoadStaleFilterAsync_should_return_open_rows_with_an_unknown_or_missing_filter_hash()
+    {
+        // Without a filter hash in the commit every row is stored with none.
+        var (_, vacancies, __) = await InsertVacanciesAsync(take: 5, changeKind: VacancyChangeKind.New);
+        var keys = vacancies.Select(v => new VacancyKey(v.SourceId, v.BoardId, v.PostId)).ToList();
+
+        await StateStore.SetFilterHashAsync(keys[..2], "current", CancellationToken.None);
+        await StateStore.SetFilterHashAsync(keys[2..4], "old", CancellationToken.None);
+        await CommitAsync(BuildStateCommit(notifications: [], vacancies: [], closed: [vacancies[3].PostId]));
+
+        var stale = await StateStore.LoadStaleFilterAsync(["current"], 100, CancellationToken.None);
+
+        stale.Select(s => s.Vacancy.PostId).Should().BeEquivalentTo([vacancies[2].PostId, vacancies[4].PostId]);
+
+        await StateStore.SetFilterHashAsync([keys[2], keys[4]], "current", CancellationToken.None);
+
+        (await StateStore.LoadStaleFilterAsync(["current"], 100, CancellationToken.None)).Should().BeEmpty();
+    }
 }

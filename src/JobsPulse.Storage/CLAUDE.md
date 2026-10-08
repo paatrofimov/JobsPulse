@@ -20,6 +20,8 @@ The watchlist configuration lives here now - there is no JSON watchlist any more
 `AddStorage(config, connectionStringName)` registers:
 
 - `NpgsqlDataSource` as a singleton - shared by EF and by raw ADO.NET commands, so both use one connection pool.
+  Its command timeout is 120 s unless the connection string sets one: Neon's smallest compute stalls past the
+  default 30 s while two jobs write at once, and a single timed out read failed a whole polling run.
 - `IDbContextFactory<JobsPulseDbContext>` instead of a scoped `DbContext` - consumers are singletons/background
   routines, and a `DbContext` is not thread-safe. Every method creates and disposes its own context.
 - `UseSnakeCaseNamingConvention()` (EFCore.NamingConventions) - C# `PostId` maps to `post_id` automatically, so
@@ -66,7 +68,8 @@ scheduled outside now) while adding the nullable `watchlist_event.run_id`. `2026
 `watchlist_vacancy` row, stamped with the vacancy's `first_seen_at` - otherwise every company would read as «new» in
 the first statistics. Closures before the upgrade are restored by `--role historyrepair` (`WatchlistHistoryRepair`).
 `20261005095244_AddBotUserSilentMode` adds `bot_user.silent_mode` (false). `20261005100232_AddWatchlistDigest` adds `watchlist_digest`
-(index `(watchlist_id, period_to)`, cascade FK to `watchlist`).
+(index `(watchlist_id, period_to)`, cascade FK to `watchlist`). `20261008181313_AddSeenVacancyOpenFilterHashIndex` adds the partial
+`seen_vacancy (filter_hash) WHERE closed_at IS NULL` index.
 Column types come from the model: `text`, `text[]`, `jsonb`, `timestamp with time zone`, identity `bigint`.
 
 # PersistentModels
@@ -84,6 +87,7 @@ Table `seen_vacancy` - last known state of every post ever observed on a board.
   This is the `ON CONFLICT` target of the upsert - the upsert depends on this index existing.
 - Partial `(source_id, board_id) WHERE closed_at IS NULL`: the polling hot path reads only open vacancies of one
   board, so closed rows are kept out of the index and it stays small as history grows.
+- Partial `(filter_hash) WHERE closed_at IS NULL`: `LoadStaleFilterAsync` reads the few distinct hashes off it.
 
 ### Why columns look like this
 
@@ -279,6 +283,12 @@ carries - rows first seen, updated or closed since a point in time - keyed the s
 window is filtered before grouping, so a board nothing happened on simply has no row, and the window length in months
 is attached to every value so the caller does not have to know how it was measured. No new table, no history of its
 own: `outbox` is purged within a day and cannot answer this.
+
+### LoadStaleFilterAsync
+
+Runs before every polling cycle and almost always finds nothing. A `NOT IN` over the open rows walked the whole table
+for that answer and timed out on Neon, so the distinct hashes of open rows are read first by a loose index scan
+(recursive CTE, one index probe per value, plus an `EXISTS` for null), and the rows are read by the stale hashes only.
 
 ### LoadAllAsync / PurgeAllAsync
 

@@ -187,13 +187,21 @@ internal class StateStore(
         int limit,
         CancellationToken ct)
     {
+        // A `NOT IN` over the open rows walked the whole table on every run, although nothing is stale almost always.
+        // The few distinct hashes are read off the index instead, and the rows are looked up by the stale ones only.
+        var (hashes, hasNull) = await LoadOpenFilterHashesAsync(ct);
+        var staleHashes = hashes.Except(knownFilterHashes, StringComparer.Ordinal).ToList();
+
+        if (staleHashes.Count == 0 && !hasNull)
+            return [];
+
         await using var db = await factory.CreateDbContextAsync(ct);
 
         var rows = await db.SeenVacancies
             .AsNoTracking()
             .Where(x =>
                 x.ClosedAt == null &&
-                (x.FilterHash == null || !knownFilterHashes.Contains(x.FilterHash)))
+                ((hasNull && x.FilterHash == null) || staleHashes.Contains(x.FilterHash!)))
             .OrderBy(x => x.Id)
             .Take(limit)
             .ToListAsync(ct);
@@ -296,6 +304,49 @@ internal class StateStore(
             x => $"{x.SourceId}/{x.BoardId}",
             x => new BoardActivity(x.Opened, x.Changed, x.Closed, months),
             StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Distinct filter hashes of the open rows, by a loose index scan over the partial `filter_hash` index: one index
+    /// probe per distinct value instead of reading every row.
+    /// </summary>
+    private async Task<(List<string> Hashes, bool HasNull)> LoadOpenFilterHashesAsync(CancellationToken ct)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText =
+            """
+            WITH RECURSIVE hashes(filter_hash) AS (
+                (SELECT filter_hash FROM seen_vacancy
+                 WHERE closed_at IS NULL AND filter_hash IS NOT NULL
+                 ORDER BY filter_hash
+                 LIMIT 1)
+                UNION ALL
+                SELECT (SELECT s.filter_hash FROM seen_vacancy s
+                        WHERE s.closed_at IS NULL AND s.filter_hash > h.filter_hash
+                        ORDER BY s.filter_hash
+                        LIMIT 1)
+                FROM hashes h
+                WHERE h.filter_hash IS NOT NULL
+            )
+            SELECT filter_hash FROM hashes WHERE filter_hash IS NOT NULL
+            UNION ALL
+            SELECT NULL WHERE EXISTS (SELECT 1 FROM seen_vacancy WHERE closed_at IS NULL AND filter_hash IS NULL)
+            """;
+
+        var hashes = new List<string>();
+        var hasNull = false;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (reader.IsDBNull(0))
+                hasNull = true;
+            else
+                hashes.Add(reader.GetString(0));
+        }
+
+        return (hashes, hasNull);
     }
 
     /// <summary>Composite keys cannot be passed as one array - statements are grouped per board instead.</summary>

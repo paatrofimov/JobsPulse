@@ -216,6 +216,10 @@ public class JobsPulseDbContext(
             })
             .HasFilter("closed_at IS NULL");
 
+        // Filter maintenance reads the distinct filter hashes of open rows by walking this index.
+        entity.HasIndex(x => x.FilterHash)
+            .HasFilter("closed_at IS NULL");
+
         entity.Property(x => x.Offices)
             .HasColumnType("text[]");
     }

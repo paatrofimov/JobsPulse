@@ -14,6 +14,9 @@ namespace JobsPulse.Storage.Infrastructure;
 
 public static class StorageServiceCollectionExtensions
 {
+    private const int DefaultCommandTimeoutSeconds = 30;
+    private const int CommandTimeoutSeconds = 120;
+
     public static IServiceCollection AddStorage(this IServiceCollection services, IConfiguration config, string connectionStringName)
     {
         var connectionString = config.GetConnectionString(connectionStringName)
@@ -29,6 +32,11 @@ public static class StorageServiceCollectionExtensions
 
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
             dataSourceBuilder.UseLoggerFactory(loggerFactory);
+
+            // Neon's smallest compute stalls past the default 30 s while two jobs write at once, and one timed out
+            // read used to fail a whole polling run. An explicit value in the connection string still wins.
+            if (dataSourceBuilder.ConnectionStringBuilder.CommandTimeout == DefaultCommandTimeoutSeconds)
+                dataSourceBuilder.ConnectionStringBuilder.CommandTimeout = CommandTimeoutSeconds;
 
             return dataSourceBuilder.Build();
         });
