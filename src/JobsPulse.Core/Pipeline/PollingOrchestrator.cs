@@ -107,7 +107,16 @@ public sealed class PollingOrchestrator(
             await gate.WaitAsync(ct);
             try
             {
-                return await ProcessBoardAsync(board, settings, ct);
+                var (filters, hash) = plan.StorageFor(board.BoardKey);
+
+                return await ProcessBoardAsync(
+                    board,
+                    settings with
+                    {
+                        StorageFilters = filters,
+                        StorageFilterHash = hash
+                    },
+                    ct);
             }
             finally
             {

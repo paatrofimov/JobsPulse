@@ -38,9 +38,12 @@ outside Core.
 - one `BoardWorkItem` per distinct board, carrying a `WatchlistSubscription` (watchlist id and name, company name,
   filter and filter hash) for every watchlist that wants it; the interval of a shared board is the smallest override
   among its owners
-- `StorageFilters` - the union of all enabled watchlist filters - plus `StorageFilterHash`. A vacancy matching none of
-  them cannot produce a notification anywhere, so it is not stored at all. A watchlist with an empty filter matches
-  everything, and therefore makes the registry sweep store everything.
+- `StorageFilters` - the union of the non-empty enabled watchlist filters - plus `StorageFilterHash`. A vacancy matching
+  none of them cannot produce a notification anywhere, so it is not stored at all.
+- `MatchAllBoards` / `MatchAllFilterHash` - the boards of watchlists with an empty filter. Such a filter matches
+  everything, but only on its own boards (`StorageFor(boardKey)`): in the union it made the registry sweep store every
+  vacancy of every board - a million rows in three days. The board keys are part of the hash, so a board leaving such a
+  watchlist leaves its rows to the filter maintenance.
 - `DescriptionRulesHash` - `VacancyHasher.ComputeDescriptionRulesHash` over `StorageFilters`: the description rules
   alone, so a title edit does not force every stored description to be read again.
 
@@ -127,7 +130,7 @@ the earliest of its slices.
 Secondary cycle over `board_registry`. Boards that are already watched are filtered out, so the priority cycle stays
 the only writer for them. A registry board has no subscriptions, so the sweep itself produces no notifications - it
 keeps the global vacancy state warm (which is what makes the `/boards` ranking meaningful) and deactivates boards
-that stopped answering. With no enabled watchlist nothing is relevant, and the cycle is skipped entirely.
+that stopped answering. With no enabled watchlist with a non-empty filter nothing is relevant, and the cycle is skipped entirely.
 
 What the sweep does produce is **promotions**: after the fetch pass every board is handed to
 `DiscoveredBoardPromoter` together with its relevant vacancies. Promotion runs after the concurrent fetch pass, one
@@ -179,9 +182,10 @@ stamp and is due at once.
 
 ## FilterMaintenanceService
 
-Every `seen_vacancy` row stores `filter_hash` - the hash of the *set* of enabled watchlist filters it passed. When
-any watchlist filter changes, the rows whose hash is no longer in use are re-evaluated: the ones matching no
-watchlist are deleted and the count is logged, the rest just get the new hash. Rows are read in batches of 5000,
+Every `seen_vacancy` row stores `filter_hash` - the hash of the *set* of enabled watchlist filters it passed, or
+`MatchAllFilterHash` on a board of an empty-filter watchlist. When any watchlist filter changes, the rows whose hash is
+no longer in use are re-evaluated: a row on a match-all board is kept under that hash, the ones matching no watchlist
+are deleted and the count is logged, the rest just get the new hash. Rows are read in batches of 5000,
 batch after batch until nothing is stale, so one run applies the change to the whole table - the registry boards are
 polled too rarely to clean up a leftover in the meantime. A batch that changed nothing ends the run instead of being
 read again. Newly matching vacancies are not fetched here - the next cycle finds them.

@@ -74,18 +74,57 @@ public sealed class FilterMaintenanceServiceTests
         loads.Should().Be(1);
     }
 
+    [Test]
+    public async Task RunAsync_should_keep_everything_on_a_board_of_an_empty_filter_only()
+    {
+        Watchlist[] enabled =
+        [
+            new() { Id = 1, Name = "default", Filter = Filter },
+            new()
+            {
+                Id = 2,
+                Name = "everything",
+                Filter = FilterSpec.MatchAll,
+                Entries = [new WatchlistEntry { VacancySourceId = "test", BoardId = "hr", CompanyName = "HR" }]
+            }
+        ];
+        A.CallTo(() => watchlists.GetEnabledAsync(A<CancellationToken>._)).Returns(enabled);
+
+        var plan = WatchlistPlan.Build(enabled);
+        IReadOnlyList<SeenVacancySnapshot> rows = [.. Rows(2, "Accountant"), .. Rows(1, "Accountant", "hr")];
+
+        A.CallTo(() => stateStore.LoadStaleFilterAsync(
+                A<IReadOnlyList<string>>._, A<int>._, A<CancellationToken>._))
+            .ReturnsNextFromSequence(rows);
+
+        var report = await Service().RunAsync(CancellationToken.None);
+
+        plan.StorageFilters.Should().Equal(Filter);
+        report.Should().Be(new FilterMaintenanceReport(3, 2, 1));
+        A.CallTo(() => stateStore.SetFilterHashAsync(
+                A<IReadOnlyList<VacancyKey>>.That.Matches(k => k.Count == 1 && k[0].BoardId == "hr"),
+                plan.MatchAllFilterHash,
+                A<CancellationToken>._))
+            .MustHaveHappenedOnceExactly();
+        A.CallTo(() => stateStore.LoadStaleFilterAsync(
+                A<IReadOnlyList<string>>.That.IsSameSequenceAs(plan.StorageFilterHash, plan.MatchAllFilterHash),
+                A<int>._,
+                A<CancellationToken>._))
+            .MustHaveHappened();
+    }
+
     private FilterMaintenanceService Service() =>
         new(stateStore, watchlists, new VacancyMatcher(new FakeTimeProvider(), new SilentLog()), new SilentLog());
 
-    private static IReadOnlyList<SeenVacancySnapshot> Rows(int count, string title) =>
+    private static IReadOnlyList<SeenVacancySnapshot> Rows(int count, string title, string board = "board") =>
     [
         .. Enumerable.Range(0, count).Select(i => new SeenVacancySnapshot
         {
             Vacancy = new Vacancy
             {
                 SourceId = "test",
-                BoardId = "board",
-                PostId = $"{title}-{i}",
+                BoardId = board,
+                PostId = $"{board}-{title}-{i}",
                 Title = title,
                 Url = $"https://example.com/{i}"
             }

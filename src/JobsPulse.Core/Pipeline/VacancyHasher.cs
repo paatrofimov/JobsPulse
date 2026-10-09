@@ -31,6 +31,17 @@ public static class VacancyHasher
         return Hash(string.Join("\n", parts));
     }
 
+    /// <summary>Hash of the boards an empty filter stores everything of. Order- and case-insensitive.</summary>
+    public static string ComputeMatchAllHash(IEnumerable<string> boardKeys)
+    {
+        var parts = boardKeys
+            .Select(k => k.ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(s => s, StringComparer.Ordinal);
+
+        return Hash("match-all\n" + string.Join("\n", parts));
+    }
+
     /// <summary>
     /// Hash of the description rules alone, across a set of filters. Descriptions are not stored, so a known posting
     /// keeps the verdict its text got when it was last read - valid only while these rules stay the same.

@@ -12,9 +12,10 @@ public sealed record WatchlistPlan
     public IReadOnlyList<BoardWorkItem> Boards { get; init; } = [];
 
     /// <summary>
-    /// Union of the filters of every enabled watchlist. A vacancy matching none of them cannot produce a
+    /// Union of the non-empty filters of every enabled watchlist. A vacancy matching none of them cannot produce a
     /// notification anywhere, so it is not stored at all - this is what keeps <c>seen_vacancy</c> bounded while the
-    /// registry sweep walks thousands of boards.
+    /// registry sweep walks thousands of boards. An empty filter is left out: it would make every board store
+    /// everything, and it applies to the boards of its own watchlist only - see <see cref="MatchAllBoards"/>.
     /// </summary>
     public IReadOnlyList<FilterSpec> StorageFilters { get; init; } = [];
 
@@ -23,9 +24,24 @@ public sealed record WatchlistPlan
     /// <summary>Hash of the description rules among <see cref="StorageFilters"/> - see <c>Vacancy.DescriptionRulesHash</c>.</summary>
     public string DescriptionRulesHash { get; init; } = string.Empty;
 
-    public bool HasWatchlists => StorageFilters.Count > 0;
+    /// <summary>Board keys of the enabled watchlists with an empty filter - everything they list is stored.</summary>
+    public IReadOnlySet<string> MatchAllBoards { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Filter hash of the rows of <see cref="MatchAllBoards"/>. The board keys are part of it, so a board leaving such
+    /// a watchlist makes its rows stale and the filter maintenance cleans them up.
+    /// </summary>
+    public string MatchAllFilterHash { get; init; } = string.Empty;
+
+    public bool HasWatchlists { get; init; }
 
     public static readonly WatchlistPlan Empty = new();
+
+    /// <summary>The storage filters and their hash for one board: everything on a board of a match-all watchlist.</summary>
+    public (IReadOnlyList<FilterSpec> Filters, string Hash) StorageFor(string boardKey) =>
+        MatchAllBoards.Contains(boardKey)
+            ? ([FilterSpec.MatchAll], MatchAllFilterHash)
+            : (StorageFilters, StorageFilterHash);
 
     public static WatchlistPlan Build(IReadOnlyList<Watchlist> watchlists)
     {
@@ -66,16 +82,25 @@ public sealed record WatchlistPlan
         }
 
         var filters = enabled
+            .Where(w => !w.Filter.IsEmpty)
             .Select(w => w.Filter)
             .DistinctBy(VacancyHasher.ComputeFilterHash, StringComparer.Ordinal)
             .ToList();
+
+        var matchAll = enabled
+            .Where(w => w.Filter.IsEmpty)
+            .SelectMany(w => w.Entries.Where(e => e.Enabled).Select(e => e.BoardKey))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return new WatchlistPlan
         {
             Boards = [.. boards.Values],
             StorageFilters = filters,
             StorageFilterHash = VacancyHasher.ComputeFilterSetHash(filters),
-            DescriptionRulesHash = VacancyHasher.ComputeDescriptionRulesHash(filters)
+            DescriptionRulesHash = VacancyHasher.ComputeDescriptionRulesHash(filters),
+            MatchAllBoards = matchAll,
+            MatchAllFilterHash = matchAll.Count == 0 ? string.Empty : VacancyHasher.ComputeMatchAllHash(matchAll),
+            HasWatchlists = true
         };
     }
 

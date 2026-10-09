@@ -110,10 +110,10 @@ public sealed class RegistryPollingService(
         var enabled = await watchlists.GetEnabledAsync(ct);
         var plan = WatchlistPlan.Build(enabled);
 
-        // Without a single enabled watchlist nothing is relevant, so there is nothing to store either.
-        if (!plan.HasWatchlists)
+        // Without a non-empty filter nothing on a registry board is relevant, so there is nothing to store either.
+        if (plan.StorageFilters.Count == 0)
         {
-            ctxLog.Debug("No enabled watchlists — registry cycle is skipped");
+            ctxLog.Debug("No enabled watchlist with a filter — registry cycle is skipped");
             return null;
         }
 

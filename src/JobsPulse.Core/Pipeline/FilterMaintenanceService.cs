@@ -41,7 +41,7 @@ public sealed class FilterMaintenanceService(
         // and the registry boards are not polled often enough to clean it up in the meantime.
         while (true)
         {
-            var batch = await RunBatchAsync(plan.StorageFilterHash, storable, ct);
+            var batch = await RunBatchAsync(plan, storable, ct);
 
             total = new FilterMaintenanceReport(
                 total.Checked + batch.Checked,
@@ -64,30 +64,38 @@ public sealed class FilterMaintenanceService(
     }
 
     private async Task<FilterMaintenanceReport> RunBatchAsync(
-        string filterHash,
+        WatchlistPlan plan,
         IReadOnlyList<FilterSpec> storable,
         CancellationToken ct)
     {
-        var stale = await stateStore.LoadStaleFilterAsync([filterHash], BatchLimit, ct);
+        string[] known = plan.MatchAllBoards.Count == 0
+            ? [plan.StorageFilterHash]
+            : [plan.StorageFilterHash, plan.MatchAllFilterHash];
+
+        var stale = await stateStore.LoadStaleFilterAsync(known, BatchLimit, ct);
         if (stale.Count == 0)
             return FilterMaintenanceReport.Empty;
 
         var obsolete = new List<VacancyKey>();
         var retained = new List<VacancyKey>();
+        var matchAll = new List<VacancyKey>();
 
         foreach (var row in stale)
         {
             var vacancy = row.Vacancy;
             var key = new VacancyKey(vacancy.SourceId, vacancy.BoardId, vacancy.PostId);
 
-            if (storable.Any(f => matcher.Matches(vacancy, f)))
+            if (plan.MatchAllBoards.Contains($"{vacancy.SourceId}/{vacancy.BoardId}"))
+                matchAll.Add(key);
+            else if (storable.Any(f => matcher.Matches(vacancy, f)))
                 retained.Add(key);
             else
                 obsolete.Add(key);
         }
 
         var removed = await stateStore.DeleteAsync(obsolete, ct);
-        var kept = await stateStore.SetFilterHashAsync(retained, filterHash, ct);
+        var kept = await stateStore.SetFilterHashAsync(retained, plan.StorageFilterHash, ct)
+                   + await stateStore.SetFilterHashAsync(matchAll, plan.MatchAllFilterHash, ct);
 
         return new FilterMaintenanceReport(stale.Count, removed, kept);
     }
