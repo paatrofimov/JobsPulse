@@ -349,7 +349,7 @@ digest (`IWatchlistDigestStorage`), through `IReportSink`; the first digest of a
 `Digest:PeriodDays`, a gap is cut at `Digest:MaxPeriodDays`. Every digest is stored before it is sent - the message
 carries its id in the «all changes» button - and marked delivered after; a failed one does not move the start of the
 next, so nothing falls between two digests. An empty digest - nothing opened or closed, the open counts unchanged -
-is neither sent nor stored, so the next one covers the quiet stretch too. Run by `--role digest` - the cadence (every 8 hours) belongs to the
+is neither sent nor stored, so the next one covers the quiet stretch too. Run by `--role digest` - the cadence (every 12 hours) belongs to the
 scheduler, so nothing here decides whether a digest is due and every call sends. A failed delivery is logged and the
 rest go on.
 

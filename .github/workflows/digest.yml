@@ -1,7 +1,7 @@
 name: digest
 
 on:
-  # No `schedule:` - GitHub fires it late and irregularly. cron-job.org dispatches it every 8 hours. A digest covers
+  # No `schedule:` - GitHub fires it late and irregularly. cron-job.org dispatches it every 12 hours. A digest covers
   # the time since the previous one; `period-days` is the period of the first digest of a watchlist only.
   workflow_dispatch:
     inputs:

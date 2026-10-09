@@ -13,7 +13,7 @@
   publishes the command menu. The service url of Cloud Run is stable, so it is needed only when the url, the secret
   or the command list changes;
 - `digest` - one-shot: what changed in every enabled watchlist since its previous digest (`DigestService`; the first
-  one covers `Digest:PeriodDays`). Started by cron-job.org through `digest.yml` every 8 hours; its `period-days`
+  one covers `Digest:PeriodDays`). Started by cron-job.org through `digest.yml` every 12 hours; its `period-days`
   input sets the period of a first digest only;
 - `historyrepair` - one-shot: `WatchlistHistoryRepair`, restores lost closures of the watchlist history. Manual;
 - `polling`, `registry`, `discovery`, `cleanup` - one-shot jobs run by `JobRunner`, scheduled by the GitHub Actions

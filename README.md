@@ -94,11 +94,11 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 
 | Job | Runs | What it does |
 |---|---|---|
-| `polling` | every 3 hours | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
+| `polling` | every 6 hours | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
 | `registry` | every 6 hours, up to an hour per run | Sweeps the discovered board registry, least recently polled boards first; a board whose vacancies match a watchlist filter is added to it (🔎). |
 | `discovery` | daily | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
 | `cleanup` | daily | Deletes delivered notifications from the outbox. |
-| `digest` | every 3 days | Sends every enabled watchlist its statistics; the `period-days` input sets the period (3 by default). |
+| `digest` | every 12 hours | Sends every enabled watchlist what changed since its previous digest; `period-days` sets the period of a first digest only (3 by default). |
 
 `polling`, `registry` and `discovery` finish with a report of their own run. `historyrepair` is not scheduled: it
 restores the watchlist history the statistics are counted from (`--role historyrepair`), for a manual run after a
