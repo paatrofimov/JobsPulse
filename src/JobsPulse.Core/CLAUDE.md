@@ -167,7 +167,10 @@ background traffic does not starve the watchlist polling or the discovery crawle
 ## DiscoveredBoardPromoter
 
 Turns a board of the discovery registry into a watchlist entry. Per candidate watchlist: apply its filter to the
-board's relevant vacancies, and if anything matches, `AddDiscoveredEntryAsync` the board and report it.
+board's relevant vacancies, and if anything matches, `AddDiscoveredEntryAsync` the board and report it. Under a
+description rule a `DescriptionUnavailable` vacancy (a known posting reused without its detail) is left out: the
+matcher skips the description rules for it, and the watchlist cycle, which keeps the previous verdict instead, would
+then keep that unchecked match forever - this is how thousands of non-.NET postings got into the .NET watchlist.
 
 The match rows and the `New` notifications are written here, in the same commit as the promotion, on purpose: leaving
 them to the next watchlist cycle would produce an ordinary `New` wave and the reader would never learn that a new

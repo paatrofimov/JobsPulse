@@ -48,7 +48,11 @@ public sealed class DiscoveredBoardPromoter(
 
         foreach (var watchlist in candidates)
         {
-            var matched = matcher.Apply(relevant, watchlist.Filter);
+            // A vacancy without its description passes the description rules unchecked. The watchlist cycle keeps the
+            // previous verdict for it, and a board being promoted has none - so it cannot enter, as there.
+            var matched = matcher.Apply(
+                watchlist.Filter.UsesDescription ? [.. relevant.Where(v => !v.DescriptionUnavailable)] : relevant,
+                watchlist.Filter);
             if (matched.Count == 0)
                 continue;
 
