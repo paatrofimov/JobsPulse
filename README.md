@@ -33,7 +33,7 @@ Interface and notifications are available in English and Russian, switchable per
 - **Browsable lists.** Vacancies and companies can be grouped by company, by region, by month, or by company activity.
 - **Company activity indicator.** Vacancy events per month on a board (opened / changed / closed) — a rough measure
   of where hiring is actually moving, and a quick way to spot a source that misreports changes.
-- **Statistics.** Every 3 days a watchlist gets a digest: how many vacancies opened and closed, how many companies
+- **Statistics.** A watchlist regularly gets a digest of what changed since the previous one: how many vacancies opened and closed, how many companies
   started hiring and how many closed every matching vacancy, plus the top 3 companies by activity and by new
   vacancies. **📊 Statistics** counts the same for 7, 14, 30 or any number of days on request.
 - **Run reports.** Every polling and registry run reports what it changed in each watchlist (the same numbers, for
@@ -92,15 +92,15 @@ Nothing is always on — every part runs on a free tier and wakes up only when t
 | Telegram bot | Google Cloud Run | webhook container, started by incoming messages, scales to zero |
 | Database | Neon | managed PostgreSQL |
 
-| Job | Runs | What it does |
-|---|---|---|
-| `polling` | every 6 hours | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
-| `registry` | every 6 hours, up to an hour per run | Sweeps the discovered board registry, least recently polled boards first; a board whose vacancies match a watchlist filter is added to it (🔎). |
-| `discovery` | daily | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
-| `cleanup` | daily | Deletes delivered notifications from the outbox. |
-| `digest` | every 12 hours | Sends every enabled watchlist what changed since its previous digest; `period-days` sets the period of a first digest only (3 by default). |
+| Job | What it does |
+|---|---|
+| `polling` | Polls every board of every enabled watchlist, detects new / updated / closed vacancies and sends them to Telegram while the cycle runs. |
+| `registry` | Sweeps the discovered board registry, least recently polled boards first, until its run budget is spent; a board whose vacancies match a watchlist filter is added to it (🔎). |
+| `discovery` | Mines Common Crawl indexes for ATS board urls to fill the registry, continuing from its checkpoint on every run. |
+| `cleanup` | Deletes delivered notifications from the outbox. |
+| `digest` | Sends every enabled watchlist what changed since its previous digest; `period-days` sets the period of a first digest only (3 by default). |
 
-`polling`, `registry` and `discovery` finish with a report of their own run. `historyrepair` is not scheduled: it
+The schedule lives in cron-job.org only. `polling`, `registry` and `discovery` finish with a report of their own run. `historyrepair` is not scheduled: it
 restores the watchlist history the statistics are counted from (`--role historyrepair`), for a manual run after a
 deploy that recorded none.
 

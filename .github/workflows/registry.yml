@@ -13,8 +13,8 @@ jobs:
     uses: ./.github/workflows/_run-job.yml
     with:
       role: registry
-      # Started by cron-job.org every 6 hours; a failed run is reported by GitHub's own failure email.
+      # A failed run is reported by GitHub's own failure email.
       timeout-minutes: 75
-      # Slices are walked until this budget is spent; with a 6 hour cadence an hour keeps the registry covered.
+      # Slices are walked until this budget is spent.
       max-run-minutes: 60
     secrets: inherit
