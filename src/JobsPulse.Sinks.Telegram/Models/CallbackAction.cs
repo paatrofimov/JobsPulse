@@ -35,6 +35,7 @@ public enum CallbackAction
     FilterDescriptionExcluded,
     FilterFreshnessAsk,
     FilterFreshnessSet,
+    FilterEnglishToggle,
     FilterClear,
 
     CompaniesOpen,

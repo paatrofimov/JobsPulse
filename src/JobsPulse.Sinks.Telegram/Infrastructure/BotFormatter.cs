@@ -75,6 +75,9 @@ public static class BotFormatter
         Append(sb, TextKey.FilterDescription, filter.DescriptionAnyOf, language);
         Append(sb, TextKey.FilterDescriptionExcluded, filter.DescriptionNoneOf, language);
 
+        if (filter.EnglishOnly)
+            sb.Append(BotTexts.Get(TextKey.FilterEnglishOnly, language)).Append("<br>");
+
         if (filter.PostedWithinDays is { } days)
         {
             sb.Append(BotTexts.Get(TextKey.FilterFreshness, language))

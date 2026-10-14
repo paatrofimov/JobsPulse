@@ -14,6 +14,8 @@ public sealed record FilterSpec
 
     public int? PostedWithinDays { get; init; }
 
+    public bool EnglishOnly { get; init; }
+
     public FilterMatchMode MatchMode { get; init; } = FilterMatchMode.Substring;
 
     public static readonly FilterSpec MatchAll = new();
@@ -22,9 +24,9 @@ public sealed record FilterSpec
         TitleAnyOf.Count == 0 && TitleNoneOf.Count == 0 &&
         LocationAnyOf.Count == 0 && LocationNoneOf.Count == 0 &&
         DescriptionAnyOf.Count == 0 && DescriptionNoneOf.Count == 0 &&
-        PostedWithinDays is null;
+        PostedWithinDays is null && !EnglishOnly;
 
-    public bool UsesDescription => DescriptionAnyOf.Count > 0 || DescriptionNoneOf.Count > 0;
+    public bool UsesDescription => DescriptionAnyOf.Count > 0 || DescriptionNoneOf.Count > 0 || EnglishOnly;
 
 
     public override string ToString()
@@ -39,6 +41,10 @@ public sealed record FilterSpec
         sb.AppendList(nameof(LocationNoneOf), LocationNoneOf);
         sb.AppendList(nameof(DescriptionAnyOf), DescriptionAnyOf);
         sb.AppendList(nameof(DescriptionNoneOf), DescriptionNoneOf);
+
+        // Written only when set, so the hash of every filter without it stays what it was.
+        if (EnglishOnly)
+            sb.Append($", {nameof(EnglishOnly)}");
 
         return sb.ToString();
     }

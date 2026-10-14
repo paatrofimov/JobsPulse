@@ -42,6 +42,7 @@ public sealed class WatchlistHistoryRepair(
             {
                 DescriptionAnyOf = [],
                 DescriptionNoneOf = [],
+                EnglishOnly = false,
                 PostedWithinDays = null
             };
 

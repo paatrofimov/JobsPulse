@@ -52,7 +52,8 @@ public static class VacancyHasher
         var parts = filters
             .Where(f => f.UsesDescription)
             .Select(f =>
-                $"{f.MatchMode:g}|{string.Join(",", f.DescriptionAnyOf)}|{string.Join(",", f.DescriptionNoneOf)}")
+                $"{f.MatchMode:g}|{string.Join(",", f.DescriptionAnyOf)}|{string.Join(",", f.DescriptionNoneOf)}"
+                + (f.EnglishOnly ? "|en" : ""))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(s => s, StringComparer.Ordinal);
 

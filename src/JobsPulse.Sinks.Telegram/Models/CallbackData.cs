@@ -39,6 +39,7 @@ public readonly record struct CallbackData(CallbackAction Action, long Id = 0, i
         [CallbackAction.FilterDescriptionExcluded] = "fdx",
         [CallbackAction.FilterFreshnessAsk] = "ffa",
         [CallbackAction.FilterFreshnessSet] = "ffs",
+        [CallbackAction.FilterEnglishToggle] = "fen",
         [CallbackAction.FilterClear] = "fc",
 
         [CallbackAction.CompaniesOpen] = "co",

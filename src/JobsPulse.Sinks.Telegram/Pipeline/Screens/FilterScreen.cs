@@ -37,6 +37,10 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
             .Button(TextKey.FilterLocationButton, CallbackAction.FilterLocations, watchlistId)
             .Button(TextKey.FilterTextButton, CallbackAction.FilterDescription, watchlistId)
             .Button(TextKey.FilterFreshness, CallbackAction.FilterFreshnessAsk, watchlistId)
+            .Button(
+                watchlist.Filter.EnglishOnly ? TextKey.FilterEnglishOn : TextKey.FilterEnglishOff,
+                CallbackAction.FilterEnglishToggle,
+                watchlistId)
             .ButtonIf(!watchlist.Filter.IsEmpty, TextKey.FilterClear, CallbackAction.FilterClear, watchlistId)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
 
@@ -177,6 +181,23 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
             return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.NotAllowed, ctx.Language));
 
         var updated = watchlist.Filter with { PostedWithinDays = days > 0 ? days : null };
+        await watch.SetFilterAsync(watchlist, updated, ct);
+
+        var view = await RenderAsync(ctx, watchlistId, ct);
+
+        return view.WithToast(BotTexts.Get(TextKey.FilterSaved, ctx.Language));
+    }
+
+    public async Task<ScreenView> ToggleEnglishAsync(BotContext ctx, long watchlistId, CancellationToken ct)
+    {
+        var resolved = await access.ResolveAsync(ctx, watchlistId, ct);
+        if (resolved.Watchlist is not { } watchlist)
+            return Gone(ctx);
+
+        if (!resolved.CanEdit)
+            return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.NotAllowed, ctx.Language));
+
+        var updated = watchlist.Filter with { EnglishOnly = !watchlist.Filter.EnglishOnly };
         await watch.SetFilterAsync(watchlist, updated, ct);
 
         var view = await RenderAsync(ctx, watchlistId, ct);

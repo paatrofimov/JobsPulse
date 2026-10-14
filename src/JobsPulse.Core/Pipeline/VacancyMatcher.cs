@@ -28,6 +28,9 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
         if (checkDescription && f.DescriptionNoneOf.Count > 0 && AnyMatch(v.Description, f.DescriptionNoneOf, f.MatchMode))
             return false;
 
+        if (checkDescription && f.EnglishOnly && !EnglishTextDetector.IsEnglish(v.Description))
+            return false;
+
         if (f.TitleAnyOf.Count > 0 && !AnyMatch(v.Title, f.TitleAnyOf, f.MatchMode))
             return false;
 

@@ -201,7 +201,7 @@ watchlist the stored state is left untouched instead of being wiped.
 The match layer is deliberately not touched here: it is reconciled by the next poll of the board, which is also what
 turns a narrowed filter into a `Filtered` notification for that watchlist.
 
-`DescriptionAnyOf` and `DescriptionNoneOf` are dropped from the filter copies used for re-evaluation - descriptions are
+`DescriptionAnyOf`, `DescriptionNoneOf` and `EnglishOnly` are dropped from the filter copies used for re-evaluation - descriptions are
 not persisted, so those rules cannot be re-checked offline: the first would wipe everything, the second would keep
 everything. A changed description rule is applied by the poll instead: stored rows carry the description rules hash,
 and `DetailSelector` reads a known posting again when it differs.
@@ -267,7 +267,8 @@ Applies filter to a list of vacancies. `MayMatchListed` is the title and date pa
 vacancy can fail for good, since location, description and (for Workday) the date may still come from a detail
 request. Description rules are skipped for a vacancy marked `DescriptionUnavailable`. `DescriptionAnyOf` reads the
 description without its optional sections (`OptionalSectionStripper`): a skill listed only as a nice-to-have does not
-make a .NET vacancy; `DescriptionNoneOf` still reads the whole text.
+make a .NET vacancy; `DescriptionNoneOf` still reads the whole text. `EnglishOnly` drops a vacancy whose description
+`EnglishTextDetector` finds written in another language.
 
 ## WatchService
 
@@ -356,7 +357,7 @@ digest (`IWatchlistDigestStorage`), through `IReportSink`; the first digest of a
 `Digest:PeriodDays`, a gap is cut at `Digest:MaxPeriodDays`. Every digest is stored before it is sent - the message
 carries its id in the «all changes» button - and marked delivered after; a failed one does not move the start of the
 next, so nothing falls between two digests. An empty digest - nothing opened or closed, the open counts unchanged -
-is neither sent nor stored, so the next one covers the quiet stretch too. Run by `--role digest` - the cadence (every 12 hours) belongs to the
+is neither sent nor stored, so the next one covers the quiet stretch too. Run by `--role digest` - the cadence belongs to the
 scheduler, so nothing here decides whether a digest is due and every call sends. A failed delivery is logged and the
 rest go on.
 
@@ -441,6 +442,14 @@ at a heading line beginning with such a marker (or a short `Nice to have:` prefi
 short line that is not a list item and does not end like a sentence - or to the end. HTML (also entity-escaped) is
 turned into lines first. Every mistake is meant to fall on the safe side: a missed heading ends a section early and
 keeps the text. A description without an optional section is returned as it came.
+
+## EnglishTextDetector
+
+Tells whether a description is in English, without a library. A text with a fifth or more of its letters outside the
+Latin script (Cyrillic, CJK...) is not; otherwise the share of English function words among the Latin words decides -
+13% and more in English job ads, 5% and less in French, Portuguese, Spanish, German, Dutch, Polish or Italian ones, so
+the cut is at 8%. The labels of the boards are not used: SmartRecruiters marks Chinese and Hungarian ads `en`. A text
+under 40 words, or none at all, counts as English - an unreadable description never drops a vacancy.
 
 ## DetailSelector
 
@@ -641,6 +650,12 @@ The description rules are the odd pair: `Vacancy.Description` is never persisted
 so they hold only while the vacancy is being polled. Two consequences the bot states in its prompts - a vacancy whose
 text could not be read never passes `DescriptionAnyOf` and always passes `DescriptionNoneOf`, and
 `FilterMaintenanceService` drops both from the filter copy it re-evaluates stored rows with.
+
+### EnglishOnly
+
+Drop a vacancy whose description is not in English (`EnglishTextDetector`) - a description rule like the two above,
+so it makes `UsesDescription` true. Written into `ToString` only when set, so the hash of a filter without it did not
+change when it appeared.
 
 ### PostedWithinDays
 

@@ -71,7 +71,8 @@ itself.
 - `WatchlistScreen` - one watchlist: owner, state, company and match counts, the filter in words. Rename, filter,
   companies, vacancies, pause and delete, with a confirmation step before the delete.
 - `FilterScreen` - the filter one rule at a time, and now every rule `FilterSpec` has: wanted and unwanted words of the
-  **title**, of the **location** and of the vacancy **text**, plus freshness. **One button per field** (🔍 Title,
+  **title**, of the **location** and of the vacancy **text**, plus freshness and the `🇬🇧 English only` toggle
+  (`FilterSpec.EnglishOnly`, one tap flips it). **One button per field** (🔍 Title,
   📍 Location, 📝 Vacancy text): the sign of each word in the answer says which half it goes to, so a wanted/excluded pair
   of buttons is not needed. All six lists are also printed above the buttons by `BotFormatter.Filter`, so «what is this
   watchlist actually looking for» is answered without opening anything. Answers are applied by `FilterFieldEdit`; the
