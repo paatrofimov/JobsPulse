@@ -257,13 +257,17 @@ filter keeps - a still-listed post is described by what the board shows now, so 
 
 ## VacancyHasher
 
-SHA-256 truncated to 32 hex chars. `Compute` hashes the fields listed in `VacancyExtensions.ToStringForHash`
+SHA-256 truncated to 32 hex chars. `Compute` hashes the fields listed in `VacancyExtensions.ToStringForHash`.
+`ComputeDescriptionRulesHash` carries a version constant - bump it when the matcher starts reading descriptions
+differently, so stored verdicts are re-read once.
 
 ## VacancyMatcher
 
 Applies filter to a list of vacancies. `MayMatchListed` is the title and date parts alone - the checks a list-only
 vacancy can fail for good, since location, description and (for Workday) the date may still come from a detail
-request. Description rules are skipped for a vacancy marked `DescriptionUnavailable`.
+request. Description rules are skipped for a vacancy marked `DescriptionUnavailable`. `DescriptionAnyOf` reads the
+description without its optional sections (`OptionalSectionStripper`): a skill listed only as a nice-to-have does not
+make a .NET vacancy; `DescriptionNoneOf` still reads the whole text.
 
 ## WatchService
 
@@ -429,6 +433,14 @@ the failure the split caused before it existed - a window delivered in halves, e
 `TakeWholeWindows` applies the same boundary to a capped batch: given up to `max + 1` items oldest first, it keeps the
 first `max` minus the window the cap cuts through (the extra item is how the cut is detected), so a batch never
 carries half a window. Only a single window bigger than the cap is taken in parts.
+
+## OptionalSectionStripper
+
+Cuts «nice to have», «bonus», «preferred qualifications» and similar sections out of a description. A section starts
+at a heading line beginning with such a marker (or a short `Nice to have:` prefix) and runs to the next heading - a
+short line that is not a list item and does not end like a sentence - or to the end. HTML (also entity-escaped) is
+turned into lines first. Every mistake is meant to fall on the safe side: a missed heading ends a section early and
+keeps the text. A description without an optional section is returned as it came.
 
 ## DetailSelector
 

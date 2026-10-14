@@ -9,7 +9,9 @@ Differences from Greenhouse and Lever that shape this project:
 - the list carries no description and no job id: both live in `GET /postings/{id}`, one request per posting
 - there is no update timestamp, only `releasedDate`
 - an unknown company answers `200` with `totalFound: 0`, not 404
-- server-side filters (`q`, `country`, `region`, `city`, `department`, `language`) take a single value each
+- server-side filters (`q`, `country`, `region`, `city`, `department`, `language`) take a single value each, but
+  repeated keys are ORed: `Language` is a comma-separated list sent as repeated `language` keys. It is set to the
+  English codes, so postings written in another language are never fetched (`en` alone misses `en-GB`)
 
 # Infrastructure
 

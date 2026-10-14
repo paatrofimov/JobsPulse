@@ -42,7 +42,7 @@ public sealed class SmartRecruitersPostingsClient(
             AppendFilter(url, "region", opts.Region);
             AppendFilter(url, "city", opts.City);
             AppendFilter(url, "department", opts.Department);
-            AppendFilter(url, "language", opts.Language);
+            AppendFilters(url, "language", opts.Language);
         }
 
         return await GetAsync<PostingListDto>(url.ToString(), ct);
@@ -94,5 +94,12 @@ public sealed class SmartRecruitersPostingsClient(
     {
         if (!string.IsNullOrWhiteSpace(value))
             url.Append($"&{name}={Uri.EscapeDataString(value)}");
+    }
+
+    /// <summary>A comma-separated value becomes repeated keys, which the API ORs: `en,en-GB`.</summary>
+    private static void AppendFilters(StringBuilder url, string name, string? values)
+    {
+        foreach (var value in (values ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            AppendFilter(url, name, value);
     }
 }

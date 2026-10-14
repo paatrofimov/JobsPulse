@@ -25,7 +25,7 @@ public sealed class SmartRecruitersOptions
 
     public int DetailConcurrency { get; set; } = 4;
 
-    // Server-side filters of the posting API - single values, the API does not OR repeated keys.
+    // Server-side filters of the posting API - single values; `Language` alone takes a comma-separated list.
     public string? Query { get; set; }
     public string? Country { get; set; }
     public string? Region { get; set; }

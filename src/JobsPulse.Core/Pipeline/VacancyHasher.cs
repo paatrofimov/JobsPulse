@@ -56,8 +56,11 @@ public static class VacancyHasher
             .Distinct(StringComparer.Ordinal)
             .OrderBy(s => s, StringComparer.Ordinal);
 
-        return Hash(string.Join("\n", parts));
+        return Hash(DescriptionRulesVersion + "\n" + string.Join("\n", parts));
     }
+
+    // Bumped when the matcher reads descriptions differently, so stored verdicts are re-read under the new logic.
+    private const string DescriptionRulesVersion = "optional-sections-v1";
 
     private static string Hash(string input) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(input)))[..32];

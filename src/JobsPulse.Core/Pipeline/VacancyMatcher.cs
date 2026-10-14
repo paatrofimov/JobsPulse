@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using JobsPulse.Core.Infrastructure;
 using JobsPulse.Core.Model.Domain;
 using JobsPulse.Core.Model.Infrastructure;
 using Vostok.Logging.Abstractions;
@@ -38,8 +39,9 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
                 return false;
         }
 
+        // A skill wanted only as a nice-to-have does not make the vacancy one of that skill.
         if (checkDescription && f.DescriptionAnyOf.Count > 0 &&
-            !AnyMatch(v.Description, f.DescriptionAnyOf, f.MatchMode))
+            !AnyMatch(OptionalSectionStripper.Strip(v.Description), f.DescriptionAnyOf, f.MatchMode))
             return false;
 
         return IsRecent(v, f);
