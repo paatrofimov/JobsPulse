@@ -16,6 +16,10 @@ public sealed record FilterSpec
 
     public bool EnglishOnly { get; init; }
 
+    public StackRule Stack { get; init; }
+
+    public bool NoWorkAuthorizationRequired { get; init; }
+
     public FilterMatchMode MatchMode { get; init; } = FilterMatchMode.Substring;
 
     public static readonly FilterSpec MatchAll = new();
@@ -24,9 +28,11 @@ public sealed record FilterSpec
         TitleAnyOf.Count == 0 && TitleNoneOf.Count == 0 &&
         LocationAnyOf.Count == 0 && LocationNoneOf.Count == 0 &&
         DescriptionAnyOf.Count == 0 && DescriptionNoneOf.Count == 0 &&
-        PostedWithinDays is null && !EnglishOnly;
+        PostedWithinDays is null && !EnglishOnly && Stack == StackRule.None && !NoWorkAuthorizationRequired;
 
-    public bool UsesDescription => DescriptionAnyOf.Count > 0 || DescriptionNoneOf.Count > 0 || EnglishOnly;
+    public bool UsesDescription =>
+        DescriptionAnyOf.Count > 0 || DescriptionNoneOf.Count > 0 || EnglishOnly || Stack != StackRule.None ||
+        NoWorkAuthorizationRequired;
 
 
     public override string ToString()
@@ -42,9 +48,15 @@ public sealed record FilterSpec
         sb.AppendList(nameof(DescriptionAnyOf), DescriptionAnyOf);
         sb.AppendList(nameof(DescriptionNoneOf), DescriptionNoneOf);
 
-        // Written only when set, so the hash of every filter without it stays what it was.
+        // Written only when set, so the hash of every filter without them stays what it was.
         if (EnglishOnly)
             sb.Append($", {nameof(EnglishOnly)}");
+
+        if (Stack != StackRule.None)
+            sb.Append($", {nameof(Stack)}: {Stack:g}");
+
+        if (NoWorkAuthorizationRequired)
+            sb.Append($", {nameof(NoWorkAuthorizationRequired)}");
 
         return sb.ToString();
     }

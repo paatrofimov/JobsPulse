@@ -121,8 +121,8 @@ public sealed class ShortlistScreen(
 
         sb.Append($"<p><b>{place}. {name}</b> · {BotTexts.Get(TextKey.ShortlistCompanyRow, language, company.Count)}{worked}</p>");
 
-        foreach (var vacancy in company.Top)
-            sb.Append(pages.RenderVacancy(vacancy, null, language));
+        foreach (var job in company.Top)
+            sb.Append(pages.RenderJob(job, null, language));
     }
 
     /// <summary>The four areas on two rows and the periods on one, the current choice marked.</summary>

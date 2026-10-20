@@ -13,6 +13,7 @@ namespace JobsPulse.Core.Pipeline;
 public sealed class PollingOrchestrator(
     IWatchlistStorage watchlists,
     BoardProcessor boardProcessor,
+    DiscoveredBoardPromoter promoter,
     IBoardPollStateStorage pollState,
     ITraversalProgressTracker progress,
     IOptionsMonitor<WatchlistPollingOptions> options,
@@ -56,7 +57,8 @@ public sealed class PollingOrchestrator(
     private async Task<CycleReport> RunCycleCoreAsync(bool force, CancellationToken ct)
     {
         var opts = options.CurrentValue;
-        var plan = WatchlistPlan.Build(await watchlists.GetEnabledAsync(ct));
+        var enabled = await watchlists.GetEnabledAsync(ct);
+        var plan = WatchlistPlan.Build(enabled);
         var now = clock.GetUtcNow();
 
         if (plan.Boards.Count == 0)
@@ -109,14 +111,14 @@ public sealed class PollingOrchestrator(
             {
                 var (filters, hash) = plan.StorageFor(board.BoardKey);
 
-                return await ProcessBoardAsync(
+                return (Board: board, Result: await ProcessBoardAsync(
                     board,
                     settings with
                     {
                         StorageFilters = filters,
                         StorageFilterHash = hash
                     },
-                    ct);
+                    ct));
             }
             finally
             {
@@ -134,18 +136,67 @@ public sealed class PollingOrchestrator(
         foreach (var board in due)
             polled[board.BoardKey] = now;
 
+        var promoted = opts.DryRun ? 0 : await PromoteAcrossAsync(results, enabled, ct);
+
         // Coverage is reported after the stamps are written, so it is the post-cycle truth.
         progress.CycleFinished(TraversalKind.Watchlist, Coverage(plan.Boards, [], polled));
 
-        var report = CycleReport.Aggregate(results) with { ChangesSince = changesSince };
+        var report = CycleReport.Aggregate([.. results.Select(r => r.Result.Report)]) with
+        {
+            ChangesSince = changesSince
+        };
         ctxLog.Info(
-            "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, watchlist matches {Matched}, changes {Changes}, errors {Failed}",
-            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Changes, report.Failed);
+            "Cycle finished: boards {Boards}, fetched vacancies {Fetched}, watchlist matches {Matched}, changes {Changes}, errors {Failed}, "
+            + "promoted to other watchlists {Promoted}",
+            report.BoardsProcessed, report.VacanciesFetched, report.VacanciesMatched, report.Changes, report.Failed,
+            promoted);
 
         return report;
     }
 
-    private async Task<BoardReport> ProcessBoardAsync(
+    /// <summary>
+    /// A watched board whose vacancies match another watchlist that does not list it is promoted there, as a
+    /// registry board would be. The registry sweep skips watched boards, so without this a board of one watchlist
+    /// could never reach another. A board dropped from that watchlist stays dropped - see `AddDiscoveredEntryAsync`.
+    /// </summary>
+    private async Task<int> PromoteAcrossAsync(
+        IReadOnlyList<(BoardWorkItem Board, BoardProcessResult Result)> results,
+        IReadOnlyList<Watchlist> enabled,
+        CancellationToken ct)
+    {
+        var candidates = DiscoveredBoardPromoter.SelectCandidates(enabled);
+        if (candidates.Count < 2)
+            return 0;
+
+        var promoted = 0;
+
+        foreach (var (board, result) in results)
+        {
+            if (result.BoardMissing || result.Relevant.Count == 0)
+                continue;
+
+            var others = candidates
+                .Where(w => board.Subscriptions.All(s => s.WatchlistId != w.Id))
+                .ToList();
+            if (others.Count == 0)
+                continue;
+
+            var registered = new RegisteredBoard
+            {
+                SourceId = board.SourceId,
+                BoardId = board.BoardId,
+                DisplayName = board.Subscriptions.FirstOrDefault()?.CompanyName ?? board.CompanyName,
+                Configuration = board.Configuration,
+                DiscoveredVia = "watchlist"
+            };
+
+            promoted += (await promoter.TryPromoteAsync(registered, result.Relevant, others, ct)).Count;
+        }
+
+        return promoted;
+    }
+
+    private async Task<BoardProcessResult> ProcessBoardAsync(
         BoardWorkItem board,
         BoardProcessSettings settings,
         CancellationToken ct)
@@ -165,7 +216,7 @@ public sealed class PollingOrchestrator(
                 board.BoardKey, board.CompanyName, disabled);
         }
 
-        return result.Report;
+        return result;
     }
 
     /// <summary>

@@ -41,6 +41,11 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
                 watchlist.Filter.EnglishOnly ? TextKey.FilterEnglishOn : TextKey.FilterEnglishOff,
                 CallbackAction.FilterEnglishToggle,
                 watchlistId)
+            .Button(StackButton(watchlist.Filter.Stack), CallbackAction.FilterStackCycle, watchlistId)
+            .Button(
+                watchlist.Filter.NoWorkAuthorizationRequired ? TextKey.FilterNoAuthOn : TextKey.FilterNoAuthOff,
+                CallbackAction.FilterAuthToggle,
+                watchlistId)
             .ButtonIf(!watchlist.Filter.IsEmpty, TextKey.FilterClear, CallbackAction.FilterClear, watchlistId)
             .Build(CallbackAction.WatchlistOpen, watchlistId);
 
@@ -204,6 +209,46 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
 
         return view.WithToast(BotTexts.Get(TextKey.FilterSaved, ctx.Language));
     }
+
+    public Task<ScreenView> CycleStackAsync(BotContext ctx, long watchlistId, CancellationToken ct) =>
+        UpdateAsync(ctx, watchlistId, f => f with { Stack = NextStack(f.Stack) }, ct);
+
+    public Task<ScreenView> ToggleAuthAsync(BotContext ctx, long watchlistId, CancellationToken ct) =>
+        UpdateAsync(ctx, watchlistId, f => f with { NoWorkAuthorizationRequired = !f.NoWorkAuthorizationRequired }, ct);
+
+    private async Task<ScreenView> UpdateAsync(
+        BotContext ctx,
+        long watchlistId,
+        Func<FilterSpec, FilterSpec> change,
+        CancellationToken ct)
+    {
+        var resolved = await access.ResolveAsync(ctx, watchlistId, ct);
+        if (resolved.Watchlist is not { } watchlist)
+            return Gone(ctx);
+
+        if (!resolved.CanEdit)
+            return (await RenderAsync(ctx, watchlistId, ct)).WithToast(BotTexts.Get(TextKey.NotAllowed, ctx.Language));
+
+        await watch.SetFilterAsync(watchlist, change(watchlist.Filter), ct);
+
+        var view = await RenderAsync(ctx, watchlistId, ct);
+
+        return view.WithToast(BotTexts.Get(TextKey.FilterSaved, ctx.Language));
+    }
+
+    private static StackRule NextStack(StackRule rule) => rule switch
+    {
+        StackRule.None => StackRule.Primary,
+        StackRule.Primary => StackRule.Neutral,
+        _ => StackRule.None
+    };
+
+    private static TextKey StackButton(StackRule rule) => rule switch
+    {
+        StackRule.Primary => TextKey.FilterStackPrimaryButton,
+        StackRule.Neutral => TextKey.FilterStackNeutralButton,
+        _ => TextKey.FilterStackOffButton
+    };
 
     public async Task<ScreenView> ClearAsync(BotContext ctx, long watchlistId, CancellationToken ct)
     {

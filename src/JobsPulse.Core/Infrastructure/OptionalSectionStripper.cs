@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -15,6 +14,11 @@ public static partial class OptionalSectionStripper
         "what would make you stand out", "what will make you stand out", "to stand out", "even better if"
     ];
 
+    // Found anywhere in a heading line: «What else we look for (Preferred):», «What we'd like to see, but not required».
+    private static readonly string[] InHeadingMarkers = ["(preferred)", "not required"];
+
+    private const string PreferredHeading = "preferred";
+
     private const string Bullets = "-*•·▪●◦○–—✔✓";
 
     private const int MaxHeadingLength = 60;
@@ -25,7 +29,7 @@ public static partial class OptionalSectionStripper
         if (string.IsNullOrEmpty(description) || !ContainsMarker(description))
             return description;
 
-        var lines = ToLines(description);
+        var lines = DescriptionText.ToLines(description);
         var kept = new StringBuilder(description.Length);
         var skipping = false;
         var stripped = false;
@@ -51,28 +55,8 @@ public static partial class OptionalSectionStripper
     }
 
     private static bool ContainsMarker(string text) =>
-        OptionalMarkers.Any(m => text.Contains(m, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>
-    /// Plain text keeps its lines; HTML (also the entity-escaped one some boards return) becomes one line per block,
-    /// with list items prefixed by a bullet so they are never mistaken for headings.
-    /// </summary>
-    private static string[] ToLines(string text)
-    {
-        if (text.Contains("&lt;", StringComparison.Ordinal))
-            text = WebUtility.HtmlDecode(text);
-
-        if (text.Contains('<'))
-        {
-            text = ListItemTag().Replace(text, "\n- ");
-            text = BlockTag().Replace(text, "\n");
-            text = AnyTag().Replace(text, " ");
-        }
-
-        text = WebUtility.HtmlDecode(text);
-
-        return text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
-    }
+        OptionalMarkers.Concat(InHeadingMarkers).Append(PreferredHeading)
+            .Any(m => text.Contains(m, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A short line that is not a list item and does not end like a sentence.</summary>
     private static bool IsHeading(string line)
@@ -93,6 +77,12 @@ public static partial class OptionalSectionStripper
     private static bool IsOptionalHeading(string line)
     {
         var text = LeadingSymbols().Replace(line, "");
+
+        if (IsHeading(line) &&
+            (InHeadingMarkers.Any(m => text.Contains(m, StringComparison.OrdinalIgnoreCase)) ||
+             text.TrimEnd(':', ' ').Equals(PreferredHeading, StringComparison.OrdinalIgnoreCase)))
+            return true;
+
         var marker = OptionalMarkers.FirstOrDefault(m => text.StartsWith(m, StringComparison.OrdinalIgnoreCase));
         if (marker is null)
             return false;
@@ -104,15 +94,6 @@ public static partial class OptionalSectionStripper
 
         return colon >= marker.Length && colon <= MaxInlineHeadingLength;
     }
-
-    [GeneratedRegex(@"<li[^>]*>", RegexOptions.IgnoreCase)]
-    private static partial Regex ListItemTag();
-
-    [GeneratedRegex(@"<(br|/?p|/?div|/?h[1-6]|/?ul|/?ol|/li|/?tr|/?section)\b[^>]*>", RegexOptions.IgnoreCase)]
-    private static partial Regex BlockTag();
-
-    [GeneratedRegex(@"<[^>]+>")]
-    private static partial Regex AnyTag();
 
     [GeneratedRegex(@"^[^\p{L}\p{N}]+")]
     private static partial Regex LeadingSymbols();

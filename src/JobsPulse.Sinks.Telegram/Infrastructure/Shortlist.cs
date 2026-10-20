@@ -54,7 +54,7 @@ public static class Shortlist
                         first.Id,
                         g.Any(x => x.Entry!.IsWorked),
                         ranked.Count,
-                        [.. ranked.Take(VacanciesPerCompany)]),
+                        [.. SameJob.Group(ranked, v => v).Take(VacanciesPerCompany)]),
                     Best = Relevance(ranked[0], watchlist.Filter),
                     Freshest = ranked.Max(Freshness) ?? DateTimeOffset.MinValue
                 };

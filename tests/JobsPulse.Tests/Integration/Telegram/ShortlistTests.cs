@@ -51,7 +51,7 @@ public sealed class ShortlistTests
             ],
             _ => true);
 
-        result.Should().ContainSingle().Which.Top.Select(v => v.PostId).Should().Equal("3", "4", "2");
+        result.Should().ContainSingle().Which.Top.Select(j => j[0].PostId).Should().Equal("3", "4", "2");
         result[0].Count.Should().Be(4);
     }
 
@@ -65,7 +65,7 @@ public sealed class ShortlistTests
             [Vacancy("acme", "1", "Backend", 2), Vacancy("acme", "2", "Backend", 8)],
             Shortlist.PublishedWithin(7, Now));
 
-        result.Should().ContainSingle().Which.Top.Select(v => v.PostId).Should().Equal("1");
+        result.Should().ContainSingle().Which.Top.Select(j => j[0].PostId).Should().Equal("1");
     }
 
     [TestCase("Berlin, Germany", FocusArea.WesternEurope, true)]

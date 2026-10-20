@@ -36,6 +36,12 @@ public enum CallbackAction
     FilterFreshnessAsk,
     FilterFreshnessSet,
     FilterEnglishToggle,
+
+    /// <summary>Cycles <c>FilterSpec.Stack</c>: off → main language → without it.</summary>
+    FilterStackCycle,
+
+    /// <summary>Flips <c>FilterSpec.NoWorkAuthorizationRequired</c>.</summary>
+    FilterAuthToggle,
     FilterClear,
 
     CompaniesOpen,

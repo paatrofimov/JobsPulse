@@ -43,6 +43,8 @@ public sealed class WatchlistHistoryRepair(
                 DescriptionAnyOf = [],
                 DescriptionNoneOf = [],
                 EnglishOnly = false,
+                Stack = StackRule.None,
+                NoWorkAuthorizationRequired = false,
                 PostedWithinDays = null
             };
 

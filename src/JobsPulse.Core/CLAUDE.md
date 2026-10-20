@@ -29,6 +29,9 @@ outside Core.
 - read enabled watchlists with their entries and filters, collapse them into a `WatchlistPlan`
 - for every due board (scheduling state is per board, not per entry) run `BoardProcessor`
     - if the board is missing, every watchlist entry pointing at it is disabled
+- promote across watchlists: a board whose relevant vacancies match another enabled, non-empty watchlist that does
+  not list it is added there through `DiscoveredBoardPromoter` (skipped in `DryRun`). The registry sweep skips
+  watched boards, so without this a board of one watchlist could never reach another; one dropped there stays dropped
 - aggregate the reports
 
 ## WatchlistPlan
@@ -166,7 +169,8 @@ background traffic does not starve the watchlist polling or the discovery crawle
 
 ## DiscoveredBoardPromoter
 
-Turns a board of the discovery registry into a watchlist entry. Per candidate watchlist: apply its filter to the
+Turns a board of the discovery registry - or a board of another watchlist, see `PollingOrchestrator` - into a
+watchlist entry. Per candidate watchlist: apply its filter to the
 board's relevant vacancies, and if anything matches, `AddDiscoveredEntryAsync` the board and report it. Under a
 description rule a `DescriptionUnavailable` vacancy (a known posting reused without its detail) is left out: the
 matcher skips the description rules for it, and the watchlist cycle, which keeps the previous verdict instead, would
@@ -201,7 +205,7 @@ watchlist the stored state is left untouched instead of being wiped.
 The match layer is deliberately not touched here: it is reconciled by the next poll of the board, which is also what
 turns a narrowed filter into a `Filtered` notification for that watchlist.
 
-`DescriptionAnyOf`, `DescriptionNoneOf` and `EnglishOnly` are dropped from the filter copies used for re-evaluation - descriptions are
+`DescriptionAnyOf`, `DescriptionNoneOf`, `EnglishOnly`, `Stack` and `NoWorkAuthorizationRequired` are dropped from the filter copies used for re-evaluation - descriptions are
 not persisted, so those rules cannot be re-checked offline: the first would wipe everything, the second would keep
 everything. A changed description rule is applied by the poll instead: stored rows carry the description rules hash,
 and `DetailSelector` reads a known posting again when it differs.
@@ -268,7 +272,10 @@ vacancy can fail for good, since location, description and (for Workday) the dat
 request. Description rules are skipped for a vacancy marked `DescriptionUnavailable`. `DescriptionAnyOf` reads the
 description without its optional sections (`OptionalSectionStripper`): a skill listed only as a nice-to-have does not
 make a .NET vacancy; `DescriptionNoneOf` still reads the whole text. `EnglishOnly` drops a vacancy whose description
-`EnglishTextDetector` finds written in another language.
+`EnglishTextDetector` finds written in another language, or that `LanguageRequirementDetector` finds demanding one.
+`NoWorkAuthorizationRequired` drops what `WorkAuthorizationDetector` flags. Under a `Stack` rule `DescriptionAnyOf` is
+not «any of these words» but the stack `StackDetector` reads: `Primary` wants it as a main language, `Neutral` wants it
+not to be one and no other language required.
 
 ## WatchService
 
@@ -438,7 +445,8 @@ carries half a window. Only a single window bigger than the cap is taken in part
 ## OptionalSectionStripper
 
 Cuts «nice to have», «bonus», «preferred qualifications» and similar sections out of a description. A section starts
-at a heading line beginning with such a marker (or a short `Nice to have:` prefix) and runs to the next heading - a
+at a heading line beginning with such a marker (or a short `Nice to have:` prefix), a heading that is just
+`Preferred`, or one saying `(Preferred)` / `not required` anywhere, and runs to the next heading - a
 short line that is not a list item and does not end like a sentence - or to the end. HTML (also entity-escaped) is
 turned into lines first. Every mistake is meant to fall on the safe side: a missed heading ends a section early and
 keeps the text. A description without an optional section is returned as it came.
@@ -450,6 +458,34 @@ Latin script (Cyrillic, CJK...) is not; otherwise the share of English function 
 13% and more in English job ads, 5% and less in French, Portuguese, Spanish, German, Dutch, Polish or Italian ones, so
 the cut is at 8%. The labels of the boards are not used: SmartRecruiters marks Chinese and Hungarian ads `en`. A text
 under 40 words, or none at all, counts as English - an unreadable description never drops a vacancy.
+
+## DescriptionText
+
+A description as lines (HTML blocks and list items become lines, entities decoded) and sentences (a line cut at «. »,
+«; », «! » before a capital - not at «e.g.», «.NET» or «? », so a form field «Sponsorship? No» stays whole). The unit
+the detectors below judge: one requirement bullet is one sentence.
+
+## StackDetector
+
+What `FilterSpec.Stack` reads (`StackReading`). The stack (the `DescriptionAnyOf` words) is **primary** when the title
+names it, or a sentence outside the optional sections names it without calling it a plus («C#, Java or Go» counts,
+«C# is a plus», «exposure to .NET» do not). **Another language is required** when a sentence that does not name the
+stack and is not a plus asks for experience with Java, Python, Go, Node.js, Ruby, PHP, C++, Kotlin, Scala, Rust and
+the like - scripting (Python or Bash scripts) does not count. Measured on 1625 .NET matches: 7% are not primary.
+
+## WorkAuthorizationDetector
+
+`FilterSpec.NoWorkAuthorizationRequired`: true when a sentence wants an existing work authorization, citizenship,
+residency or clearance, or refuses sponsorship («not able to provide visa sponsorship», «currently eligible to work
+in», «work rights», «H-1B», «Sponsorship? No»), and **no** sentence offers help - sponsorship available, «will
+consider sponsoring», a relocation package or assistance. An offer preceded by a negation («not eligible for
+relocation») is not one. Equal opportunity sentences are skipped - they all mention citizenship.
+
+## LanguageRequirementDetector
+
+Part of `EnglishOnly`: a sentence outside the optional sections demanding a spoken language other than English -
+«fluent Polish», «German speaking», «French C1». A language wanted as a plus or preferred does not count; Russian is
+not in the list.
 
 ## DetailSelector
 
@@ -653,9 +689,17 @@ text could not be read never passes `DescriptionAnyOf` and always passes `Descri
 
 ### EnglishOnly
 
-Drop a vacancy whose description is not in English (`EnglishTextDetector`) - a description rule like the two above,
+Drop a vacancy whose description is not in English (`EnglishTextDetector`) or demands another language
+(`LanguageRequirementDetector`) - a description rule like the two above,
 so it makes `UsesDescription` true. Written into `ToString` only when set, so the hash of a filter without it did not
 change when it appeared.
+
+### Stack / NoWorkAuthorizationRequired
+
+Description rules too (`UsesDescription`), written into `ToString` only when set. `Stack` (`StackRule`: `None`,
+`Primary`, `Neutral`) changes how `DescriptionAnyOf` is read - see `StackDetector`; `Primary` and `Neutral` split
+one search into «.NET is a main language» and «.NET is not, and nothing else is required» without overlap.
+`NoWorkAuthorizationRequired` - see `WorkAuthorizationDetector`.
 
 ### PostedWithinDays
 

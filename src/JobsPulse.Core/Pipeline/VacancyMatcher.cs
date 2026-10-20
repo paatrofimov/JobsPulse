@@ -28,7 +28,11 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
         if (checkDescription && f.DescriptionNoneOf.Count > 0 && AnyMatch(v.Description, f.DescriptionNoneOf, f.MatchMode))
             return false;
 
-        if (checkDescription && f.EnglishOnly && !EnglishTextDetector.IsEnglish(v.Description))
+        if (checkDescription && f.EnglishOnly &&
+            (!EnglishTextDetector.IsEnglish(v.Description) || LanguageRequirementDetector.RequiresOther(v.Description)))
+            return false;
+
+        if (checkDescription && f.NoWorkAuthorizationRequired && WorkAuthorizationDetector.RequiresExisting(v.Description))
             return false;
 
         if (f.TitleAnyOf.Count > 0 && !AnyMatch(v.Title, f.TitleAnyOf, f.MatchMode))
@@ -43,11 +47,24 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
         }
 
         // A skill wanted only as a nice-to-have does not make the vacancy one of that skill.
-        if (checkDescription && f.DescriptionAnyOf.Count > 0 &&
+        if (checkDescription && f.Stack == StackRule.None && f.DescriptionAnyOf.Count > 0 &&
             !AnyMatch(OptionalSectionStripper.Strip(v.Description), f.DescriptionAnyOf, f.MatchMode))
             return false;
 
+        if (checkDescription && f.Stack != StackRule.None && !FitsStack(v, f))
+            return false;
+
         return IsRecent(v, f);
+    }
+
+    /// <summary>`DescriptionAnyOf` read as the stack - see `StackDetector`.</summary>
+    private bool FitsStack(Vacancy v, FilterSpec f)
+    {
+        var reading = StackDetector.Read(v.Title, v.Description, s => AnyMatch(s, f.DescriptionAnyOf, f.MatchMode));
+
+        return f.Stack == StackRule.Primary
+            ? reading.Primary
+            : !reading.Primary && !reading.OtherRequired;
     }
 
     /// <summary>

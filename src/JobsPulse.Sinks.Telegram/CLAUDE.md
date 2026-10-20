@@ -67,12 +67,15 @@ itself.
 - `MainMenuScreen` - the root and the answer to `/start`. Explains in two sentences what a watchlist is, because a
   first-time user has no idea, and offers every entry point as a button.
 - `WatchlistsScreen` - «my watchlists» (editable) and «all watchlists» (examples, own ones marked ⭐ and listed first).
-  Both name the owner explicitly.
+  Both name the owner explicitly. Every watchlist button carries its enabled companies and matching vacancies
+  (`BotFormatter.WatchlistButton`, also on the `VacanciesScreen` pick), so the lists can be compared without opening them.
 - `WatchlistScreen` - one watchlist: owner, state, company and match counts, the filter in words. Rename, filter,
   companies, vacancies, pause and delete, with a confirmation step before the delete.
 - `FilterScreen` - the filter one rule at a time, and now every rule `FilterSpec` has: wanted and unwanted words of the
   **title**, of the **location** and of the vacancy **text**, plus freshness and the `🇬🇧 English only` toggle
-  (`FilterSpec.EnglishOnly`, one tap flips it). **One button per field** (🔍 Title,
+  (`FilterSpec.EnglishOnly`, one tap flips it), the `🧩 Stack` rule (`FilterSpec.Stack`, one tap cycles any mention →
+  main language → without it) and the `🛂 No work permit needed` toggle (`FilterSpec.NoWorkAuthorizationRequired`).
+  **One button per field** (🔍 Title,
   📍 Location, 📝 Vacancy text): the sign of each word in the answer says which half it goes to, so a wanted/excluded pair
   of buttons is not needed. All six lists are also printed above the buttons by `BotFormatter.Filter`, so «what is this
   watchlist actually looking for» is answered without opening anything. Answers are applied by `FilterFieldEdit`; the
@@ -200,8 +203,8 @@ the user and is logged instead of breaking the update.
 
 ## VacancyPageBuilder
 
-The grouped vacancy feed of one watchlist: a block per company (glyph, name, count) with its vacancies newest first,
-manual companies before discovered ones - the same ordering `MessageFormatter` uses, so a browsed list and a pushed one
+The grouped vacancy feed of one watchlist: a block per company (glyph, name, count of jobs) with its vacancies newest
+first, one line per job (`SameJob` - its cities are links), manual companies before discovered ones - the same ordering `MessageFormatter` uses, so a browsed list and a pushed one
 read alike. `VacancyGrouping.Location` slices the same feed by region instead (`LocationRegions`, Europe first) and
 `VacancyGrouping.Month` by the month a vacancy appeared or last changed in (`VacancyMonths`, newest first); both move
 the company name into the vacancy line, because such a block mixes companies and «whose vacancy is this» is the first
@@ -222,6 +225,14 @@ is flushed and re-opens under the repeated header, so no page carries unbalanced
 
 Paging is budgeted at 30 000 characters rather than 4096: a rich message is not a plain one, and `MessageFormatter` has
 been splitting notifications at that size since it existed.
+
+## SameJob
+
+One job posted for several cities is one line of a listing: the same board and the same title (case and surrounding
+spaces aside), whatever the post ids. `Group` keeps the order of the first posting, so a sorted listing stays sorted;
+`MessageFormatter` adds the change kind to the key, so a new and a closed posting of one job stay apart. `Places`
+renders the place of a single posting as text and of several as links, one per distinct place - a city is the only
+thing telling the postings apart, so it is what the reader clicks. The title links to the first posting.
 
 ## LocationRegions
 
@@ -245,7 +256,8 @@ pan-European key («EMEA», «EU») is in both halves. The region tables are the
 ## Shortlist
 
 Pure ranking behind `ShortlistScreen`. Only enabled entries count; companies are grouped by name (`ShortlistCompany`:
-name, the entry its link opens, worked-through mark, count in the slice, top vacancies). Companies: most vacancies in
+name, the entry its link opens, worked-through mark, count in the slice, top jobs - `SameJob` groups, so one job
+posted for three cities takes one place, not all three). Companies: most vacancies in
 the slice, then the best relevance, then the freshest vacancy, then name. Vacancies: **relevance** - how many wanted
 title words of the filter (`TitleAnyOf`, in its match mode) the title hits - then freshness (the listing date,
 falling back to `FirstSeenAt`), then title. `PublishedWithin` is the freshness slice.
@@ -324,7 +336,8 @@ an answer `- Intern, Research` to the «excluded words» prompt removed words th
 
 ## BotFormatter
 
-Rendering shared by the screens: the company status glyph, the owner label and the filter in words. One place, so
+Rendering shared by the screens: the company status glyph, the owner label, the watchlist button and the filter in
+words. One place, so
 «active / disabled / worked through» looks identical in every list.
 
 ## MessageFormatter
@@ -343,7 +356,7 @@ correctly-grouped messages that all carried the same `17:10–17:15` header.
 Inside a window every company is **one collapsed `<details>` block**, exactly like the browsable lists: the message
 opens as the list of company headers and unfolding one shows its vacancies. A block mixes the change kinds (🆕 new,
 ✏️ changed, ❌ closed, ⌛ left the `PostedWithinDays` window, 🚫 no longer passes the filter), so the summary counts them (`🏢 Acme · 🆕 3 · ✏️ 1`) and
-every line carries its own glyph. Blocks are ordered **manual
+every line carries its own glyph. One job of one kind posted for several cities is one line (`SameJob`). Blocks are ordered **manual
 companies before discovered ones**, then by their freshest vacancy; vacancies inside a block by kind, then freshness.
 A company too large for a whole message - and only such a company - is continued under a repeated header.
 

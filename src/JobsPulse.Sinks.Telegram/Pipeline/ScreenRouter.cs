@@ -75,6 +75,8 @@ public sealed class ScreenRouter(
             CallbackAction.FilterFreshnessAsk => await filter.AskFreshnessAsync(ctx, data.Id, ct),
             CallbackAction.FilterFreshnessSet => await filter.SetFreshnessAsync(ctx, data.Id, data.Page, ct),
             CallbackAction.FilterEnglishToggle => await filter.ToggleEnglishAsync(ctx, data.Id, ct),
+            CallbackAction.FilterStackCycle => await filter.CycleStackAsync(ctx, data.Id, ct),
+            CallbackAction.FilterAuthToggle => await filter.ToggleAuthAsync(ctx, data.Id, ct),
             CallbackAction.FilterClear => await filter.ClearAsync(ctx, data.Id, ct),
 
             CallbackAction.CompaniesOpen => await companies.RenderAsync(ctx, data.Id, data.Page, ct),

@@ -112,6 +112,8 @@ public sealed class FilterMaintenanceService(
             {
                 DescriptionAnyOf = [],
                 DescriptionNoneOf = [],
-                EnglishOnly = false
+                EnglishOnly = false,
+                Stack = StackRule.None,
+                NoWorkAuthorizationRequired = false
             };
 }

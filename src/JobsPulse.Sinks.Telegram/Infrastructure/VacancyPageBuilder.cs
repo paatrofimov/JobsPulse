@@ -161,7 +161,8 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
                     Activity = activity is null
                         ? null
                         : ActivityRanks.Of(activity, $"{g.Key.SourceId}/{g.Key.BoardId}"),
-                    Vacancies = Sorted(g)
+                    Vacancies = Sorted(g),
+                    Lines = RenderJobs(Sorted(g), _ => null, language)
                 };
             });
 
@@ -181,8 +182,8 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
                     ? ActivityRanks.Glyph(ActivityRanks.Rank(rate))
                     : b.Worked ? "✅" : b.Origin == BoardOrigin.Discovery ? "🔎" : "🏢",
                 MessageFormatter.Escape(b.Company),
-                b.Vacancies.Count,
-                [.. b.Vacancies.Select(v => RenderVacancy(v, null, language))],
+                b.Lines.Count,
+                b.Lines,
                 b.Activity is { } value ? ActivityRanks.Rate(value, language) : null));
     }
 
@@ -201,11 +202,12 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
 
         foreach (var region in byRegion)
         {
-            var lines = region
-                .OrderBy(v => CompanyOf(watchlist, v), StringComparer.OrdinalIgnoreCase)
-                .ThenByDescending(PublishedAt)
-                .Select(v => RenderVacancy(v, CompanyOf(watchlist, v), language))
-                .ToList();
+            var lines = RenderJobs(
+                region
+                    .OrderBy(v => CompanyOf(watchlist, v), StringComparer.OrdinalIgnoreCase)
+                    .ThenByDescending(PublishedAt),
+                v => CompanyOf(watchlist, v),
+                language);
 
             yield return new Block(
                 LocationRegions.Glyph(region.Key),
@@ -231,11 +233,12 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
 
         foreach (var month in byMonth)
         {
-            var lines = month
-                .OrderByDescending(PublishedAt)
-                .ThenBy(v => CompanyOf(watchlist, v), StringComparer.OrdinalIgnoreCase)
-                .Select(v => RenderVacancy(v, CompanyOf(watchlist, v), language))
-                .ToList();
+            var lines = RenderJobs(
+                month
+                    .OrderByDescending(PublishedAt)
+                    .ThenBy(v => CompanyOf(watchlist, v), StringComparer.OrdinalIgnoreCase),
+                v => CompanyOf(watchlist, v),
+                language);
 
             yield return new Block(
                 VacancyMonths.Glyph(month.Key),
@@ -269,15 +272,24 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
         return fold ? $"<details><summary>{text}</summary>" : $"<p>{text}</p>";
     }
 
-    /// <summary>One vacancy: the title as a link, then the company (when given), the location and the date.</summary>
-    public string RenderVacancy(Vacancy vacancy, string? company, BotLanguage language)
+    /// <summary>One line per job - the postings of one job in several cities are one line, see <see cref="SameJob"/>.</summary>
+    private List<string> RenderJobs(IEnumerable<Vacancy> vacancies, Func<Vacancy, string?> company, BotLanguage language) =>
+        [.. SameJob.Group(vacancies, v => v).Select(g => RenderJob(g, company(g[0]), language))];
+
+    public string RenderVacancy(Vacancy vacancy, string? company, BotLanguage language) =>
+        RenderJob([vacancy], company, language);
+
+    /// <summary>
+    /// One job: the title as a link to its first posting, then the company (when given), the place of every posting
+    /// and the date of the first.
+    /// </summary>
+    public string RenderJob(IReadOnlyList<Vacancy> postings, string? company, BotLanguage language)
     {
+        var vacancy = postings[0];
         var title = $"<a href=\"{MessageFormatter.Escape(vacancy.Url)}\">"
                     + $"<b>{MessageFormatter.Escape(vacancy.Title)}</b></a>";
 
-        var location = vacancy.Location
-                       ?? (vacancy.Offices.Count > 0 ? string.Join(" · ", vacancy.Offices) : null)
-                       ?? BotTexts.Get(TextKey.VacancyUnknownLocation, language);
+        var location = SameJob.Places(postings, language);
 
         var published = PublishedAt(vacancy) ?? vacancy.FirstSeenAt;
 
@@ -287,7 +299,7 @@ public sealed class VacancyPageBuilder(TimeProvider clock)
 
         var prefix = company is null ? string.Empty : $"{MessageFormatter.Escape(company)} · ";
 
-        return $"<p>{title}<br> {prefix}{MessageFormatter.Escape(location)} · {date}</p>";
+        return $"<p>{title}<br> {prefix}{location} · {date}</p>";
     }
 
     /// <summary>The date every listing sorts by - «freshest first» means this one.</summary>

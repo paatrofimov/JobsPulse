@@ -51,7 +51,7 @@ public sealed class WatchlistsScreen(WatchService watch, IBotUserStorage users, 
         sb.Append("</p>");
 
         var keyboard = new KeyboardBuilder(ctx.Language)
-            .Items(pageItems, w => w.Name, CallbackAction.WatchlistOpen, w => w.Id)
+            .Items(pageItems, w => BotFormatter.WatchlistButton(w, matches), CallbackAction.WatchlistOpen, w => w.Id)
             .Paging(CallbackAction.MyWatchlists, 0, page, totalPages)
             .Button(TextKey.WatchlistCreate, CallbackAction.WatchlistNew)
             .Build(CallbackAction.Menu);
@@ -72,6 +72,7 @@ public sealed class WatchlistsScreen(WatchService watch, IBotUserStorage users, 
         var owners = await users.GetManyAsync(
             [.. ordered.Where(w => w.OwnerUserId is not null).Select(w => w.OwnerUserId!.Value).Distinct()], ct);
 
+        var matches = await stateStore.CountMatchesByWatchlistAsync(ct);
         var pageItems = Pager.Slice(ordered, ref page, out var totalPages);
 
         var sb = new StringBuilder($"<h6>{BotTexts.Get(TextKey.AllWatchlistsTitle, ctx.Language)}</h6>");
@@ -93,7 +94,7 @@ public sealed class WatchlistsScreen(WatchService watch, IBotUserStorage users, 
         var keyboard = new KeyboardBuilder(ctx.Language)
             .Items(
                 pageItems,
-                w => WatchlistAccess.IsOwn(ctx, w) ? $"⭐ {w.Name}" : w.Name,
+                w => BotFormatter.WatchlistButton(w, matches, WatchlistAccess.IsOwn(ctx, w) ? "⭐ " : ""),
                 CallbackAction.WatchlistOpen,
                 w => w.Id)
             .Paging(CallbackAction.AllWatchlists, 0, page, totalPages)

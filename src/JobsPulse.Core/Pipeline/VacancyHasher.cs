@@ -53,7 +53,9 @@ public static class VacancyHasher
             .Where(f => f.UsesDescription)
             .Select(f =>
                 $"{f.MatchMode:g}|{string.Join(",", f.DescriptionAnyOf)}|{string.Join(",", f.DescriptionNoneOf)}"
-                + (f.EnglishOnly ? "|en" : ""))
+                + (f.EnglishOnly ? "|en" : "")
+                + (f.Stack != StackRule.None ? $"|stack:{f.Stack:g}" : "")
+                + (f.NoWorkAuthorizationRequired ? "|no-auth" : ""))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(s => s, StringComparer.Ordinal);
 
@@ -61,7 +63,7 @@ public static class VacancyHasher
     }
 
     // Bumped when the matcher reads descriptions differently, so stored verdicts are re-read under the new logic.
-    private const string DescriptionRulesVersion = "optional-sections-v1";
+    private const string DescriptionRulesVersion = "stack-v1";
 
     private static string Hash(string input) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(input)))[..32];

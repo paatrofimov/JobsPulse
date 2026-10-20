@@ -59,6 +59,13 @@ public static class BotFormatter
     }
 
     /// <summary>
+    /// A watchlist button: the name, then its enabled companies and matching vacancies, so the list of lists already
+    /// tells which one is worth opening.
+    /// </summary>
+    public static string WatchlistButton(Watchlist watchlist, IReadOnlyDictionary<long, int> matches, string mark = "") =>
+        $"{mark}{watchlist.Name} · 🏢 {watchlist.Entries.Count(e => e.Enabled)} · 💼 {matches.GetValueOrDefault(watchlist.Id)}";
+
+    /// <summary>
     /// The filter in words rather than json - the user never sees `FilterSpec.ToString`, which is a debug rendering.
     /// </summary>
     public static string Filter(FilterSpec filter, BotLanguage language)
@@ -77,6 +84,15 @@ public static class BotFormatter
 
         if (filter.EnglishOnly)
             sb.Append(BotTexts.Get(TextKey.FilterEnglishOnly, language)).Append("<br>");
+
+        if (filter.Stack != StackRule.None)
+        {
+            var stack = filter.Stack == StackRule.Primary ? TextKey.FilterStackPrimary : TextKey.FilterStackNeutral;
+            sb.Append(BotTexts.Get(stack, language)).Append("<br>");
+        }
+
+        if (filter.NoWorkAuthorizationRequired)
+            sb.Append(BotTexts.Get(TextKey.FilterNoAuth, language)).Append("<br>");
 
         if (filter.PostedWithinDays is { } days)
         {

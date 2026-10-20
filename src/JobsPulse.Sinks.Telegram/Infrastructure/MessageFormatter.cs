@@ -169,7 +169,9 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
         }
 
         var summary = $"<details><summary><b>{title}{counts}</b></summary>";
-        var lines = company.Items.Select(i => $"<p>{RenderVacancy(i, language)}</p>").ToList();
+        var lines = SameJob.Group(company.Items, i => i.Vacancy, i => i.ChangeKind)
+            .Select(g => $"<p>{RenderVacancy(g, language)}</p>")
+            .ToList();
 
         // A company is one block; only one that cannot fit a message at all is continued under a repeated header.
         var block = new StringBuilder(summary);
@@ -193,12 +195,16 @@ public class MessageFormatter(TimeProvider clock, IOptionsMonitor<DeliveryOption
             yield return block.Append(DetailsClose).ToString();
     }
 
-    private string RenderVacancy(OutboxItem item, BotLanguage language)
+    /// <summary>One job of one change kind - its postings in several cities are one line, see <see cref="SameJob"/>.</summary>
+    private string RenderVacancy(IReadOnlyList<OutboxItem> postings, BotLanguage language)
     {
+        var item = postings[0];
         var fresh = IsFresh(item);
 
         var title = RenderTitleLink(item);
-        var geography = RenderGeography(item, language);
+        var geography = postings.Count == 1
+            ? RenderGeography(item, language)
+            : SameJob.Places([.. postings.Select(p => p.Vacancy)], language);
         var dates = RenderDate(PublishedAt(item), language) ?? RenderDate(item.Vacancy.FirstSeenAt, language);
 
         var line = $"{KindGlyph(item.ChangeKind)} {title}<br> {geography} · {dates}";

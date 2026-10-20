@@ -52,7 +52,7 @@ public sealed class VacanciesScreen(
         var keyboard = new KeyboardBuilder(ctx.Language)
             .Items(
                 pageItems,
-                w => $"{w.Name} — {matches.GetValueOrDefault(w.Id)}",
+                w => BotFormatter.WatchlistButton(w, matches),
                 CallbackAction.VacanciesOpen,
                 w => w.Id)
             .Paging(CallbackAction.VacanciesPick, 0, page, totalPages)
