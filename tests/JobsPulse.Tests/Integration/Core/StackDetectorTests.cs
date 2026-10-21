@@ -36,6 +36,34 @@ public sealed class StackDetectorTests
         StackDetector.Read("Senior Software Engineer", description, IsStack).Primary.Should().BeFalse();
     }
 
+    [TestCase("<ul><li>Support the build, deployment, and operation of modern .NET applications</li></ul>")]
+    [TestCase("<p>Tech stack: Azure Cloud, .NET 8, ASP.NET Core services, Python, Mongo</p>")]
+    [TestCase("<p>Backend: Microservices written in C# ASP.NET Core 8 & Golang</p>")]
+    [TestCase("<p>Support build and deployment for backend (.NET) and frontend (JavaScript/TypeScript) applications</p>")]
+    public void Read_should_take_the_environment_as_core(string description)
+    {
+        StackDetector.Read("Senior DevOps Engineer", description, IsStack).Core.Should().BeTrue();
+    }
+
+    [TestCase("<ul><li>Proficiency in C# .NET, Java, or Go, with a strong understanding of design</li></ul>")]
+    [TestCase("<ul><li>Proficient in one or more of: C#, Python, Go, Node.js</li></ul>")]
+    [TestCase("<ul><li>Experience programming in languages such as Java, C++, Python, Go, Rust, C#</li></ul>")]
+    [TestCase("<ul><li>Read and troubleshoot code (Python, C#, Typescript, etc.)</li></ul>")]
+    [TestCase("<ul><li>Proficiency in at least two of: Python, C++, C#, Rust.</li></ul>")]
+    public void Read_should_not_take_one_of_the_alternatives_as_core(string description)
+    {
+        var reading = StackDetector.Read("Platform Engineer", description, IsStack);
+
+        reading.Primary.Should().BeTrue();
+        reading.Core.Should().BeFalse();
+    }
+
+    [Test]
+    public void Read_should_take_the_title_as_core()
+    {
+        StackDetector.Read("Senior .NET Platform Engineer", "Python, Java or Go", IsStack).Core.Should().BeTrue();
+    }
+
     [TestCase("<ul><li>5+ years of production experience with Python</li></ul>")]
     [TestCase("<ul><li>Strong proficiency in Go and Kubernetes</li></ul>")]
     public void Read_should_see_another_required_language(string description)

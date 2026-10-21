@@ -239,13 +239,15 @@ public sealed class FilterScreen(WatchService watch, WatchlistAccess access, Use
     private static StackRule NextStack(StackRule rule) => rule switch
     {
         StackRule.None => StackRule.Primary,
-        StackRule.Primary => StackRule.Neutral,
+        StackRule.Primary => StackRule.Core,
+        StackRule.Core => StackRule.Neutral,
         _ => StackRule.None
     };
 
     private static TextKey StackButton(StackRule rule) => rule switch
     {
         StackRule.Primary => TextKey.FilterStackPrimaryButton,
+        StackRule.Core => TextKey.FilterStackCoreButton,
         StackRule.Neutral => TextKey.FilterStackNeutralButton,
         _ => TextKey.FilterStackOffButton
     };

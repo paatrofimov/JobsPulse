@@ -62,9 +62,12 @@ public sealed class VacancyMatcher(TimeProvider clock, ILog log)
     {
         var reading = StackDetector.Read(v.Title, v.Description, s => AnyMatch(s, f.DescriptionAnyOf, f.MatchMode));
 
-        return f.Stack == StackRule.Primary
-            ? reading.Primary
-            : !reading.Primary && !reading.OtherRequired;
+        return f.Stack switch
+        {
+            StackRule.Primary => reading.Primary,
+            StackRule.Core => reading.Core,
+            _ => !reading.Primary && !reading.OtherRequired
+        };
     }
 
     /// <summary>

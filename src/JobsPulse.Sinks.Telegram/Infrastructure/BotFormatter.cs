@@ -87,7 +87,12 @@ public static class BotFormatter
 
         if (filter.Stack != StackRule.None)
         {
-            var stack = filter.Stack == StackRule.Primary ? TextKey.FilterStackPrimary : TextKey.FilterStackNeutral;
+            var stack = filter.Stack switch
+            {
+                StackRule.Primary => TextKey.FilterStackPrimary,
+                StackRule.Core => TextKey.FilterStackCore,
+                _ => TextKey.FilterStackNeutral
+            };
             sb.Append(BotTexts.Get(stack, language)).Append("<br>");
         }
 

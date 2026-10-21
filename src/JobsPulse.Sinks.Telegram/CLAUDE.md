@@ -74,7 +74,7 @@ itself.
 - `FilterScreen` - the filter one rule at a time, and now every rule `FilterSpec` has: wanted and unwanted words of the
   **title**, of the **location** and of the vacancy **text**, plus freshness and the `🇬🇧 English only` toggle
   (`FilterSpec.EnglishOnly`, one tap flips it), the `🧩 Stack` rule (`FilterSpec.Stack`, one tap cycles any mention →
-  main language → without it) and the `🛂 No work permit needed` toggle (`FilterSpec.NoWorkAuthorizationRequired`).
+  main language → environment → without it) and the `🛂 No work permit needed` toggle (`FilterSpec.NoWorkAuthorizationRequired`).
   **One button per field** (🔍 Title,
   📍 Location, 📝 Vacancy text): the sign of each word in the answer says which half it goes to, so a wanted/excluded pair
   of buttons is not needed. All six lists are also printed above the buttons by `BotFormatter.Filter`, so «what is this

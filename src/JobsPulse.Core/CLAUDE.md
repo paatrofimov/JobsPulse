@@ -274,8 +274,8 @@ description without its optional sections (`OptionalSectionStripper`): a skill l
 make a .NET vacancy; `DescriptionNoneOf` still reads the whole text. `EnglishOnly` drops a vacancy whose description
 `EnglishTextDetector` finds written in another language, or that `LanguageRequirementDetector` finds demanding one.
 `NoWorkAuthorizationRequired` drops what `WorkAuthorizationDetector` flags. Under a `Stack` rule `DescriptionAnyOf` is
-not «any of these words» but the stack `StackDetector` reads: `Primary` wants it as a main language, `Neutral` wants it
-not to be one and no other language required.
+not «any of these words» but the stack `StackDetector` reads: `Primary` wants it as a main language, `Core` as the
+environment, `Neutral` wants it not to be one and no other language required.
 
 ## WatchService
 
@@ -469,7 +469,11 @@ the detectors below judge: one requirement bullet is one sentence.
 
 What `FilterSpec.Stack` reads (`StackReading`). The stack (the `DescriptionAnyOf` words) is **primary** when the title
 names it, or a sentence outside the optional sections names it without calling it a plus («C#, Java or Go» counts,
-«C# is a plus», «exposure to .NET» do not). **Another language is required** when a sentence that does not name the
+«C# is a plus», «exposure to .NET» do not). It is the **core** (the environment) when the title names it, or such a
+sentence names it without offering another language to pick instead: «.NET 8, ASP.NET Core, Python» and «backend
+(.NET) and frontend (JavaScript)» count, «C#, Java or Go», «one or more of», «such as», «etc.» do not - JavaScript,
+TypeScript and scripting are not alternatives. On the .NET SRE / .NET Platform feeds of 2026-10-21 it cut 11 of 34 and
+25 of 58 - DevOps and platform roles list languages by habit. **Another language is required** when a sentence that does not name the
 stack and is not a plus asks for experience with Java, Python, Go, Node.js, Ruby, PHP, C++, Kotlin, Scala, Rust and
 the like - scripting (Python or Bash scripts) does not count. Measured on 1625 .NET matches: 7% are not primary.
 
@@ -697,8 +701,9 @@ change when it appeared.
 ### Stack / NoWorkAuthorizationRequired
 
 Description rules too (`UsesDescription`), written into `ToString` only when set. `Stack` (`StackRule`: `None`,
-`Primary`, `Neutral`) changes how `DescriptionAnyOf` is read - see `StackDetector`; `Primary` and `Neutral` split
-one search into «.NET is a main language» and «.NET is not, and nothing else is required» without overlap.
+`Primary`, `Neutral`, `Core`) changes how `DescriptionAnyOf` is read - see `StackDetector`; `Primary` and `Neutral` split
+one search into «.NET is a main language» and «.NET is not, and nothing else is required» without overlap. `Core` is
+the narrow `Primary` for roles that list languages by habit (SRE, platform): .NET has to be the environment.
 `NoWorkAuthorizationRequired` - see `WorkAuthorizationDetector`.
 
 ### PostedWithinDays
